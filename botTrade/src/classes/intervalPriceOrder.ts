@@ -1,13 +1,13 @@
-import { getPrice } from "@src/api/binance";
-import { logging, writeLog } from "@src/utils/log";
 import { checkTarget } from "@src/handleOrders/handleTarget";
+import { logging, writeLog } from "@src/utils/log";
+import broker from "@src/api/broker";
+import brokerInstancePool from "./brokerInstancePool";
 
 let intervalArr: {
     [symbol: string]: any;
 } = {};
 
 class IntervalPriceOrder {
-    constructor() {}
     getInterval(symbol: string) {
         return intervalArr[symbol];
     }
@@ -18,20 +18,23 @@ class IntervalPriceOrder {
         return intervalArr;
     }
 
-    createIntervalPriceCheck = (symbol: string, tokenId: number) => {
-        const intervalId = setInterval(async () => {
-            let response = await getPrice(`${symbol}`);
-            if (response.status === 200) {
-                await checkTarget(tokenId, response.data.markPrice);
-            } else {
-                let warning = `Can't check price for token ${symbol}`;
-                writeLog([warning, response]);
-                logging("warning", warning);
-            }
-        }, 3000);
+    createIntervalPriceCheck = (symbol: string, token: string) => {
+        if (!intervalArr[symbol]) {
+            const intervalId = setInterval(async () => {
+                const broker = brokerInstancePool.getBroker(); // 0 is dummy instance
+                let price = await broker!.getPrice(`${symbol}`);
+                if (price) {
+                    await checkTarget(token, price);
+                } else {
+                    let warning = `Can't check price for token ${symbol}`;
+                    logging("warning", warning);
+                }
+            }, 3000);
 
-        intervalArr[symbol] = intervalId;
+            intervalArr[symbol] = intervalId;
+        }
     };
 }
 
-export default IntervalPriceOrder;
+const intervalPriceOrderInstance = new IntervalPriceOrder();
+export default intervalPriceOrderInstance;

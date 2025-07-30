@@ -1,9 +1,14 @@
-import axiosService from "@src/axios";
 import axios from "axios";
+import { logging } from "../utils/log";
 
 export const getPublicIP = async () => {
-    const response = await axiosService.get("https://api.ipify.org?format=json");
-    return response.data.ip;
+    try {
+        const response = await axios.get("https://api.ipify.org?format=json");
+        return response.data.ip;
+    } catch {
+        logging("error", "Failed to fetch public IP");
+        return null;
+    }
 };
 
 // POST to AWS lamda to update data

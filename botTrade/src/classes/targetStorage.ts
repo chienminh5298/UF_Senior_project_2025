@@ -1,29 +1,48 @@
-interface targetType {
+export type TargetType = {
+    orderId: string;
     targetId: number;
     markPrice: number;
-}
+    side: "BUY" | "SELL";
+    stoplossId: string | null;
+};
 
 let storage: {
-    [orderId: string]: targetType;
+    // e.t BTC, SOL, ETH, ....
+    [token: string]: {
+        [orderId: string]: TargetType;
+    };
 } = {};
 
 class TargetStorage {
-    constructor() {}
-    addTarget(orderId: string, target: targetType) {
-        storage[orderId] = target;
+    addTarget({ target, token }: { target: TargetType; token: string }) {
+        if (!storage[token]) {
+            storage[token] = {};
+        }
+
+        storage[token][target.orderId] = target;
     }
-    getTarget(orderId: string) {
-        return storage[orderId];
+    getOrderTargetOfToken(token: string) {
+        return storage[token];
     }
-    removeTarget(orderId: string) {
-        delete storage[orderId];
+    removeTarget({ orderId, token }: { orderId: string; token: string }) {
+        if (storage[token][orderId]) {
+            delete storage[token][orderId];
+        }
     }
-    updateTarget(orderId: string, newTarget: targetType) {
-        storage[orderId] = newTarget;
+
+    updateTarget({ newTarget, token }: { newTarget: TargetType; token: string }) {
+        storage[token][newTarget.orderId] = newTarget;
     }
-    getStorage() {
+
+    getOrder({ token, orderId }: { token: string; orderId: string }) {
+        return storage[token][orderId];
+    }
+
+    getAll(): typeof storage {
         return storage;
     }
 }
 
-export default TargetStorage;
+// 👉 Export a single shared instance
+const targetStorageInstance = new TargetStorage();
+export default targetStorageInstance;
