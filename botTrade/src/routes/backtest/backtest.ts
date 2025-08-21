@@ -14,13 +14,26 @@ let tokenDataCache: {
     };
 } = {};
 
-setInterval(() => {
-    tokenDataCache = {};
-}, 21600000); // Clear cache after every 1h
+let simulateCache: {
+    [token: string]: {
+        [year: string]: BacktestChartCandleType;
+    };
+} = {};
 
-type IndexedCandle = candleType & { ts: number };
+setInterval(async () => {
+    const now = new Date();
+    const hour = now.getHours();
+    const minute = now.getMinutes();
+    const second = now.getSeconds();
+    if (hour === 0 && minute === 0 && second === 10) {
+        tokenDataCache = {};
+        delete simulateCache[now.getFullYear()];
+    }
+}, 1000);
 
-function prepareCandles(data: { [k: string]: candleType }): IndexedCandle[] {
+type IndexedCandle = BacktestCandleType & { ts: number };
+
+function prepareCandles(data: { [k: string]: BacktestCandleType }): IndexedCandle[] {
     return Object.values(data)
         .map((c) => ({ ...c, ts: Date.parse(c.Date) }))
         .sort((a, b) => a.ts - b.ts);
@@ -41,7 +54,7 @@ function getBucketKey(candleDate: string, timeFrame: "1h" | "4h" | "1d"): string
 }
 
 function aggregateToMap(allCandles: IndexedCandle[], timeFrame: "1h" | "4h" | "1d") {
-    const map: Record<string, candleType> = {};
+    const map: Record<string, BacktestCandleType> = {};
     for (const c of allCandles) {
         const key = getBucketKey(c.Date, timeFrame);
         if (!map[key]) {
@@ -56,7 +69,6 @@ function aggregateToMap(allCandles: IndexedCandle[], timeFrame: "1h" | "4h" | "1
     }
     return map;
 }
-
 router.post("/", async (req: CustomRequest, res: Response, next: NextFunction) => {
     try {
         const { token, year, budget, strategyId }: { token: string; year: number; budget: number; strategyId: number } = req.body;
@@ -80,9 +92,18 @@ router.post("/", async (req: CustomRequest, res: Response, next: NextFunction) =
         }
 
         const queryToken = await prisma.token.findUnique({ where: { name: token } });
-        const result = queryToken ? await backtestLogic({ strategyId, data: yearData, budget, token: queryToken, timeFrame: "1d" }) : {};
 
-        return res.status(200).json({ message: "Backtest done", result: result });
+        if (simulateCache[token]?.[year] && queryToken) {
+            return res.status(200).json({ message: "Backtest done", result: simulateCache[token]?.[year], minQty: queryToken.minQty, leverage: queryToken.leverage });
+        }
+
+        const result = queryToken ? await backtestLogic({ strategyId, data: yearData, token: queryToken, timeFrame: "1d" }) : {};
+
+        // Cache
+        simulateCache[token] = simulateCache[token] || {};
+        simulateCache[token][year] = result;
+
+        return res.status(200).json({ message: "Backtest done", result: result, minQty: queryToken?.minQty, leverage: queryToken?.leverage });
     } catch (err) {
         return res.status(500).json({ message: "Internal server error" });
     }
@@ -109,17 +130,9 @@ const getMarkPRice = (percent: number, side: "BUY" | "SELL", entryPrice: number)
     }
 };
 
-const getProfit = ({ qty, side, markPrice, entryPrice }: { qty: number; side: "BUY" | "SELL"; markPrice: number; entryPrice: number }) => {
-    if (side === "BUY") {
-        return (markPrice - entryPrice) * qty;
-    } else {
-        return (entryPrice - markPrice) * qty;
-    }
-};
 const randomId = () => Math.floor(100000000 + Math.random() * 900000000);
 
-const backtestLogic = async ({ strategyId, data, budget, token, timeFrame }: BacktestLogicType) => {
-    let wallet = budget;
+const backtestLogic = async ({ strategyId, data, token, timeFrame }: BacktestLogicType) => {
     const allCandles = prepareCandles(data);
 
     let chartData = aggregateToMap(allCandles, timeFrame);
@@ -129,8 +142,8 @@ const backtestLogic = async ({ strategyId, data, budget, token, timeFrame }: Bac
 
     const dataKey = Object.keys(data);
     const dataValues = Object.values(data);
-    let openOrder: { [orderId: number]: OrderType } = {};
-    let response: ChartCandleType = {};
+    let openOrder: { [orderId: number]: BacktestOrderType } = {};
+    let response: BacktestChartCandleType = {};
 
     const getLastFiveCandle = (pivotUTC: string) => {
         const pivotKey = getBucketKey(pivotUTC, timeFrame);
@@ -197,7 +210,7 @@ const backtestLogic = async ({ strategyId, data, budget, token, timeFrame }: Bac
         return chartData[sortedBucketKeysChartData[idx - 1]];
     };
 
-    const processCreateNewCandleOrder = (candle: candleType) => {
+    const processCreateNewCandleOrder = (candle: BacktestCandleType) => {
         const prevCandle = getPrevCandle(candle.Date);
 
         if (prevCandle && strategy) {
@@ -214,7 +227,7 @@ const backtestLogic = async ({ strategyId, data, budget, token, timeFrame }: Bac
         }
     };
 
-    const checkHitTarget = (candle: candleType) => {
+    const checkHitTarget = (candle: BacktestCandleType) => {
         for (const orderId in openOrder) {
             const order = openOrder[orderId];
 
@@ -233,19 +246,18 @@ const backtestLogic = async ({ strategyId, data, budget, token, timeFrame }: Bac
                     if (!order.isTrigger) {
                         // new trigger order
                         let side: "BUY" | "SELL" = order.side;
-
                         if (trend === "GREEN" || trend === "RED") {
                             if (triggerFiveSameColorStrategies[0].direction === "OPPOSITE") {
                                 if (side === "BUY") side = "SELL";
                                 else side = "BUY";
                             }
-                            createNewOrder({ candle, entryPrice: markPrice, isTrigger: true, side, strategyId: 3 });
+                            createNewOrder({ candle, entryPrice: markPrice, isTrigger: true, side, strategyId: 1 });
                         } else {
                             if (triggerDefaultStrategies[0].direction === "OPPOSITE") {
                                 if (side === "BUY") side = "SELL";
                                 else side = "BUY";
                             }
-                            createNewOrder({ candle, entryPrice: markPrice, isTrigger: true, side, strategyId: 1 });
+                            createNewOrder({ candle, entryPrice: markPrice, isTrigger: true, side, strategyId: 3 });
                         }
                     }
                     // Close order
@@ -255,14 +267,14 @@ const backtestLogic = async ({ strategyId, data, budget, token, timeFrame }: Bac
         }
     };
 
-    const checkHitStoploss = (candle: candleType) => {
+    const checkHitStoploss = (candle: BacktestCandleType) => {
         for (const id in openOrder) {
             const order = openOrder[id];
 
             let targets: Target[] = order.targets;
             if (order.isTrigger) {
                 const trend = order.trend;
-                targets = trend === "GREEN" || trend === "RED" ? triggerFiveSamecolorTargets : triggerDefaultTargets;
+                targets = trend === "MIXED" ? triggerDefaultTargets : triggerFiveSamecolorTargets;
             }
 
             const markPrice = getMarkPRice(targets[order.stoplossIdx].stoplossPercent, order.side, order.entryPrice);
@@ -273,27 +285,21 @@ const backtestLogic = async ({ strategyId, data, budget, token, timeFrame }: Bac
         }
     };
 
-    const dummyBroker = brokerInstancePool.getBroker();
-
-    const createNewOrder = ({ candle, entryPrice, isTrigger, side, strategyId }: CreateNewOrderType) => {
+    const createNewOrder = ({ candle, entryPrice, isTrigger, side, strategyId }: BacktestCreateNewOrderType) => {
         const orderId = randomId();
-        // const qty = roundQtyToNDecimal((budget / entryPrice) * token.leverage, token.minQty);
-        const qty = roundQtyToNDecimal((wallet / entryPrice) * token.leverage, token.minQty);
         let targets: Target[] = strategyTargets;
         const trend = getLastFiveCandle(candle.Date);
         if (isTrigger) {
-            targets = trend === "GREEN" || trend === "RED" ? triggerFiveSamecolorTargets : triggerDefaultTargets;
+            targets = trend === "MIXED" ? triggerDefaultTargets : triggerFiveSamecolorTargets;
         }
 
         openOrder[orderId] = {
             id: orderId,
             entryTime: candle.Date,
             entryPrice,
-            qty: qty,
             isTrigger,
             side,
             stoplossIdx: 0,
-            fee: dummyBroker!.getMakerFee() * qty * entryPrice,
             strategyId,
             targets,
             trend,
@@ -302,14 +308,9 @@ const backtestLogic = async ({ strategyId, data, budget, token, timeFrame }: Bac
         response[candle.Date] = { ...response[candle.Date], openOrderSide: side }; // This is not a part of logic
     };
 
-    const closeOrder = (order: OrderType, markPrice: number, candle: candleType) => {
+    const closeOrder = (order: BacktestOrderType, markPrice: number, candle: BacktestCandleType) => {
         if (openOrder[order.id]) {
-            const profit = getProfit({ qty: order.qty, side: order.side, markPrice, entryPrice: order.entryPrice });
-            const fee = order.fee + dummyBroker!.getMakerFee() * order.qty * markPrice;
-
-            const netProfit = profit - fee - (profit - fee) * 0.15; // 15% này là estimate commission 
-            wallet += netProfit;
-            const tempOrder = { ...openOrder[order.id], markPrice, executedTime: candle.Date, profit, fee };
+            const tempOrder = { ...openOrder[order.id], markPrice, executedTime: candle.Date };
             delete openOrder[order.id];
 
             response[candle.Date] = { ...response[candle.Date], executedOrder: [tempOrder] }; // This is not a part of logic
@@ -361,8 +362,8 @@ const backtestLogic = async ({ strategyId, data, budget, token, timeFrame }: Bac
     return response;
 };
 
-const convertTo1hChart = (chart5m: ChartCandleType): ChartCandleType => {
-    let response: ChartCandleType = {};
+const convertTo1hChart = (chart5m: BacktestChartCandleType): BacktestChartCandleType => {
+    let response: BacktestChartCandleType = {};
 
     // Convert the object values to an array and sort them by date ascending.
     const data5m = Object.values(chart5m).sort((a, b) => new Date(a.candle.Date).getTime() - new Date(b.candle.Date).getTime());
@@ -411,61 +412,11 @@ const convertTo1hChart = (chart5m: ChartCandleType): ChartCandleType => {
 
             response[bucketKey] = {
                 candle: aggregatedCandle,
-                executedOrder: executedOrder as Required<OrderType>[],
+                executedOrder: executedOrder as Required<BacktestOrderType>[],
                 openOrderSide,
             };
         }
     }
 
     return response;
-};
-
-type BacktestLogicType = {
-    strategyId: number;
-    data: { [date: string]: candleType };
-    budget: number;
-    token: Token;
-    timeFrame: "1d" | "4h" | "1h";
-};
-
-type CreateNewOrderType = {
-    candle: candleType;
-    entryPrice: number;
-    isTrigger: boolean;
-    side: "BUY" | "SELL";
-    strategyId: number;
-};
-
-export type candleType = {
-    Date: string;
-    Open: number;
-    High: number;
-    Low: number;
-    Close: number;
-    Volume: number;
-};
-
-type OrderType = {
-    id: number;
-    entryTime: string;
-    executedTime?: string; // Optional
-    isTrigger: boolean;
-    entryPrice: number;
-    markPrice?: number; // Optional
-    side: "BUY" | "SELL";
-    qty: number;
-    profit?: number; // Optional
-    stoplossIdx: number;
-    fee: number;
-    strategyId: number;
-    targets: Target[];
-    trend: "MIXED" | "GREEN" | "RED";
-};
-
-type ChartCandleType = {
-    [date: string]: {
-        candle: candleType;
-        executedOrder?: Required<OrderType>[];
-        openOrderSide?: "BUY" | "SELL";
-    };
 };

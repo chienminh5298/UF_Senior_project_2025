@@ -1,19 +1,19 @@
 import "dotenv/config";
 import "module-alias/register";
 
-import { checkExpireVouchers, createTokenPriceSocket, updateUserAsset } from "@src/utils";
+import { checkExpireVouchers, createTokenPriceInterval } from "@src/utils";
+import { checkAccountNotPayBill, checkGenerateBill } from "@src/utils/bill";
+import { loadTargetToStorage } from "@src/handleOrders/handleTarget";
 import express, { NextFunction, Request, Response } from "express";
+import brokerInstancePool from "@src/classes/brokerInstancePool";
 import prisma, { connectDatabase } from "@root/prisma/database";
 import handleBacktestRoute from "@src/routes/backtest/backtest";
-import { createOpenOrderSocket } from "@src/socket/binance";
 import handleOrderRoute from "@src/routes/handleOrder";
 import { mutationUpdateData } from "@src/API/ultil";
 import { checkStrategies } from "@src/utils/process";
 import { isAuthorization } from "@src/middleware";
-import { adjustLeverage } from "@src/api/binance";
-import ListenKey from "@src/classes/listenKey";
-import Timestamp from "@src/classes/timestamp";
 import { logging } from "@src/utils/log";
+import { loadDEK } from "@src/utils/aws";
 import { Token } from "@prisma/client";
 
 const server = express();
@@ -47,35 +47,38 @@ const startServer = async () => {
     // Connect & define database
     await connectDatabase();
 
-    // Get listen key
-    await new ListenKey().getListenKey();
+    if (process.env.isProduction) {
+        // Load target to storage
+        await loadTargetToStorage();
 
-    // Get timestamp
-    new Timestamp().getTimestamp();
+        // Check price of current open order
+        await createTokenPriceInterval();
+    }
 
-    // Create socket to listen if order status changed
-    createOpenOrderSocket();
+    // Load broker pool
+    await brokerInstancePool.loadPool();
 
-    // Check price of current open order
-    await createTokenPriceSocket();
+    // Refresh pool
+    brokerInstancePool.refreshPool();
 
-    setInterval(async () => {
-        const now = new Date();
-        const hour = now.getHours();
-        const minute = now.getMinutes();
-        const second = now.getSeconds();
+    if (process.env.isProduction) {
+        await loadDEK(); // Get data key from KMS to decrypt api
 
-        // logging("info", `hour:${hour} - minute: ${minute} - second: ${second}`);
-        if (hour === 0 && minute === 0 && second === 5) {
-            logging("info", `hour:${hour} - minute: ${minute} - second: ${second}`);
-
-            await updateUserAsset();
-
-            await checkExpireVouchers();
-
-            await checkTokens();
-        }
-    }, 1000);
+        setInterval(async () => {
+            const now = new Date();
+            const hour = now.getHours();
+            const minute = now.getMinutes();
+            const second = now.getSeconds();
+            // logging("info", `hour:${hour} - minute: ${minute} - second: ${second}`);
+            if (hour === 0 && minute === 0 && second === 5) {
+                logging("info", `hour:${hour} - minute: ${minute} - second: ${second}`);
+                await checkExpireVouchers();
+                await checkGenerateBill();
+                await checkAccountNotPayBill();
+                await checkTokens();
+            }
+        }, 1000);
+    }
 };
 
 startServer();
@@ -86,10 +89,7 @@ const checkTokens = async () => {
 };
 
 const checkToken = async (token: Token) => {
-    // set leverage to 1
-    await adjustLeverage(token.name + token.stable, 1);
-
-    // Call an API to AWS to update token data
+    // Goi 1 api den AWS Lamda de update token
     await mutationUpdateData(token.name);
 
     // Check stratergy for open order

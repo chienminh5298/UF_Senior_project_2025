@@ -16,12 +16,7 @@ import prisma from "@root/prisma/database";
 /* -----------------------------------------------------------------------------------------------*
  * When root order opened => at least 1 sub order is opened and target is set in target's storage *
  *------------------------------------------------------------------------------------------------*/
-type OpenOrderType = {
-    token: Token;
-    strategy: Strategy;
-    side: $Enums.Side;
-    forSpecifyUserId?: number;
-};
+
 export const openRootOrder = async ({ token, strategy, side, forSpecifyUserId = undefined }: OpenOrderType) => {
     const strategyId = strategy.id;
     const orderToken = token.name + token.stable;
@@ -57,7 +52,7 @@ export const openRootOrder = async ({ token, strategy, side, forSpecifyUserId = 
         });
 
         /* ----------------------------------------------------------------
-            Mở order cho từng account
+            Open order for every account
         -----------------------------------------------------------------*/
         const results = await Promise.allSettled(
             users.map(async (user) => {
@@ -79,7 +74,7 @@ export const openRootOrder = async ({ token, strategy, side, forSpecifyUserId = 
         );
 
         /* ----------------------------------------------------------------
-            Kiểm tra kết quả
+            Check open success or not
         -----------------------------------------------------------------*/
         for (const r of results) {
             if (r.status === "fulfilled") {
@@ -119,16 +114,6 @@ const findFirstTargetAndNextTarget = async ({ strategyId, tokenId }: { strategyI
     const nextTarget = await getNextTarget(firstTarget, tokenId, strategyId);
 
     return { firstTarget, nextTarget };
-};
-
-type HandleOpenRootOrderType = {
-    strategyId: number;
-    token: Token;
-    qty: number;
-    side: "BUY" | "SELL";
-    user: User;
-    firstTarget: Target;
-    nextTarget: Target;
 };
 
 export const handleOpenOrder = async ({ strategyId, token, side, qty, user, firstTarget, nextTarget }: HandleOpenRootOrderType): Promise<{ status: number; message?: string }> => {
@@ -189,17 +174,7 @@ export const handleOpenOrder = async ({ strategyId, token, side, qty, user, firs
     }
 };
 
-type handleAfterOpenNewOrderType = {
-    response: any;
-    token: Token;
-    strategyId: number;
-    orderToken: string;
-    user: User;
-    firstTarget: Target;
-    nextTarget: Target;
-};
-
-const handleAfterOpenNewOrder = async ({ response, orderToken, strategyId, token, user, firstTarget, nextTarget }: handleAfterOpenNewOrderType) => {
+const handleAfterOpenNewOrder = async ({ response, orderToken, strategyId, token, user, firstTarget, nextTarget }: HandleAfterOpenNewOrderType) => {
     writeLog([`Open root order successfully --- ${orderToken}`, { ...response }]);
 
     // Insert order to table
@@ -227,22 +202,7 @@ const handleAfterOpenNewOrder = async ({ response, orderToken, strategyId, token
     await sendTelegramMessage(telegramMessage, user.telegramChatId);
 };
 
-export type userBudgets = {
-    userId: number;
-    budget: number;
-    commissionPercent: number;
-    qty: number;
-};
-
-type calculateOrderQtyType = {
-    token: Token;
-    strategyId: number;
-    price: number;
-    user: User;
-    strategyBudgetPercent?: number;
-};
-
-export const calculateOrderQty = async ({ token, strategyId, price, user, strategyBudgetPercent }: calculateOrderQtyType) => {
+export const calculateOrderQty = async ({ token, strategyId, price, user, strategyBudgetPercent }: CalculateOrderQtyType) => {
     const strategy = await prisma.strategy.findUnique({ where: { id: strategyId } });
 
     let isSupriseThisToken = await prisma.userToken.findFirst({ where: { userId: user.id, tokenId: token.id } });
@@ -295,14 +255,6 @@ const countUserTokenStrategies = async (user: User, strategyId: number): Promise
         },
     });
     return strategiesCount;
-};
-
-type InsertOrderType = {
-    response: any;
-    nextTargetId: number;
-    token: Token;
-    strategyId: number;
-    user: User;
 };
 
 const insertOrder = async ({ response, nextTargetId, token, strategyId, user }: InsertOrderType): Promise<Order> => {
@@ -461,12 +413,6 @@ const cancelStoplossAndUpdateOrder = async (order: Order, token: Token, markPric
     if (userChatId) {
         await sendTelegramMessage(telegramMessage, userChatId.telegramChatId);
     }
-};
-
-type RecoverOrderParams = {
-    symbol: string;
-    side: "BUY" | "SELL";
-    userId: number;
 };
 
 export const recoverLatestOpenOrder = async ({ symbol, side, userId }: RecoverOrderParams) => {

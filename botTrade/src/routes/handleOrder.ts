@@ -66,36 +66,6 @@ router.post("/setStoploss", async (req: CustomRequest, res: Response, next: Next
     }
 });
 
-// router.post("/placeOrderManually", async (req: CustomRequest, res: Response, next: NextFunction) => {
-//     const { token, strategyId, dataUsers, strategyBudgetPercent, side }: { token: Token; strategyId: number; dataUsers: any; strategyBudgetPercent: number; side: "SELL" | "BUY" } = req.body;
-
-//     try {
-//         let price = await broker.getPrice(token.name + token.stable);
-//         if (price) {
-//             let userBudget: userBudgets[] = [];
-
-//             if (dataUsers.indexOf("all") !== -1) {
-//                 let users = await prisma.user.findMany({ where: { isActive: true } });
-//                 userBudget = await calculateOrderQty({ token, strategyId, price, users, strategyBudgetPercent: strategyBudgetPercent });
-//             } else {
-//                 const listUserId = dataUsers.map((u: string) => +u);
-//                 let users = await prisma.user.findMany({ where: { isActive: true, id: { in: listUserId } } });
-//                 userBudget = await calculateOrderQty({ token, strategyId, price, users, strategyBudgetPercent: strategyBudgetPercent });
-//             }
-
-//             const response = await handleOpenOrder({ strategyId: strategyId, token, side: side, userBudget, price });
-//             if (response.status === 200) {
-//                 res.status(200).json({ success: true });
-//             } else {
-//                 res.status(400).json({ message: response.message });
-//             }
-//         }
-//     } catch {
-//         console.log("Error route POST /backtest/handleOrder/placeOrderManually");
-//         res.status(500).json({ message: "Internal server error" });
-//     }
-// });
-
 router.post("/closeOrder", async (req: CustomRequest, res: Response, next: NextFunction) => {
     const { order, token }: { order: Order; token: Token } = req.body;
     try {

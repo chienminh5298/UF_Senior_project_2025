@@ -8,8 +8,8 @@ import prisma from "@root/prisma/database";
  - We will not open price socket for every token, just open socket for tokens which has at least 1 open order.
  - This function will find the token has at least 1 open order then will create a price socket to listen price changes.
  */
-export const createTokenPriceSocket = async () => {
-    var tokens: Token[] = await prisma.token.findMany({
+export const createTokenPriceInterval = async () => {
+    const tokens: Token[] = await prisma.token.findMany({
         where: {
             orders: {
                 some: {
@@ -20,12 +20,9 @@ export const createTokenPriceSocket = async () => {
     });
 
     tokens.forEach((token) => {
-        // Load targets of orders into storage
-        loadTargetToStorage(token.id!);
-
         // create interval token's price check
         let symbol = token.name + token.stable;
-       intervalPriceOrderInstance.createIntervalPriceCheck(symbol, token.id);
+        intervalPriceOrderInstance.createIntervalPriceCheck(symbol, token.name);
     });
 };
 

@@ -1,30 +1,11 @@
 import { calculateMarkPrice, roundQtyToNDecimal, roundStopPriceTo2Decimals } from "@src/utils";
 import { Order, Token } from "@prisma/client";
 
-export interface __payloadCancelStoplossType {
-    token: string;
-    orderIds: string[];
-}
-
 export const __payloadCancelStoploss = (query: __payloadCancelStoplossType) => {
     return {
         symbol: query.token, // ETHUSDT,... (With 'USDT')
         orderIds: query.orderIds,
     };
-};
-
-export interface __payloadNewStoplossType {
-    token: string;
-    side: "SELL" | "BUY";
-    type: "TAKE_PROFIT_MARKET" | "STOP_MARKET" | "MARKET";
-    qty: number;
-    stopPrice: number;
-}
-
-type __payloadNewStoploss = {
-    order: Order;
-    token: Token;
-    stoplossPercent: number;
 };
 
 export const __payloadNewStoploss = ({ order, token, stoplossPercent }: __payloadNewStoploss) => {
@@ -41,24 +22,12 @@ export const __payloadNewStoploss = ({ order, token, stoplossPercent }: __payloa
     };
 };
 
-export type __payloadCancelOrderType = {
-    token: string;
-    side: "SELL" | "BUY";
-    qty: number;
-};
-
 export const __payloadCloseOrder = (query: __payloadCancelOrderType, minQty: number) => {
     return {
         token: query.token,
         side: query.side,
         qty: roundQtyToNDecimal(query.qty, minQty),
     };
-};
-
-export type __payloadOpenOrderType = {
-    token: string;
-    side: string;
-    qty: number;
 };
 
 export const __payloadNewOrder = (query: __payloadOpenOrderType, minQty: number) => {

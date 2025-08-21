@@ -13,15 +13,7 @@ import jsonbig from "json-bigint";
  * This function will set stoploss *
  *---------------------------------*/
 
-type newStoploss = {
-    target: Target;
-    order: Order;
-    token: Token;
-    maxRetry?: number;
-    delayMs?: number;
-};
-
-export const newStoploss = async ({ target, order, token, maxRetry = 3, delayMs = 3000 }: newStoploss): Promise<string | null> => {
+export const newStoploss = async ({ target, order, token, maxRetry = 3, delayMs = 3000 }: NewStoploss): Promise<string | null> => {
     for (let attempt = 1; attempt <= maxRetry; attempt++) {
         const stoplossId = await setStoploss({ token, order, target });
         if (stoplossId) return stoplossId; // ✅ thành công
