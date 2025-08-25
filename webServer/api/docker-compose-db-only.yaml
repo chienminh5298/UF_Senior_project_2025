@@ -1,0 +1,18 @@
+services:
+    database:
+        image: 'mysql'
+        environment:
+            MYSQL_ROOT_PASSWORD: moneymachine
+            MYSQL_DATABASE: moneymachine
+        volumes:
+            - db-volume:/var/lib/mysql
+        healthcheck:
+            test: ['CMD', 'mysqladmin', 'ping', '-h', 'localhost']
+            timeout: 5s
+            retries: 1
+        ports:
+            - '3307:3306'
+        container_name: database
+
+volumes:
+    db-volume: 
