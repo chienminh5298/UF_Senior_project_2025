@@ -58,7 +58,6 @@ router.post('/login', async (req, res) => {
             message: 'Login successful',
             token: token,
 
-            // Should all this user data be returned upon login?
             user: {
                 id: user.id,
                 fullname: user.fullname,
