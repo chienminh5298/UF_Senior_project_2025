@@ -1,0 +1,49 @@
+name: Backend Simple CI
+
+on:
+  push:
+    branches: [ main, webServer ]
+    paths:
+      - 'webServer/**'
+      - '.github/workflows/backend-simple.yml'
+  pull_request:
+    branches: [ main, webServer ]
+    paths:
+      - 'webServer/**'
+      - '.github/workflows/backend-simple.yml'
+
+jobs:
+  lint-and-test:
+    name: Lint and Test
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: webServer/package-lock.json
+
+      - name: Install dependencies
+        working-directory: ./webServer
+        run: npm ci
+
+      - name: Check TypeScript
+        working-directory: ./webServer
+        run: npx tsc --noEmit
+
+      - name: Run ESLint
+        working-directory: ./webServer
+        run: npm run lint
+
+      - name: Check Prettier formatting
+        working-directory: ./webServer
+        run: npm run format:check
+
+      - name: Run tests
+        working-directory: ./webServer
+        run: npm test
