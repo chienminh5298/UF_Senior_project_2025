@@ -1,7 +1,7 @@
 {
-  "name": "cryptobot-user-frontend",
+  "name": "buy-nance-bandits-user-frontend",
   "version": "1.0.0",
-  "description": "CryptoBot User Dashboard - Trading interface for crypto bot management",
+  "description": "Buy-nance Bandits User Dashboard - Trading interface for crypto bot management",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -47,6 +47,6 @@
     "typescript",
     "dashboard"
   ],
-  "author": "CryptoBot Team",
+  "author": "Buy-nance Bandits Team",
   "license": "MIT"
 }
