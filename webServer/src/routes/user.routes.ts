@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import prisma from '../models/prismaClient';
 import { requireAuth } from '../middleware/auth';
+import { isAscii } from 'buffer';
 
 const router = Router();
 
@@ -25,11 +26,47 @@ router.get('/landing', requireAuth, async (req, res) => {
       },
     });
 
+    // Get number of strategies
+    const count = await prisma.tokenStrategy.count({
+        where: {
+            UserOrder: {
+                some: { userId: user.id, isActive: true }
+            }
+        }
+      });
+
+    // Get the trade balance
+    const tradeBalance = await prisma.user.findUnique({
+      where: { id: user.id },
+      select: { tradeBalance: true },
+    });
+      
+
+    // Get active strategies per user id (user --> userOrder --> order --> token))
+    const activeStrategies = await prisma.strategy.findMany({
+      where: {
+        userId: user.id,
+        where: {
+            UserOrder: {
+                some: { userId: user.id, isActive: true }
+            },
+            select: {
+                id: true,
+            }
+        }
+      }
+    });
+
     // Return success response
     res.status(200).json({
       success: true,
       message: 'Landing page data fetched successfully',
-      data: userTokens,
+      data: {
+        userTokens,
+        count,
+        tradeBalance,
+        activeStrategies,
+      },
     });
   } catch (error) {
     // Return error response
@@ -38,6 +75,33 @@ router.get('/landing', requireAuth, async (req, res) => {
 });
 
 // GET  /api/user/profile    # User profile
+router.get('/profile', requireAuth, async (req, res) => {
+    const { user } = req;
+
+    // If user is not found, return 401
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        message: 'Unauthorized',
+      });
+    }
+
+    // Retrieve: firstName, lastName, email, timeZone
+    const profile = await prisma.user.findUnique({
+        where: { userId: user.id },
+        select: {
+            fullname: true,
+            email: true,
+        },
+    });
+
+  res.status(200).json({
+    success: true,
+    message: 'Profile data fetched successfully',
+    data: profile,
+  });
+});
+
 // GET  /api/user/orders     # User orders
 // POST /api/user/tokens     # Add token
 
