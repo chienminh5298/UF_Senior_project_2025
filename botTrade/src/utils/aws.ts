@@ -2,16 +2,16 @@ import { GetSecretValueCommand, SecretsManagerClient } from "@aws-sdk/client-sec
 import { DecryptCommand, KMSClient } from "@aws-sdk/client-kms";
 import crypto from "crypto";
 
-const REGION = process.env.AWS_REGION || "ap-southeast-1";
-const SECRET_ID = process.env.EDK_SECRET_ID || "moneymachine-edk"; // tên secret chứa EDK
-const ENC_CTX = { scope: "app", table: "users", column: "apiCreds" }; // nếu bạn đã ràng buộc
+const REGION = process.env.AWS_REGION;
+const SECRET_ID = process.env.EDK_SECRET_ID; // tên secret chứa EDK
+const ENC_CTX = { scope: "app", table: "users", column: "apiCreds" };
 
 const sm = new SecretsManagerClient({ region: REGION });
 const kms = new KMSClient({ region: REGION });
 
 let cachedDEK: Buffer | null = null;
 
-/** Lấy DEK (plaintext) từ EDK và cache trong RAM */
+/** Get DEK (plaintext) from EDK and cache in RAM */
 export async function loadDEK() {
     if (cachedDEK) return cachedDEK;
     const sec = await sm.send(new GetSecretValueCommand({ SecretId: SECRET_ID }));
@@ -23,7 +23,7 @@ export async function loadDEK() {
     const { Plaintext } = await kms.send(
         new DecryptCommand({
             CiphertextBlob: edk,
-            EncryptionContext: ENC_CTX, // truyền đúng nếu đã dùng khi tạo EDK
+            EncryptionContext: ENC_CTX,
         })
     );
     if (!Plaintext) {
@@ -33,12 +33,12 @@ export async function loadDEK() {
     return cachedDEK;
 }
 
-/** Mã hoá chuỗi bằng AES-256-GCM. Trả về base64 cho ct/iv/tag */
+/** Encrypt string by AES-256-GCM. Return base64 give us ct/iv/tag */
 export async function encryptString(plainText: string, userId: number) {
-    // Hàm encrypt xem trong backend. Ở bottrade chỉ cần decrypt
+    // Encrypt function is only used in backend, not in botTrade
 }
 
-/** Giải mã lại về chuỗi */
+/** Decrypt to string */
 export async function decryptString({ ct, iv, tag, userId }: { ct: Uint8Array; iv: Uint8Array; tag: Uint8Array; userId: string }) {
     const key = await loadDEK();
 

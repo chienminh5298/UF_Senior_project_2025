@@ -4,18 +4,12 @@ import jsonbig from "json-bigint";
 import { sendTelegramAdminMessage, sendTelegramMessage, telegramHitTargetPayload, telegramNewOrderPayload, telegramNotEnoughBalancePayload } from "@src/utils/telegram";
 import { calculateMarkPrice, calculateProfit, handleError, isCloseIntervalToken, roundQtyToNDecimal } from "@src/utils";
 import { cancelStoplossByOrder, newStoploss } from "@src/handleOrders/handleStoploss";
-import { __payloadCloseOrder, __payloadNewOrder } from "@src/payload/binance";
 import intervalPriceOrderInstance from "@src/classes/intervalPriceOrder";
 import brokerInstancePool from "@src/classes/brokerInstancePool";
 import targetStorageInstance from "@src/classes/targetStorage";
 import { getNextTarget } from "@src/handleOrders/handleTarget";
-import { candleType } from "@src/routes/backtest/backtest";
 import { logging, writeLog } from "@src/utils/log";
 import prisma from "@root/prisma/database";
-
-/* -----------------------------------------------------------------------------------------------*
- * When root order opened => at least 1 sub order is opened and target is set in target's storage *
- *------------------------------------------------------------------------------------------------*/
 
 export const openRootOrder = async ({ token, strategy, side, forSpecifyUserId = undefined }: OpenOrderType) => {
     const strategyId = strategy.id;
@@ -52,13 +46,13 @@ export const openRootOrder = async ({ token, strategy, side, forSpecifyUserId = 
         });
 
         /* ----------------------------------------------------------------
-            Open order for every account
+            Open order for each user
         -----------------------------------------------------------------*/
         const results = await Promise.allSettled(
             users.map(async (user) => {
-                const qty = await calculateOrderQty({ token, strategyId, price, user });
+                const qty = await calculateOrderQty({ token, strategy, price, user });
                 if (!qty) {
-                    // không đủ điều kiện => ghi nhận nhưng vẫn fulfilled
+                    // Doesn't match condition => ghi nhận nhưng vẫn fulfilled
                     return { status: 204, userId: user.id }; // 204: skipped
                 }
                 return handleOpenOrder({
@@ -74,7 +68,7 @@ export const openRootOrder = async ({ token, strategy, side, forSpecifyUserId = 
         );
 
         /* ----------------------------------------------------------------
-            Check open success or not
+            Check results
         -----------------------------------------------------------------*/
         for (const r of results) {
             if (r.status === "fulfilled") {
@@ -126,45 +120,76 @@ export const handleOpenOrder = async ({ strategyId, token, side, qty, user, firs
             return { status: 400 };
         }
 
-        // 1. Chỉnh đòn bẩy
+        // 1. Set leverage
         await broker.API_adjustLeverage(orderToken, token.leverage);
 
-        // 2. Tạo payload & gửi lệnh
-        const payload = __payloadNewOrder({ token: orderToken, side, qty }, token.minQty);
-        let response = await broker.API_newOrder(payload);
+        const maxAttempts = 2; 
+        const baseDelayMs = 800; // base delay 
 
-        /* ---------- SUCCESS PATH ---------- */
-        if (response.success) {
-            await handleAfterOpenNewOrder({
-                response,
-                orderToken,
-                strategyId,
-                token,
-                user,
-                firstTarget,
-                nextTarget,
-            });
-            return { status: 200 };
-        }
+        for (let attempt = 0; attempt < maxAttempts; attempt++) {
+            // 2. Prepare payload
+            const payload: __payloadOpenOrderType = {
+                symbol: orderToken,
+                side,
+                qty: roundQtyToNDecimal(qty - qty * 0.1 * attempt, token.minQty), // Decrease qty by 10% on each retry
+            };
 
-        /* ---------- THỬ KHÔI PHỤC ---------- */
-        const recoveryOrder = await recoverLatestOpenOrder({ symbol: orderToken, side, userId: user.id });
-        if (recoveryOrder) {
-            await handleAfterOpenNewOrder({
-                response: recoveryOrder,
-                orderToken,
-                strategyId,
-                token,
-                user,
-                firstTarget,
-                nextTarget,
-            });
-            return { status: 200 };
+            writeLog([`OpenOrder attempt #${attempt + 1} for userId=${user.id}`, payload]);
+            // 2.1 Place order
+            let response: any;
+            try {
+                response = await broker.API_newOrder(payload);
+            } catch (e: any) {
+                // API_newOrder only return {success:false}, rarely throw — just in case
+                handleError(`API_newOrder threw on attempt #${attempt + 1}`, "error", [e]);
+                response = { success: false, reason: e?.message || "THROWN" };
+            }
+            /* ---------- SUCCESS PATH ---------- */
+            if (response?.success) {
+                await handleAfterOpenNewOrder({
+                    response,
+                    orderToken,
+                    strategyId,
+                    token,
+                    user,
+                    firstTarget,
+                    nextTarget,
+                });
+                return { status: 200 };
+            }
+
+            // 2.2 Before retry place order, try recover first
+            writeLog([`Recovery before retry for userId=${user.id}`]);
+            const recovered = await recoverLatestOpenOrder({ symbol: orderToken, side, userId: user.id });
+            writeLog([recovered]);
+            if (recovered) {
+                await handleAfterOpenNewOrder({
+                    response: recovered,
+                    orderToken,
+                    strategyId,
+                    token,
+                    user,
+                    firstTarget,
+                    nextTarget,
+                });
+                return { status: 200 };
+            }
+
+            // 2.3 Retry 
+            if (attempt < maxAttempts) {
+                // Exponential backoff
+                const delay = baseDelayMs * attempt;
+                await sleep(delay);
+                continue;
+            }
+
+            // Hết lượt -> Đóng hết order -> thoát vòng lặp
+            break;
         }
 
         /* ---------- THẤT BẠI ---------- */
         const errLog = `Can't open new order for user ${user.email}`;
-        handleError(errLog, "error", [response]);
+        handleError(errLog, "error", []);
         sendTelegramAdminMessage(errLog);
         return { status: 400 };
     } catch (err) {
@@ -173,6 +198,8 @@ export const handleOpenOrder = async ({ strategyId, token, side, qty, user, firs
         return { status: 500 };
     }
 };
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 const handleAfterOpenNewOrder = async ({ response, orderToken, strategyId, token, user, firstTarget, nextTarget }: HandleAfterOpenNewOrderType) => {
     writeLog([`Open root order successfully --- ${orderToken}`, { ...response }]);
@@ -293,10 +320,14 @@ export const closeOrderAndStoploss = async (order: Order, token: Token, allowTri
     if (!processCloseQueue.has(order.orderId)) {
         processCloseQueue.add(order.orderId);
 
-        const tokenUSDT = token.name + token.stable;
+        const symbol = token.name + token.stable;
         const side = order.side === "SELL" ? "BUY" : "SELL";
-        const qty = order.qty;
-        const payload = __payloadCloseOrder({ token: tokenUSDT, side, qty }, token.minQty);
+        const qty = roundQtyToNDecimal(order.qty, token.minQty);
+        const payload: __payloadCancelOrderType = {
+            symbol,
+            side,
+            qty,
+        };
 
         // 1. Close order
         const broker = brokerInstancePool.getBroker(order.userId);
@@ -316,8 +347,8 @@ export const closeOrderAndStoploss = async (order: Order, token: Token, allowTri
                     const last5Dcandles = await broker!.getLastNDayCandle(token.name, 6);
                     // Kiểm tra chỉ có parent strategy được phép mở thêm 1 lệnh
                     if (strategy && strategy.parentStrategy === null && last5Dcandles) {
-                        const isAllGreen = last5Dcandles.slice(0, 5).every((candle: candleType) => candle.Close > candle.Open);
-                        const isAllRed = last5Dcandles.slice(0, 5).every((candle: candleType) => candle.Close < candle.Open);
+                        const isAllGreen = last5Dcandles.slice(0, 5).every((candle: BacktestCandleType) => candle.Close > candle.Open);
+                        const isAllRed = last5Dcandles.slice(0, 5).every((candle: BacktestCandleType) => candle.Close < candle.Open);
 
                         const rule = isAllGreen || isAllRed ? "FIVE_SAME_COLOR" : "DEFAULT";
 
@@ -397,7 +428,7 @@ const cancelStoplossAndUpdateOrder = async (order: Order, token: Token, markPric
     targetStorageInstance.removeTarget({ orderId: order.orderId, token: token.name });
 
     // 4. Check if doesn't exitsts any order belongs to this token then we remove interval price check
-    isCloseIntervalToken(token.name, token.stable);
+    isCloseIntervalToken(token);
 
     const userChatId = await prisma.user.findUnique({ where: { id: order.userId }, select: { telegramChatId: true } });
 

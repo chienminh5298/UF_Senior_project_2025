@@ -1,7 +1,9 @@
 import axios from "axios";
 
-export const sendTelegramMessage = async (message: string) => {
-    await axios.post(`https://api.telegram.org/bot${process.env.TELEGRAM_TOKEN}/sendMessage`, { chat_id: process.env.TELEGRAM_CHAT_ID, text: message });
+export const sendTelegramMessage = async (message: string, chatId: string | null) => {
+    if (chatId) {
+        await axios.post(`https://api.telegram.org/bot${process.env.TELEGRAM_TOKEN}/sendMessage`, { chat_id: chatId, text: message });
+    }
 };
 
 export const sendTelegramAdminMessage = async (message: string) => {

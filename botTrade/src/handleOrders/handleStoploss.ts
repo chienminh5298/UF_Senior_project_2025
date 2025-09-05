@@ -1,9 +1,8 @@
-import { sendTelegramAdminMessage, sendTelegramMessage, telegramHitStoplossPayload } from "@src/utils/telegram";
+import { sendTelegramAdminMessage, sendTelegramMessage, telegramHitStoplossPayload, telegramHitTargetPayload } from "@src/utils/telegram";
 import { closeOrderAndStoploss, updateOrderAfterDone } from "@src/handleOrders/handleOrder";
 import brokerInstancePool from "@src/classes/brokerInstancePool";
 import targetStorageInstance from "@src/classes/targetStorage";
-import { handleError, isCloseIntervalToken } from "@src/utils";
-import { __payloadNewStoploss } from "@src/payload/binance";
+import { calculateMarkPrice, handleError, isCloseIntervalToken, roundQtyToNDecimal, roundStopPriceTo2Decimals } from "@src/utils";
 import { Order, Target, Token } from "@prisma/client";
 import { logging, writeLog } from "@src/utils/log";
 import prisma from "@root/prisma/database";
@@ -16,11 +15,11 @@ import jsonbig from "json-bigint";
 export const newStoploss = async ({ target, order, token, maxRetry = 3, delayMs = 3000 }: NewStoploss): Promise<string | null> => {
     for (let attempt = 1; attempt <= maxRetry; attempt++) {
         const stoplossId = await setStoploss({ token, order, target });
-        if (stoplossId) return stoplossId; // ✅ thành công
+        if (stoplossId) return stoplossId; // ✅ Success
 
         if (attempt < maxRetry) {
             logging("warn", `Retry setStoploss (${attempt}/${maxRetry}) for order ${order.orderId}`);
-            await new Promise((r) => setTimeout(r, delayMs)); // ⏳ chờ rồi thử lại
+            await new Promise((r) => setTimeout(r, delayMs)); // ⏳ Wait before retry
         }
     }
 
@@ -34,12 +33,6 @@ export const newStoploss = async ({ target, order, token, maxRetry = 3, delayMs 
     return null;
 };
 
-type SetStoplossType = {
-    token: Token;
-    order: Order;
-    target: Target;
-};
-
 const setStoploss = async ({ token, order, target }: SetStoplossType): Promise<string | null> => {
     const broker = brokerInstancePool.getBroker(order.userId);
     if (!broker) {
@@ -47,11 +40,13 @@ const setStoploss = async ({ token, order, target }: SetStoplossType): Promise<s
         return null;
     }
 
-    const payload = __payloadNewStoploss({
-        token,
-        order,
-        stoplossPercent: target.stoplossPercent,
-    });
+    const payload: __payloadNewStoplossType = {
+        symbol: token.name + token.stable,
+        qty: roundQtyToNDecimal(order.qty, token.minQty),
+        side: order.side === "short" ? "BUY" : ("SELL" as "SELL" | "BUY"),
+        stopPrice: roundStopPriceTo2Decimals(calculateMarkPrice(target.stoplossPercent, order.entryPrice, order.side)),
+        type: "STOP_MARKET",
+    };
 
     const response = await broker.API_newStoploss(payload);
     if (response.success) {
@@ -106,18 +101,29 @@ export const excutedStoploss = async (orderId: string, markPrice: number) => {
 
     targetStorageInstance.removeTarget({ orderId: order.orderId, token: order.token.name });
 
-    isCloseIntervalToken(order.token.name, order.token.stable);
+    isCloseIntervalToken(order.token);
 
     const userChatId = await prisma.user.findUnique({ where: { id: order.userId }, select: { telegramChatId: true } });
 
     // 4. Send message to telegram
-    const telegramMessage = telegramHitStoplossPayload({
-        entryTime: updateOrder.updatedAt,
-        orderId: updateOrder.orderId,
-        stoplossPrice: updateOrder.markPrice!,
-        entryPrice: updateOrder.entryPrice,
-        side: updateOrder.side,
-    });
+    let telegramMessage;
+    if (updateOrder.netProfit < 0) {
+        telegramMessage = telegramHitStoplossPayload({
+            entryTime: updateOrder.updatedAt,
+            orderId: updateOrder.orderId,
+            stoplossPrice: updateOrder.markPrice!,
+            entryPrice: updateOrder.entryPrice,
+            side: updateOrder.side,
+        });
+    } else {
+        telegramMessage = telegramHitTargetPayload({
+            entryTime: updateOrder.updatedAt,
+            orderId: updateOrder.orderId,
+            entryPrice: updateOrder.entryPrice,
+            side: updateOrder.side,
+            executedPrice: updateOrder.markPrice!,
+        });
+    }
 
     if (userChatId) {
         await sendTelegramMessage(telegramMessage, userChatId.telegramChatId);
@@ -132,20 +138,15 @@ export const excutedStoploss = async (orderId: string, markPrice: number) => {
 export const cancelStoplossByOrder = async (order: Order, token: string) => {
     for (let attempt = 1; attempt <= 3; attempt++) {
         const ok = await cancelStoplosses({ token, order });
-        if (ok) return true; // ✅ thành công
+        if (ok) return true; // ✅ Success
 
         if (attempt < 3) {
             const log = `Retry cancel stoploss (${attempt}/3) for order ${order.orderId} - stoplossId ${order.stoplossOrderId}`;
             logging("warn", log);
             writeLog([log]);
-            await new Promise((r) => setTimeout(r, 3000)); // ⏳ chờ rồi thử lại
+            await new Promise((r) => setTimeout(r, 3000)); // ⏳ Wait before retry
         }
     }
-};
-
-type CancelStoplossesType = {
-    token: string;
-    order: Order;
 };
 
 export const cancelStoplosses = async ({ token, order }: CancelStoplossesType) => {

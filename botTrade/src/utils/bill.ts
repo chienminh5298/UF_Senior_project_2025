@@ -30,7 +30,7 @@ export const checkGenerateBill = async () => {
                 v.netProfit += order.netProfit;
                 // giữ các field khác nguyên trạng
             } else {
-                const { adminPercent, referralPercent } = await calculateCommissionPercent(order.user!); // Tinh phan tram commission da apply voucher
+                const { adminPercent, referralPercent } = await calculateCommissionPercent(order.user!); // Calculate commission percent applied voucher
 
                 userMap.set(userId, {
                     adminCommissionPercent: adminPercent,

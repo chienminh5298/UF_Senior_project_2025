@@ -30,7 +30,7 @@ export const checkTarget = async (token: string, price: number) => {
         }
     });
 
-    // Check song song nhiều account
+    // Check parallel multiple accounts
     await Promise.allSettled(tasks);
 };
 

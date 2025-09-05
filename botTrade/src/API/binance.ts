@@ -1,286 +1,339 @@
-import { __payloadCancelOrderType, __payloadCancelStoplossType, __payloadNewStoplossType, __payloadOpenOrderType } from "@src/payload/binance";
 import { closeOrderManually } from "@src/handleOrders/handleOrder";
 import { excutedStoploss } from "@src/handleOrders/handleStoploss";
 import { BrokerInterface } from "@src/interface/broker";
 import { logging, writeLog } from "@src/utils/log";
 import axios, { AxiosResponse } from "axios";
-import { removeUSDT } from "@src/utils";
+import { handleError, removeUSDT } from "@src/utils";
 import jsonbig from "json-bigint";
 import crypto from "crypto";
 import WebSocket from "ws";
-
-const BASE_URL_API = "https://fapi.binance.com";
-const BASE_URL_WEB_SOCKET = "wss://fstream.binance.com/stream";
-const TAKER_FEE = 0.0005; // 0.05%
+import targetStorageInstance from "../classes/targetStorage";
 
 class Binance implements BrokerInterface {
     readonly userId: number;
     readonly API_KEY: string;
     readonly API_SECRET: string;
-    readonly API_PASSPHRASE: string | null;
-    private listenKey?: string;
-    private timestamp?: string;
-    private header: { [key: string]: string };
+    readonly API_PASSPHRASE: string | null; // not used on Binance, kept for interface parity
     private TAKER_FEE: number;
     private MAKER_FEE: number;
 
-    constructor({ userId, API_KEY, API_SECRET, API_PASSPHRASE, skipDecrypt = false }: { userId: number; API_KEY: string; API_SECRET: string; API_PASSPHRASE: string | null; skipDecrypt?: boolean }) {
+    private BASE_URL_API = "https://fapi.binance.com";
+    private BASE_URL_WS = "wss://fstream.binance.com/ws";
+    private timeOffsetMs = 0;
+    private lastTimeSync = 0;
+    private listenKey: string | null = null;
+    private listenKeyKeepAlive?: NodeJS.Timeout;
+    private ws?: WebSocket;
+
+    private readonly RECV_WINDOW = 10_000;
+    private readonly CLOSE_ORDER_CID_PREFIX = "MM_CLOSE_";
+    private readonly OPEN_ORDER_CID_PREFIX = "MM_OPEN_";
+
+    constructor({ userId, API_KEY, API_SECRET, API_PASSPHRASE }: { userId: number; API_KEY: string; API_SECRET: string; API_PASSPHRASE: string | null }) {
         this.userId = userId;
         this.API_KEY = API_KEY;
         this.API_SECRET = API_SECRET;
         this.API_PASSPHRASE = API_PASSPHRASE;
-        this.header = {
-            "x-mbx-apikey": API_KEY,
-        };
 
+        // Typical default fees (can be overridden by your account tier)
         this.TAKER_FEE = 0.0005;
         this.MAKER_FEE = 0.0005;
+
+        this.boot();
     }
 
     private boot = async () => {
-        // Initialize if needed
-        // await this.getTimestamp();
-        // await this.getListenKey();
-        // this.API_socketEventDriven();
-    };
-    private buildSign: (data: string) => string = (data: string) => {
-        return crypto
-            .createHmac("sha256", this.API_SECRET || "")
-            .update(data)
-            .digest("hex");
+        await this.updateTimestamp(); // preload server-time & keep fresh
+        this.stoplossPoll(); // fallback in case WS misses events
+        this.API_socketEventDriven(); // start user data stream WS
     };
 
-    private API_getListenKey = async () => {
-        let attempts = 0;
-        while (attempts < 3 && !this.listenKey) {
-            const response = await axios.post(`${BASE_URL_API}/fapi/v1/listenKey`, null, this.header);
-            if (response.status === 200) {
-                this.listenKey = response.data.listenKey;
-                logging("info", `Get listen key successful.`);
+    private nowMs = () => String(Date.now() + this.timeOffsetMs);
 
-                // Update listen key after every 45 mins, listen key will expirate after 1 hour without refresh
-                setInterval(async () => {
-                    await this.updateListenKey();
-                }, 2700000);
-                break;
-            } else {
-                writeLog([`Can't get listen key`, response]);
-                logging("warning", `Can't get listen key, trying again ...`);
-                await new Promise((resolve) => setTimeout(resolve, 2000)); // Wait for 2 second before retrying
-                attempts++;
-            }
-        }
-        if (attempts >= 3 && !this.listenKey) {
-            logging("error", `Can't get listen key after 4 times, problem could be VPN please check again...`);
-            process.exit();
+    private ensureFreshTime = async () => {
+        if (Date.now() - this.lastTimeSync > 25_000) {
+            // keep <30s window
+            await this.updateTimestamp();
         }
     };
 
-    private pingKeepAliveListenKey = async (listenKey?: string) => {
-        return await axios.put(`${BASE_URL_API}/fapi/v1/listenKey?listenKey=${listenKey}`, this.header);
-    };
+    /* -------------------------------- Sign & Headers -------------------------------- */
 
-    private updateListenKey = async () => {
-        var response: AxiosResponse = await this.pingKeepAliveListenKey(this.listenKey);
-        while (response.status !== 200) {
-            logging("warning", `Can't update listen key, trying again ...`);
-            await new Promise((resolve) => setTimeout(resolve, 2000)); // Wait for 2 second before retrying
-            response = await this.pingKeepAliveListenKey(this.listenKey);
+    private buildQS = (params: Record<string, string | number | boolean | undefined>) => {
+        const sp = new URLSearchParams();
+        for (const [k, v] of Object.entries(params)) {
+            if (v !== undefined && v !== null) sp.append(k, String(v));
         }
-        this.listenKey = response.data.listenKey;
+        return sp.toString();
     };
 
-    private updateTimestamp = async () => {
-        var response: AxiosResponse = await this.getServerTime();
-        while (response.status !== 200) {
-            console.log(response);
-            logging("warning", `Can't update timestamp, trying again ...`);
-            await new Promise((resolve) => setTimeout(resolve, 2000)); // Wait for 2 second before retrying
-            response = await this.getServerTime();
+    private signQS = (qs: string) => {
+        return crypto.createHmac("sha256", this.API_SECRET).update(qs).digest("hex");
+    };
+
+    private headers = () => ({
+        "X-MBX-APIKEY": this.API_KEY,
+        "Content-Type": "application/x-www-form-urlencoded",
+    });
+
+    /* -------------------------------- Low-level REST helpers -------------------------------- */
+
+    private signedGET = async <T>(path: string, params: Record<string, any>) => {
+        await this.ensureFreshTime();
+        const qsBase = this.buildQS({ ...params, timestamp: this.nowMs(), recvWindow: this.RECV_WINDOW });
+        const sig = this.signQS(qsBase);
+        const url = `${this.BASE_URL_API}${path}?${qsBase}&signature=${sig}`;
+        return axios.get<T>(url, { headers: this.headers() });
+    };
+
+    private signedPOST = async <T>(path: string, params: Record<string, any>) => {
+        await this.ensureFreshTime();
+        const qsBase = this.buildQS({ ...params, timestamp: this.nowMs(), recvWindow: this.RECV_WINDOW });
+        const sig = this.signQS(qsBase);
+        const url = `${this.BASE_URL_API}${path}`;
+        const body = `${qsBase}&signature=${sig}`;
+        return axios.post<T>(url, body, { headers: this.headers() });
+    };
+
+    private signedDELETE = async <T>(path: string, params: Record<string, any>) => {
+        await this.ensureFreshTime();
+        const qsBase = this.buildQS({ ...params, timestamp: this.nowMs(), recvWindow: this.RECV_WINDOW });
+        const sig = this.signQS(qsBase);
+        const url = `${this.BASE_URL_API}${path}?${qsBase}&signature=${sig}`;
+        return axios.delete<T>(url, { headers: this.headers() });
+    };
+
+    /* -------------------------------- REST APIs (Binance) -------------------------------- */
+
+    private API_getOrderDetail = async (orderId: string, symbol: string) => {
+        try {
+            const res = await this.signedGET<any>("/fapi/v1/order", { symbol, orderId });
+            // This endpoint doesn't return avg fill price. Use /allOrders to fetch avgPrice reliably.
+            const detailsList = await this.signedGET<any[]>("/fapi/v1/allOrders", { symbol, orderId: orderId });
+            const detail = Array.isArray(detailsList.data) ? detailsList.data.find((o: any) => String(o.orderId) === String(orderId)) : null;
+
+            if (!detail) return null;
+            return detail; // contains status, side, avgPrice, executedQty, updateTime, etc.
+        } catch (err) {
+            handleError(`Can't getOrderDetail`, "error", [err]);
+            return null;
         }
-
-        this.timestamp = response.data.serverTime;
     };
 
-    private API_getTimestamp = async () => {
-        let attempts = 0;
-        while (attempts <= 3 && !this.timestamp) {
-            const response: AxiosResponse = await this.getServerTime();
-            if (response.status === 200) {
-                this.timestamp = response.data.serverTime;
-                logging("info", `Get timestamp successful.`);
-
-                // Update listen key after every 30 secs, listen key will expirate after 1 hour without refresh
-                setInterval(async () => {
-                    await this.updateTimestamp();
-                }, 30000);
-                break;
-            } else {
-                logging("warning", `Can't get timestamp, trying again ...`);
-                await new Promise((resolve) => setTimeout(resolve, 2000)); // Wait for 1 second before retrying
-                attempts++;
-            }
+    private API_changePositionMode = async () => {
+        try {
+            // Ensure one-way mode (NOT dual / hedge)
+            await this.signedPOST("/fapi/v1/positionSide/dual", { dualSidePosition: "false" });
+        } catch (err) {
+            handleError("Error change position mode", "error", [err]);
         }
-        if (attempts >= 3 && this.timestamp) {
-            logging("error", `Can't get timestamp after 4 times, please check again.`);
-            process.exit();
-        }
-    };
-
-    private getServerTime = async () => {
-        const response = await axios.get(`${BASE_URL_API}/fapi/v1/time`);
-        if (response.status !== 200) {
-            writeLog(["Error get server time", response]);
-        }
-        return response;
-    };
-
-    private getTimestamp = async () => {
-        if (!this.timestamp) {
-            await this.API_getTimestamp();
-        }
-        return this.timestamp;
-    };
-
-    private API_socketEventDriven = async () => {
-        const URI = `${BASE_URL_WEB_SOCKET}?streams=${this.listenKey}`;
-        var socket = new WebSocket(URI);
-
-        const attempReconnect = () => {
-            setTimeout(() => {
-                this.API_socketEventDriven();
-            }, 3000);
-        };
-
-        socket.on("open", () => {
-            logging("info", "Binance socket open successfuly.");
-        });
-
-        socket.on("message", async (msg: WebSocket.RawData) => {
-            const { e, o } = jsonbig.parse(msg.toString()).data as any;
-
-            if (e !== "ORDER_TRADE_UPDATE") return;
-
-            /* ─── Stop-loss / Take-profit hit ───────────────────── */
-            if (
-                o.x === "TRADE" && // executionReport
-                o.X === "FILLED" && // khớp 100 %
-                o.R === true && // reduce-only
-                (o.ot === "STOP_MARKET" || o.ot === "TAKE_PROFIT_MARKET")
-            ) {
-                const orderId = jsonbig.stringify(o.i); // [o.i] is orderId
-                const markPrice = parseFloat(o.ap); // [o.ap] is average price
-
-                await excutedStoploss(orderId, markPrice);
-                return;
-            }
-
-            /* ─── Đóng tay trên Web UI ──────────────────────────── */
-            if (
-                o.x === "TRADE" &&
-                o.X === "FILLED" &&
-                o.R === true &&
-                o.ot === "MARKET" && // lệnh market thuần
-                o.c?.includes("web") // clientOrderId do Web gán
-            ) {
-                const token = removeUSDT(o.s);
-                const markPrice = parseFloat(o.ap); // [o.ap] is average price
-                await closeOrderManually(token, markPrice, 0);
-            }
-        });
-
-        socket.on("error", (error) => {
-            logging("error", `Binance order socket failed: ${jsonbig.parse(error.toString())}`);
-            attempReconnect();
-        });
-
-        socket.on("close", () => {
-            logging("warning", `Binance order socket disconnected`);
-            attempReconnect();
-        });
-    };
-
-    getTakerFee = () => {
-        return this.TAKER_FEE;
-    };
-
-    getMakerFee = () => {
-        return this.MAKER_FEE;
-    };
-
-    getListenKey = async () => {
-        if (!this.listenKey) {
-            await this.API_getListenKey();
-        }
-        return this.listenKey;
-    };
-
-    getPrice = async (token: string) => {
-        const response = await axios.get(`${BASE_URL_API}/fapi/v1/premiumIndex?symbol=${token}`);
-
-        if (response.status !== 200) {
-            writeLog([`Error get price ${token}`, response]);
-            return undefined;
-        }
-        return parseFloat(response.data.markPrice);
     };
 
     API_cancelStoploss = async (value: __payloadCancelStoplossType) => {
-        const queryString = `timestamp=${this.timestamp}&symbol=${value.token}&orderIdList=[${value.orderIds}]&recvWindow=60000`;
-        const signature = this.buildSign(queryString);
-        return await axios.delete(`${BASE_URL_API}/fapi/v1/batchOrders?${queryString}&signature=${signature}`, this.header);
+        try {
+            return await this.signedDELETE("/fapi/v1/batchOrders", { symbol: value.symbol, orderIdList: value.orderIds });
+        } catch (err) {
+            writeLog(["Error cancel stoploss", value.orderIds, err]);
+        }
     };
 
-    API_closeOrder = async (value: __payloadCancelOrderType) => {
-        const queryString = `timestamp=${this.timestamp}&symbol=${value.token}&side=${value.side}&type=MARKET&quantity=${value.qty}&reduceOnly=true&newOrderRespType=RESULT&recvWindow=60000`;
-        const signature = this.buildSign(queryString);
+    API_closeOrder = async (p: __payloadCancelOrderType) => {
+        try {
+            const side = p.side; // BUY to close short, SELL to close long
+            const qty = p.qty.toString();
 
-        const response = await axios.post(`${BASE_URL_API}/fapi/v1/order?${queryString}&signature=${signature}`, null, this.header);
-        if (response.status !== 200) {
-            writeLog(["Error cancel root order", `Query string: ${queryString}`]);
+            const post = await this.signedPOST<any>("/fapi/v1/order", {
+                symbol: p.symbol,
+                side,
+                type: "MARKET",
+                quantity: qty,
+                reduceOnly: "true",
+                newClientOrderId: `${this.CLOSE_ORDER_CID_PREFIX}${Date.now()}`,
+            });
+
+            if (post.status !== 200) {
+                writeLog(["Error cancel root order", `Body: ${JSON.stringify({ symbol: p.symbol, side, qty })}`]);
+                return { success: false, markPrice: null };
+            }
+
+            const orderId = String(post.data.orderId);
+            // Poll for full details (avgPrice)
+            let filledOrder: any = null;
+            for (let i = 0; i < 6 && !filledOrder; i++) {
+                await new Promise((res) => setTimeout(res, 1500));
+                filledOrder = await this.API_getOrderDetail(orderId, p.symbol);
+            }
+
+            const price = filledOrder ? parseFloat(filledOrder.avgPrice || "0") : null;
+            return { success: true, markPrice: price };
+        } catch (err) {
+            handleError("API_closeOrder error", "error", [err]);
             return { success: false, markPrice: null };
         }
-        return { success: true, markPrice: response.data.avgPrice };
     };
 
-    API_newStoploss = async (value: __payloadNewStoplossType) => {
-        const queryString = `timestamp=${this.timestamp}&symbol=${value.token}&side=${value.side}&type=STOP_MARKET&quantity=${value.qty}&stopPrice=${value.stopPrice}&newOrderRespType=RESULT&recvWindow=60000`;
-        const signature = this.buildSign(queryString);
+    API_newOrder = async (p: __payloadOpenOrderType) => {
+        try {
+            await this.API_changePositionMode();
 
-        const response = await axios.post(`${BASE_URL_API}/fapi/v1/order?${queryString}&signature=${signature}`, null, this.header);
-        if (response.status !== 200) {
-            writeLog(["Error new stoploss", `Query string: ${queryString}`]);
+            const sym = p.symbol;
+            const qty = p.qty.toString();
+            const side = p.side; // "BUY" | "SELL"
+
+            const r = await this.signedPOST<any>("/fapi/v1/order", {
+                symbol: sym,
+                side,
+                type: "MARKET",
+                quantity: qty,
+                newClientOrderId: `${this.OPEN_ORDER_CID_PREFIX}${Date.now()}`,
+            });
+
+            const orderId = r.data?.orderId;
+            const hasOrderId = typeof orderId === "number" || (typeof orderId === "string" && orderId.length > 0);
+            if (!hasOrderId) throw new Error("No orderId returned");
+
+            // Confirm fills / details
+            let filledOrder: any = null;
+            for (let i = 0; i < 6 && !filledOrder; i++) {
+                await new Promise((res) => setTimeout(res, 1500));
+                filledOrder = await this.API_getOrderDetail(String(orderId), sym);
+            }
+
+            if (!filledOrder || filledOrder.status !== "FILLED") {
+                writeLog([`Order id ${orderId} not fully filled yet. Attempting to close.`]);
+                await this.API_closeOrder({
+                    symbol: sym,
+                    side: side === "BUY" ? "SELL" : "BUY",
+                    qty: p.qty,
+                });
+                return { success: false };
+            }
+
+            return {
+                success: true,
+                orderId: String(orderId),
+                entryPrice: parseFloat(filledOrder.avgPrice || filledOrder.price || "0"),
+                qty: parseFloat(filledOrder.executedQty || filledOrder.origQty || "0"),
+                side: String(filledOrder.side || side).toUpperCase() as "BUY" | "SELL",
+                timestamp: String(filledOrder.updateTime || this.nowMs()),
+            };
+        } catch (err) {
+            writeLog(["Error new root order", ``, err]);
+            return { success: false };
+        }
+    };
+
+    API_adjustLeverage = async (symbol: string, leverange: number) => {
+        try {
+            const res = await this.signedPOST("/fapi/v1/leverage", { symbol, leverage: leverange });
+            if (res.status !== 200) throw new Error();
+        } catch (err) {
+            handleError(`Can't adjust leverage ${symbol}`, "error", [err]);
+        }
+    };
+
+    API_newStoploss = async (p: __payloadNewStoplossType) => {
+        try {
+            const sym = p.symbol;
+            const stopSide = p.side === "SELL" ? "BUY" : "SELL"; // close opposite side
+
+            const res = await this.signedPOST<any>("/fapi/v1/order", {
+                symbol: sym,
+                side: stopSide,
+                type: "STOP_MARKET",
+                stopPrice: p.stopPrice.toString(),
+                workingType: "MARK_PRICE",
+                reduceOnly: "true",
+                quantity: p.qty.toString(),
+            });
+
+            if (res.status !== 200) {
+                writeLog(["Error new stoploss", `Body: ${JSON.stringify({ sym, stopPrice: p.stopPrice, qty: p.qty })}`]);
+                return { success: false, orderId: null };
+            }
+
+            return { success: true, orderId: String(res.data.orderId) };
+        } catch (err) {
+            handleError("API_newStoploss error", "error", [err]);
             return { success: false, orderId: null };
         }
-        return { success: true, orderId: response.data.orderId };
     };
 
-    API_newOrder = async (value: __payloadOpenOrderType) => {
-        const queryString = `timestamp=${this.timestamp}&symbol=${value.token}&side=${value.side}&type=MARKET&quantity=${value.qty}&newOrderRespType=RESULT&recvWindow=60000`;
-        const signature = this.buildSign(queryString);
+    API_getRecentFilledOrder = async (symbol: string, side: "BUY" | "SELL"): Promise<{ orderId: string | null }> => {
+        try {
+            const res = await this.signedGET<any[]>("/fapi/v1/userTrades", { symbol, limit: 10 });
+            const trades = res.data || [];
+            // Infer side from 'buyer' flag: buyer=true => BUY, buyer=false => SELL
+            const wantBuyer = side === "BUY";
+            const t = trades.find((x: any) => x.buyer === wantBuyer);
+            return { orderId: t ? String(t.orderId) : null };
+        } catch (err) {
+            writeLog(["Exception API_getRecentFilledOrder", `Symbol: ${symbol}`, err]);
+            return { orderId: null };
+        }
+    };
 
-        const response = await axios.post(`${BASE_URL_API}/fapi/v1/order?${queryString}&signature=${signature}`, null, this.header);
-        if (response.status !== 200) {
-            writeLog(["Error new root order", `Query string: ${queryString}`, response]);
+    API_checkHasOpenPosition = async (symbol: string) => {
+        try {
+            const res = await this.signedGET<any[]>("/fapi/v2/positionRisk", { symbol });
+            const rows = res.data || [];
+            // one-way mode → single row with positionAmt
+            const row = rows[0];
+            if (!row) return false;
+            return Math.abs(parseFloat(row.positionAmt)) > 0;
+        } catch (err) {
+            writeLog(["Error API_checkHasOpenPosition", `Symbol: ${symbol}`, err]);
+            return false;
+        }
+    };
+
+    API_getFutureWalletBalance = async () => {
+        try {
+            const res = await this.signedGET<any[]>("/fapi/v2/balance", {});
+            const usdt = (res.data || []).find((acc: any) => acc.asset === "USDT");
+            return Number(usdt?.availableBalance ?? 0);
+        } catch (err) {
+            writeLog(["Error API_getFutureWalletBalance", err]);
+            return 0;
+        }
+    };
+
+    API_verifyOrder = async (
+        symbol: string,
+        orderId: string
+    ): Promise<{
+        entryPrice?: number;
+        qty?: number;
+        side?: "BUY" | "SELL";
+        timestamp?: string;
+        orderId?: string;
+        success: boolean;
+    }> => {
+        const sym = symbol;
+        const detail = await this.API_getOrderDetail(orderId, symbol);
+        if (!detail) {
             return { success: false };
         }
         return {
             success: true,
-            orderId: response.data.orderId,
-            entryPrice: parseFloat(response.data.avgPrice),
-            qty: parseFloat(response.data.origQty),
-            side: response.data.side,
-            timestamp: response.data.updateTime.toString(),
+            entryPrice: parseFloat(detail.avgPrice || detail.price || "0"),
+            qty: parseFloat(detail.executedQty || detail.origQty || "0"),
+            side: String(detail.side || "").toUpperCase() as "BUY" | "SELL",
+            timestamp: String(detail.updateTime || this.nowMs()),
+            orderId: String(detail.orderId),
         };
     };
 
-    API_adjustLeverage = async (token: string, leverange: number) => {
-        const queryString = `timestamp=${this.timestamp}&symbol=${token}&leverage=${leverange}&recvWindow=60000`;
-        const signature = this.buildSign(queryString);
-
-        const response = await axios.post(`${BASE_URL_API}/fapi/v1/leverage?${queryString}&signature=${signature}`, null, this.header);
-        if (response.status !== 200) {
-            writeLog(["Error adjust leverage", `Leverage = ${leverange} Token ${token}`, response]);
+    private API_getStoplossExecutedForSymbol = async (symbol: string) => {
+        // There is no global “executed stoploss list” on Binance. We scan recent orders for each symbol.
+        try {
+            const startTime = Date.now() - 60 * 60 * 1000; // last 60 minutes window
+            const res = await this.signedGET<any[]>("/fapi/v1/allOrders", { symbol, startTime, limit: 1000 });
+            const executedStops = (res.data || []).filter((o: any) => o.status === "FILLED" && (o.type === "STOP_MARKET" || o.type === "TAKE_PROFIT_MARKET"));
+            return executedStops;
+        } catch (err) {
+            writeLog(["Failed to API_getStoplossExecutedForSymbol", symbol, err]);
+            return [];
         }
     };
 
@@ -317,71 +370,189 @@ class Binance implements BrokerInterface {
         }
     };
 
-    API_getRecentFilledOrder = async (symbol: string, side: "BUY" | "SELL"): Promise<{ orderId: string | null }> => {
-        const queryString = `symbol=${symbol}&timestamp=${this.timestamp}&recvWindow=60000`;
-        const signature = this.buildSign(queryString);
+    /* -------------------------------- User Data Stream (WS) -------------------------------- */
 
-        const response = await axios.get(`${BASE_URL_API}/fapi/v1/userTrades?${queryString}&signature=${signature}`, this.header);
-        if (response.status !== 200) {
-            console.log("Error API_getRecentFilledOrder", response);
-            writeLog(["Error API_getRecentFilledOrder", `Symbol: ${symbol}`, response]);
-            return { orderId: null };
-        }
+    private API_socketEventDriven = async () => {
+        const connect = async () => {
+            try {
+                // 1) Create/refresh listenKey
+                if (!this.listenKey) {
+                    const r = await axios.post(`${this.BASE_URL_API}/fapi/v1/listenKey`, null, {
+                        headers: { "X-MBX-APIKEY": this.API_KEY },
+                    });
+                    this.listenKey = r.data?.listenKey;
 
-        const trades = response.data;
-        const latestSideTrade = trades.filter((t: any) => t.side === side).sort((a: any, b: any) => b.time - a.time)[0];
-        if (!latestSideTrade) {
-            console.log(`Error recoverLatestOpenOrder step 2 ${symbol}`);
-            return { orderId: null };
-        }
-        const orderId = latestSideTrade.orderId;
-        return { orderId };
-    };
+                    // Keepalive every ~55 min (must be < 60m)
+                    if (this.listenKeyKeepAlive) clearInterval(this.listenKeyKeepAlive);
+                    this.listenKeyKeepAlive = setInterval(async () => {
+                        try {
+                            await axios.put(`${this.BASE_URL_API}/fapi/v1/listenKey`, null, {
+                                headers: { "X-MBX-APIKEY": this.API_KEY },
+                            });
+                        } catch (e) {
+                            writeLog(["listenKey keepalive failed", e]);
+                        }
+                    }, 55 * 60 * 1000);
+                }
 
-    API_checkHasOpenPosition = async (symbol: string) => {
-        const queryString = `symbol=${symbol}&timestamp=${this.timestamp}&recvWindow=60000`;
-        const signature = this.buildSign(queryString);
+                // 2) Open WS
+                const url = `${this.BASE_URL_WS}/${this.listenKey}`;
+                const socket = new WebSocket(url);
+                this.ws = socket;
 
-        const response = await axios.get(`${BASE_URL_API}/fapi/v2/positionRisk?${queryString}&signature=${signature}`, this.header);
-        if (response.status !== 200) {
-            console.log("Error get all open orders", response);
-            writeLog(["Error get all open orders", `Symbol: ${symbol}`, response]);
-        }
+                const attemptReconnect = async () => {
+                    try {
+                        socket.close();
+                    } catch {}
+                    // drop current listenKey and get a fresh one on reconnect
+                    this.listenKey = null;
+                    setTimeout(() => this.API_socketEventDriven(), 3000);
+                };
 
-        const positionData = response?.data?.[0]; // lấy phần tử đầu tiên
+                socket.on("open", () => {
+                    // no auth message needed
+                });
 
-        const positionAmt = Number(positionData?.positionAmt || 0);
-        return positionAmt !== 0 ? true : false;
-    };
+                socket.on("message", async (msg: WebSocket.RawData) => {
+                    try {
+                        // Your expected payload shape: { data: { e, o, ... } }
+                        const parsed = jsonbig.parse(msg.toString());
+                        const { e, o } = (parsed?.data ?? parsed) as any; // fallback if broker sends without .data
 
-    API_getFutureWalletBalance = async () => {
-        return 0;
-    };
+                        if (e !== "ORDER_TRADE_UPDATE") return;
 
-    API_verifyOrder = async (symbol: string, orderId: number) => {
-        const queryString = `symbol=${symbol}&orderId=${orderId}&timestamp=${this.timestamp}&recvWindow=60000`;
-        const signature = this.buildSign(queryString);
+                        /* ─── Stop-loss / Take-profit hit ───────────────────── */
+                        if (
+                            o.x === "TRADE" && // executionReport
+                            o.X === "FILLED" && // filled 100%
+                            o.R === true && // reduce-only
+                            (o.ot === "STOP_MARKET" || o.ot === "TAKE_PROFIT_MARKET")
+                        ) {
+                            const orderId = jsonbig.stringify(o.i); // preserve full precision id
+                            const markPrice = parseFloat(o.ap); // avg price
+                            await excutedStoploss(orderId, markPrice);
+                            return;
+                        }
 
-        const response = await axios.get(`${BASE_URL_API}/fapi/v1/order?${queryString}&signature=${signature}`, this.header);
-        if (response.status !== 200) {
-            console.log("Error API_verifyOrder", response);
-            writeLog(["Error API_verifyOrder", `Symbol: ${symbol}`, response]);
-            return { success: false };
-        }
-        const status = response.data.status;
-        if (status !== "FILLED") {
-            console.log(`Error recoverLatestOpenOrder step 3 ${symbol}`);
-            return { success: false };
-        }
+                        /* ─── Đóng tay trên Web UI ──────────────────────────── */
+                        if (
+                            o.x === "TRADE" &&
+                            o.X === "FILLED" &&
+                            o.R === true &&
+                            o.ot === "MARKET" && // pure market close
+                            o.c?.includes("web") // clientOrderId from Web
+                        ) {
+                            const token = removeUSDT(o.s);
+                            const markPrice = parseFloat(o.ap);
+                            await closeOrderManually(token, markPrice, 0);
+                            return;
+                        }
 
-        return {
-            success: true,
-            orderId: response.data.orderId,
-            entryPrice: parseFloat(response.data.avgPrice),
-            qty: parseFloat(response.data.origQty),
-            side: response.data.side,
-            timestamp: response.data.updateTime.toString(),
+                        // optional: handle listenKey expiration notice
+                        if (e === "listenKeyExpired") {
+                            writeLog(["listenKeyExpired notice → reconnect"]);
+                            attemptReconnect();
+                        }
+                    } catch (err) {
+                        writeLog(["WS message parse error", err]);
+                    }
+                });
+
+                socket.on("error", (err) => {
+                    writeLog(["WS error", err]);
+                    attemptReconnect();
+                });
+
+                socket.on("close", () => {
+                    attemptReconnect();
+                });
+            } catch (e) {
+                writeLog(["WS connect error", e]);
+                setTimeout(() => connect(), 3000);
+            }
+
+            void connect();
         };
+    };
+
+    private updateTimestamp = async () => {
+        try {
+            const r = await axios.get(`${this.BASE_URL_API}/fapi/v1/time`);
+            const serverMs = Number(r.data?.serverTime);
+            if (!Number.isFinite(serverMs)) throw new Error("Bad serverTime");
+            this.timeOffsetMs = serverMs - Date.now();
+            this.lastTimeSync = Date.now();
+        } catch (e) {
+            handleError("Can't update timestamp", "error", [e]);
+        }
+    };
+
+    /*-------------------------------------------------------------------------------------------------------------*
+     * Hàm này sẽ chạy song song cùng với Event driven web socket.
+     * Phòng trường hợp stoploss hit trong khi socket connect disconect
+     * Hàm sẽ gửi GET để lấy các stoploss đã executed mỗi 2 lần/phút rồi so sánh với stoploss của các open order
+     *-------------------------------------------------------------------------------------------------------------*/
+    private stoplossPoll = async () => {
+        const POLL_INTERVAL_MS = 30_000;
+        const checkedIds = new Set<string>();
+        const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+        const loop = async (): Promise<void> => {
+            const store = targetStorageInstance.getAll();
+            const symbols = Object.keys(store); // project-specific: keys are your token identifiers
+
+            try {
+                for (const token of symbols) {
+                    const executed = await this.API_getStoplossExecutedForSymbol(token + "USDT");
+                    for (const o of executed) {
+                        const slId = String(o.orderId);
+                        if (checkedIds.has(slId)) continue;
+                        checkedIds.add(slId);
+
+                        // Only treat real stop/TP-market
+                        if (o.type !== "STOP_MARKET" && o.type !== "TAKE_PROFIT_MARKET") continue;
+
+                        // match against our cached open orders (by stored stoplossId if you track it)
+                        const targetStorage = targetStorageInstance.getAll();
+                        for (const tk in targetStorage) {
+                            const openOrders = Object.values(targetStorage[tk]);
+                            const matched = openOrders.find((ord: any) => String(ord.stoplossId) === slId);
+                            if (matched) {
+                                const markPrice = parseFloat(o.avgPrice || o.price || "0");
+                                await excutedStoploss(slId, markPrice);
+                                break;
+                            }
+                        }
+                        if (checkedIds.size > 1000) checkedIds.clear();
+                    }
+                }
+            } catch (e) {
+                writeLog(["error", "stoplossPoll failed", e]);
+            } finally {
+                await sleep(POLL_INTERVAL_MS);
+                return loop();
+            }
+        };
+
+        void loop();
+    };
+
+    getTakerFee = () => {
+        return this.TAKER_FEE;
+    };
+
+    getMakerFee = () => {
+        return this.MAKER_FEE;
+    };
+
+    getPrice = async (symbol: string) => {
+        const response = await axios.get(`${this.BASE_URL_API}/fapi/v1/premiumIndex?symbol=${symbol}`);
+
+        if (response.status !== 200) {
+            writeLog([`Error get price ${symbol}`, response]);
+            return undefined;
+        }
+        return parseFloat(response.data.markPrice);
     };
 }
 

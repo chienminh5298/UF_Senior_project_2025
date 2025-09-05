@@ -79,8 +79,8 @@ type NewStoploss = {
     delayMs?: number;
 };
 
-type __payloadCancelStoplossType {
-    token: string;
+type __payloadCancelStoplossType = {
+    symbol: string;
     orderIds: string[];
 }
 
@@ -91,19 +91,19 @@ type __payloadNewStoploss = {
 };
 
 type __payloadCancelOrderType = {
-    token: string;
+    symbol: string;
     side: "SELL" | "BUY";
     qty: number;
 };
 
 type __payloadOpenOrderType = {
-    token: string;
+    symbol: string;
     side: string;
     qty: number;
 };
 
-type __payloadNewStoplossType {
-    token: string;
+type __payloadNewStoplossType = {
+    symbol: string;
     side: "SELL" | "BUY";
     type: "TAKE_PROFIT_MARKET" | "STOP_MARKET" | "MARKET";
     qty: number;
@@ -154,4 +154,15 @@ type BacktestChartCandleType = {
         executedOrder?: BacktestOrderType[];
         openOrderSide?: "BUY" | "SELL";
     };
+};
+
+type SetStoplossType = {
+    token: Token;
+    order: Order;
+    target: Target;
+};
+
+type CancelStoplossesType = {
+    token: string;
+    order: Order;
 };
