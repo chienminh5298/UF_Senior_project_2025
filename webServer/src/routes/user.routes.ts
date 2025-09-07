@@ -1,7 +1,6 @@
 import { Router } from 'express';
 import prisma from '../models/prismaClient';
 import { requireAuth } from '../middleware/auth';
-import { isAscii } from 'buffer';
 
 const router = Router();
 
@@ -19,7 +18,6 @@ const router = Router();
  *       401:
  *         description: Unauthorized
  */
-// GET  /api/user/landing    # Landing page data
 router.get('/landing', requireAuth, async (req, res) => {
   // Retrieve user object from requireAuth middleware
   const { user } = req;
@@ -42,17 +40,16 @@ router.get('/landing', requireAuth, async (req, res) => {
 
     // Get number of strategies
     const count = await prisma.userOrder.count({
-        where: {
-            userId: user.id,
-        }
-      });
+      where: {
+        userId: user.id,
+      },
+    });
 
     // Get the trade balance
     const tradeBalance = await prisma.user.findUnique({
       where: { id: user.id },
       select: { tradeBalance: true },
     });
-      
 
     // Get active strategies per user id (user --> userOrder --> order --> token))
     const activeStrategies = await prisma.userOrder.findMany({
@@ -61,7 +58,7 @@ router.get('/landing', requireAuth, async (req, res) => {
       },
       select: {
         id: true,
-      }
+      },
     });
 
     // Return success response
@@ -95,26 +92,25 @@ router.get('/landing', requireAuth, async (req, res) => {
  *       401:
  *         description: Unauthorized
  */
-// GET  /api/user/profile    # User profile
 router.get('/profile', requireAuth, async (req, res) => {
-    const { user } = req;
+  const { user } = req;
 
-    // If user is not found, return 401
-    if (!user) {
-      return res.status(401).json({
-        success: false,
-        message: 'Unauthorized',
-      });
-    }
-
-    // Retrieve: firstName, lastName, email, timeZone
-    const profile = await prisma.user.findUnique({
-        where: { id: user.id },
-        select: {
-            fullname: true,
-            email: true,
-        },
+  // If user is not found, return 401
+  if (!user) {
+    return res.status(401).json({
+      success: false,
+      message: 'Unauthorized',
     });
+  }
+
+  // Retrieve: firstName, lastName, email, timeZone
+  const profile = await prisma.user.findUnique({
+    where: { id: user.id },
+    select: {
+      fullname: true,
+      email: true,
+    },
+  });
 
   res.status(200).json({
     success: true,

@@ -25,6 +25,39 @@ const router = Router();
  *     responses:
  *       200:
  *         description: Login successful
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: Login successful
+ *                 token:
+ *                   type: string
+ *                   description: JWT authentication token
+ *                   example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+ *                 user:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: integer
+ *                       example: 1
+ *                     fullname:
+ *                       type: string
+ *                       example: Ada Lovelace
+ *                     username:
+ *                       type: string
+ *                       example: adal
+ *                     email:
+ *                       type: string
+ *                       example: ada@example.com
+ *                     isVerified:
+ *                       type: boolean
+ *                       example: true
  *       400:
  *         description: Missing email or password
  *       401:
