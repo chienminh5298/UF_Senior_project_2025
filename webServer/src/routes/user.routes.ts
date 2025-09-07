@@ -5,6 +5,20 @@ import { isAscii } from 'buffer';
 
 const router = Router();
 
+/**
+ * @swagger
+ * /api/user/landing:
+ *   get:
+ *     summary: Get user landing page data
+ *     tags: [User]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Landing page data retrieved
+ *       401:
+ *         description: Unauthorized
+ */
 // GET  /api/user/landing    # Landing page data
 router.get('/landing', requireAuth, async (req, res) => {
   // Retrieve user object from requireAuth middleware
@@ -27,11 +41,9 @@ router.get('/landing', requireAuth, async (req, res) => {
     });
 
     // Get number of strategies
-    const count = await prisma.tokenStrategy.count({
+    const count = await prisma.userOrder.count({
         where: {
-            UserOrder: {
-                some: { userId: user.id, isActive: true }
-            }
+            userId: user.id,
         }
       });
 
@@ -43,17 +55,12 @@ router.get('/landing', requireAuth, async (req, res) => {
       
 
     // Get active strategies per user id (user --> userOrder --> order --> token))
-    const activeStrategies = await prisma.strategy.findMany({
+    const activeStrategies = await prisma.userOrder.findMany({
       where: {
         userId: user.id,
-        where: {
-            UserOrder: {
-                some: { userId: user.id, isActive: true }
-            },
-            select: {
-                id: true,
-            }
-        }
+      },
+      select: {
+        id: true,
       }
     });
 
@@ -74,6 +81,20 @@ router.get('/landing', requireAuth, async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /api/user/profile:
+ *   get:
+ *     summary: Get user profile
+ *     tags: [User]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Profile data retrieved
+ *       401:
+ *         description: Unauthorized
+ */
 // GET  /api/user/profile    # User profile
 router.get('/profile', requireAuth, async (req, res) => {
     const { user } = req;
@@ -88,7 +109,7 @@ router.get('/profile', requireAuth, async (req, res) => {
 
     // Retrieve: firstName, lastName, email, timeZone
     const profile = await prisma.user.findUnique({
-        where: { userId: user.id },
+        where: { id: user.id },
         select: {
             fullname: true,
             email: true,

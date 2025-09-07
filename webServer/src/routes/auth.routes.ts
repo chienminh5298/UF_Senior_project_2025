@@ -4,7 +4,32 @@ import jwt from 'jsonwebtoken';
 
 const router = Router();
 
-// POST /api/auth/login
+/**
+ * @swagger
+ * /api/auth/login:
+ *   post:
+ *     summary: User login
+ *     tags: [Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [email, password]
+ *             properties:
+ *               email:
+ *                 type: string
+ *               password:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Login successful
+ *       400:
+ *         description: Missing email or password
+ *       401:
+ *         description: Invalid credentials or account deactivated
+ */
 router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -75,6 +100,34 @@ router.post('/login', async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /api/auth/signup:
+ *   post:
+ *     summary: User registration
+ *     tags: [Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [email, password]
+ *             properties:
+ *               fullname:
+ *                 type: string
+ *               email:
+ *                 type: string
+ *               username:
+ *                 type: string
+ *               password:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Signup successful
+ *       400:
+ *         description: Missing fields or user already exists
+ */
 // POST /api/auth/signup
 router.post('/signup', async (req, res) => {
   try {
