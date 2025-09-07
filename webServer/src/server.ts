@@ -8,10 +8,6 @@ const server = http.createServer(app);
 
 const io = new SocketIOServer(server);
 
-io.on('connection', (socket) => {
-    console.log('user connected');
-});
+io.on('connection', () => {});
 
-server.listen(PORT, () => {
-    console.log(`Server is running on port ${PORT}`);
-})
+server.listen(PORT, () => {});

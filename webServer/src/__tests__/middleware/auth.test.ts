@@ -18,7 +18,7 @@ describe('requireAuth middleware', () => {
       json: jest.fn(),
     };
     mockNext = jest.fn();
-    
+
     (jwt.verify as jest.Mock).mockReset();
   });
 
@@ -30,7 +30,7 @@ describe('requireAuth middleware', () => {
 
       expect(mockResponse.status).toHaveBeenCalledWith(401);
       expect(mockResponse.json).toHaveBeenCalledWith({
-        message: 'Unauthorized'
+        message: 'Unauthorized',
       });
       expect(mockNext).not.toHaveBeenCalled();
     });
@@ -44,7 +44,7 @@ describe('requireAuth middleware', () => {
 
       expect(mockResponse.status).toHaveBeenCalledWith(401);
       expect(mockResponse.json).toHaveBeenCalledWith({
-        message: 'No token provided'
+        message: 'No token provided',
       });
       expect(mockNext).not.toHaveBeenCalled();
     });
@@ -56,7 +56,7 @@ describe('requireAuth middleware', () => {
 
       expect(mockResponse.status).toHaveBeenCalledWith(401);
       expect(mockResponse.json).toHaveBeenCalledWith({
-        message: 'No token provided'
+        message: 'No token provided',
       });
     });
   });
@@ -72,7 +72,7 @@ describe('requireAuth middleware', () => {
 
       expect(mockResponse.status).toHaveBeenCalledWith(500);
       expect(mockResponse.json).toHaveBeenCalledWith({
-        message: 'Server configuration error'
+        message: 'Server configuration error',
       });
 
       // Restore environment variable
@@ -93,7 +93,7 @@ describe('requireAuth middleware', () => {
 
       expect(mockResponse.status).toHaveBeenCalledWith(401);
       expect(mockResponse.json).toHaveBeenCalledWith({
-        message: 'Invalid Token'
+        message: 'Invalid Token',
       });
       expect(mockNext).not.toHaveBeenCalled();
     });
