@@ -3,7 +3,7 @@ import path from "path";
 import fs from "fs";
 
 import { getTimeHour, getTimeMinute, getTimeSecond } from "@src/utils";
-import { getPublicIP } from "@src/api/ultil";
+import { getPublicIP } from "@root/src/API/ultil";
 
 export const logging = (type: string, mess: string) => {
     const date = new Date().toISOString();

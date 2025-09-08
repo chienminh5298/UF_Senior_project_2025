@@ -1,0 +1,15 @@
+FROM node:lts-slim
+
+WORKDIR /app
+
+COPY package*.json ./
+
+RUN npm install
+
+COPY . .
+
+# 🟢 Generate Prisma Client inside container (important!)
+RUN npx prisma generate
+
+# Use dev script with nodemon
+CMD [ "npm", "run", "start" ]

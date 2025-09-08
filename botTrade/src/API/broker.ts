@@ -1,5 +1,5 @@
 import { BrokerConstructor } from "../interface/broker";
-import Binance from "./binance";
+import Binance from "@root/src/API/binance";
 
 type BrokerInit = {
     userId: number;

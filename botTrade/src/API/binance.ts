@@ -1,13 +1,14 @@
 import { closeOrderManually } from "@src/handleOrders/handleOrder";
 import { excutedStoploss } from "@src/handleOrders/handleStoploss";
 import { BrokerInterface } from "@src/interface/broker";
-import { logging, writeLog } from "@src/utils/log";
-import axios, { AxiosResponse } from "axios";
+import { writeLog } from "@src/utils/log";
+import axios from "axios";
 import { handleError, removeUSDT } from "@src/utils";
 import jsonbig from "json-bigint";
 import crypto from "crypto";
 import WebSocket from "ws";
 import targetStorageInstance from "../classes/targetStorage";
+import { __payloadCancelOrderType, __payloadCancelStoplossType, __payloadNewStoplossType, __payloadOpenOrderType, CandleType } from "@root/type";
 
 class Binance implements BrokerInterface {
     readonly userId: number;

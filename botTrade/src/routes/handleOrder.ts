@@ -1,14 +1,14 @@
 import { closeOrderAndStoploss } from "@src/handleOrders/handleOrder";
 import { cancelStoplosses } from "@src/handleOrders/handleStoploss";
 import brokerInstancePool from "@src/classes/brokerInstancePool";
-import { __payloadNewStoploss } from "@src/payload/binance";
 import express, { NextFunction, Response } from "express";
 import { CustomRequest } from "@src/middleware";
 import { Order, Token } from "@prisma/client";
 import prisma from "@root/prisma/database";
 import { writeLog } from "@src/utils/log";
-import { handleError } from "@src/utils";
+import { calculateMarkPrice, handleError, roundQtyToNDecimal, roundStopPriceTo2Decimals } from "@src/utils";
 import jsonbig from "json-bigint";
+import { __payloadNewStoplossType } from "@root/type";
 
 const router = express.Router();
 
@@ -37,7 +37,13 @@ router.post("/setStoploss", async (req: CustomRequest, res: Response, next: Next
     }
 
     try {
-        const payload = __payloadNewStoploss({ order: order, token: order.token, stoplossPercent });
+        const payload: __payloadNewStoplossType = {
+            symbol: order.token.name + order.token.stable,
+            side: order.side === "SELL" ? "BUY" : ("SELL" as "SELL" | "BUY"),
+            type: "STOP_MARKET",
+            qty: roundQtyToNDecimal(order.qty, order.token.minQty),
+            stopPrice: roundStopPriceTo2Decimals(calculateMarkPrice(stoplossPercent, order.entryPrice, order.side)), // This will be set in the function below
+        };
 
         const broker = brokerInstancePool.getBroker(order.userId);
         const response = await broker!.API_newStoploss(payload);

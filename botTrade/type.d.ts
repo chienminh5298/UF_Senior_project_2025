@@ -1,3 +1,5 @@
+import { $Enums } from "@prisma/client";
+
 type CandleType = {
     Date: string;
     Open: number;
@@ -19,7 +21,7 @@ type HandleOpenRootOrderType = {
     strategyId: number;
     token: Token;
     qty: number;
-    side: "BUY" | "SELL";
+    side: $Enums.Side;
     user: User;
     firstTarget: Target;
     nextTarget: Target;
@@ -67,7 +69,7 @@ type InsertOrderType = {
 
 type RecoverOrderParams = {
     symbol: string;
-    side: "BUY" | "SELL";
+    side: $Enums.Side;
     userId: number;
 };
 
@@ -92,7 +94,7 @@ type __payloadNewStoploss = {
 
 type __payloadCancelOrderType = {
     symbol: string;
-    side: "SELL" | "BUY";
+    side: $Enums.Side;
     qty: number;
 };
 
@@ -104,7 +106,7 @@ type __payloadOpenOrderType = {
 
 type __payloadNewStoplossType = {
     symbol: string;
-    side: "SELL" | "BUY";
+    side: $Enums.Side;
     type: "TAKE_PROFIT_MARKET" | "STOP_MARKET" | "MARKET";
     qty: number;
     stopPrice: number;
@@ -121,7 +123,7 @@ type BacktestCreateNewOrderType = {
     candle: candleType;
     entryPrice: number;
     isTrigger: boolean;
-    side: "BUY" | "SELL";
+    side: $Enums.Side;
     strategyId: number;
 };
 
@@ -141,18 +143,17 @@ type BacktestOrderType = {
     isTrigger: boolean;
     entryPrice: number;
     markPrice?: number; // Optional
-    side: "BUY" | "SELL";
+    side: $Enums.Side;
     stoplossIdx: number;
     strategyId: number;
     targets: Target[];
-    trend: "MIXED" | "GREEN" | "RED";
 };
 
 type BacktestChartCandleType = {
     [date: string]: {
         candle: BacktestCandleType;
         executedOrder?: BacktestOrderType[];
-        openOrderSide?: "BUY" | "SELL";
+        openOrderSide?: $Enums.Side;
     };
 };
 
@@ -165,4 +166,36 @@ type SetStoplossType = {
 type CancelStoplossesType = {
     token: string;
     order: Order;
+};
+
+type calculateOrderQtyType = {
+    token: Token;
+    strategy: Strategy;
+    price: number;
+    user: User;
+    strategyBudgetPercent?: number;
+};
+
+type __payloadCancelOrderType = {
+    token: string;
+    side: $Enums.Side;
+    qty: number;
+};
+
+type __payloadCancelStoplossType = {
+    token: string;
+    orderIds: string[];
+};
+
+type __payloadNewStoplossType = {
+    token: string;
+    side: $Enums.Side;
+    qty: number;
+    stopPrice: number;
+};
+
+type __payloadOpenOrderType = {
+    token: string;
+    side: $Enums.Side;
+    qty: number;
 };

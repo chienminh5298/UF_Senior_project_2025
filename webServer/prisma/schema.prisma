@@ -1,0 +1,252 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                Int                @id @default(autoincrement())
+  fullname          String
+  username          String             @unique
+  email             String             @unique
+  password          String
+  availableBalance  Float              @default(0)
+  commissionPercent Float              @default(30)
+  commission        Float              @default(0)
+  insurance         Float              @default(0)
+  profit            Float              @default(0)
+  isActive          Boolean            @default(true)
+  isVerified        Boolean            @default(false)
+  avatar            Int                @default(0)
+  transactions      Transaction[]
+  assets            Asset[]
+  vouchers          Voucher[]
+  notifications     Notification[]
+  userTokens        UserToken[]
+  userOrders        UserOrder[]
+  activies          Activity[]
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  tradeBalance      Int                @default(0)
+}
+
+model Activity {
+  id                Int         @id @default(autoincrement())
+  type              Int         
+  userId            Int         
+  user              User?       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  availableBalance  Float?
+  tradeBalance      Float?
+  value             Float?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+model Token {
+  id              Int         @id @default(autoincrement())
+  name            String      @unique
+  stable          String
+  minQty          Float       @default(0)
+  isActive        Boolean     @default(true)
+  orders          Order[]
+  targets         Target[]
+  userTokens      UserToken[]
+  tokenStrategies TokenStrategy[]
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model Target {
+  id                    Int       @id @default(autoincrement())
+  targetPercent         Float     @default(0)
+  stoplossPercent       Float     @default(0)
+  order                 Order[]
+  tokenId               Int?
+  token                 Token?    @relation(fields: [tokenId], references: [id])
+  strategyId            Int?
+  strategy              Strategy? @relation(fields: [strategyId], references: [id], onDelete: Cascade)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+}
+
+model Transaction {
+  id          Int      @id @default(autoincrement())
+  amount      Int
+  type        TransactionType
+  status      TransactionStatus
+  info        String?
+  invoices    Invoice[]
+  userId      Int?
+  user        User?    @relation(fields: [userId], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Order {
+  id          Int      @id @default(autoincrement())
+  orderId     String   @unique
+  side        Side
+  timestamp   String
+  entryPrice  Float
+  qty         Float
+  budget      Float
+  status      Status  @default(ACTIVE)
+  netProfit   Float   @default(0)
+  markPrice   Float?
+  userOrders  UserOrder[]
+  strategyId  Int
+  strategy    Strategy? @relation(fields: [strategyId], references: [id])
+  currentTargetId Int?
+  target      Target? @relation(fields: [currentTargetId], references: [id], onDelete: SetNull)
+  tokenId     Int
+  token       Token?   @relation(fields: [tokenId], references: [id])
+  fee         Float     @default(0)
+  stoplossOrderId   String?
+  last5HeikinAshi   HeikinAshiType @default(MIXED)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+model Strategy {
+  id                      Int      @id @default(autoincrement())
+  description             String
+  contribution            Int      @default(0)
+  isActive                Boolean  @default(false)
+  isCloseBeforeNewCandle  Boolean  @default(false)
+  tokenStrategies         TokenStrategy[]
+  targets                 Target[]
+  order                   Order[]
+  triggerBy               Int?
+  direction               DirectionType @default(SAME)
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+}
+
+model Invoice {
+  id             Int          @id @default(autoincrement())
+  link           String
+  transactionId  Int?
+  transaction    Transaction? @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model Asset {
+  id            Int      @id @default(autoincrement())
+  asset         Float
+  userId        Int?
+  user          User?    @relation(fields: [userId], references: [id])
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model Notification {
+  id          Int      @id @default(autoincrement())
+  type        NotificationType
+  message     String
+  status      Boolean
+  userId      Int?
+  user        User?    @relation(fields: [userId], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model UserToken {
+  id            Int      @id @default(autoincrement())
+  userId        Int?
+  tokenId       Int?
+  user          User?    @relation(fields: [userId], references: [id])
+  token         Token?   @relation(fields: [tokenId], references: [id])
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model UserOrder {
+  id            Int      @id @default(autoincrement())
+  contributionPercent       Float
+  commission          Float   @default(0)
+  commissionPercent           Float
+  orderId   String
+  order     Order @relation(fields: [orderId], references: [orderId], onDelete: Cascade)
+  userId        Int
+  user          User    @relation(fields: [userId], references: [id])
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model TokenStrategy {
+  id         Int       @id @default(autoincrement())
+  tokenId    Int?
+  token      Token?    @relation(fields: [tokenId], references: [id])
+  strategyId Int?
+  strategy   Strategy? @relation(fields: [strategyId], references: [id])
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model Voucher{
+  id          Int       @id @default(autoincrement())
+  code        String    @unique
+  description String
+  type        String
+  value       Int
+  activeDate  DateTime?
+  effectDate  DateTime
+  expireDate  DateTime
+  status      VoucherStatus
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  userId      Int?
+  user        User?    @relation(fields: [userId], references: [id])
+}
+
+enum VoucherStatus {
+  inuse
+  expired
+  unused
+}
+
+enum Side {
+  short
+  long
+}
+
+enum DirectionType {
+  SAME
+  OPPOSITE
+}
+
+enum Status {
+  ACTIVE
+  EXPIRED
+  FINISHED
+}
+
+enum TransactionType {
+  WITHDRAW
+  DEPOSIT
+}
+
+enum TransactionStatus {
+  PENDING
+  FINISHED
+  CANCELLED
+}
+
+enum NotificationType {
+  PROFIT
+  LOSS 
+  INFO
+}
+
+enum HeikinAshiType {
+  GREEN
+  RED
+  MIXED
+}

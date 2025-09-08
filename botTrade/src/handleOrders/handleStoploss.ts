@@ -7,6 +7,7 @@ import { Order, Target, Token } from "@prisma/client";
 import { logging, writeLog } from "@src/utils/log";
 import prisma from "@root/prisma/database";
 import jsonbig from "json-bigint";
+import { __payloadNewStoplossType, CancelStoplossesType, NewStoploss, SetStoplossType } from "@root/type";
 
 /* --------------------------------*
  * This function will set stoploss *
@@ -101,7 +102,7 @@ export const excutedStoploss = async (orderId: string, markPrice: number) => {
 
     targetStorageInstance.removeTarget({ orderId: order.orderId, token: order.token.name });
 
-    isCloseIntervalToken(order.token);
+    isCloseIntervalToken(order.token.name, order.token.stable);
 
     const userChatId = await prisma.user.findUnique({ where: { id: order.userId }, select: { telegramChatId: true } });
 
@@ -157,7 +158,7 @@ export const cancelStoplosses = async ({ token, order }: CancelStoplossesType) =
 
     try {
         const response = await broker.API_cancelStoploss({
-            token,
+            symbol: token,
             orderIds: [order.stoplossOrderId],
         });
 

@@ -10,6 +10,7 @@ import targetStorageInstance from "@src/classes/targetStorage";
 import { getNextTarget } from "@src/handleOrders/handleTarget";
 import { logging, writeLog } from "@src/utils/log";
 import prisma from "@root/prisma/database";
+import { __payloadCancelOrderType, __payloadOpenOrderType, calculateOrderQtyType, HandleAfterOpenNewOrderType, HandleOpenRootOrderType, InsertOrderType, OpenOrderType, RecoverOrderParams } from "@root/type";
 
 export const openRootOrder = async ({ token, strategy, side, forSpecifyUserId = undefined }: OpenOrderType) => {
     const strategyId = strategy.id;
@@ -123,8 +124,8 @@ export const handleOpenOrder = async ({ strategyId, token, side, qty, user, firs
         // 1. Set leverage
         await broker.API_adjustLeverage(orderToken, token.leverage);
 
-        const maxAttempts = 2; 
-        const baseDelayMs = 800; // base delay 
+        const maxAttempts = 2;
+        const baseDelayMs = 800; // base delay
 
         for (let attempt = 0; attempt < maxAttempts; attempt++) {
             // 2. Prepare payload
@@ -175,7 +176,7 @@ export const handleOpenOrder = async ({ strategyId, token, side, qty, user, firs
                 return { status: 200 };
             }
 
-            // 2.3 Retry 
+            // 2.3 Retry
             if (attempt < maxAttempts) {
                 // Exponential backoff
                 const delay = baseDelayMs * attempt;
@@ -229,16 +230,14 @@ const handleAfterOpenNewOrder = async ({ response, orderToken, strategyId, token
     await sendTelegramMessage(telegramMessage, user.telegramChatId);
 };
 
-export const calculateOrderQty = async ({ token, strategyId, price, user, strategyBudgetPercent }: CalculateOrderQtyType) => {
-    const strategy = await prisma.strategy.findUnique({ where: { id: strategyId } });
-
+export const calculateOrderQty = async ({ token, strategy, price, user, strategyBudgetPercent }: calculateOrderQtyType) => {
     let isSupriseThisToken = await prisma.userToken.findFirst({ where: { userId: user.id, tokenId: token.id } });
     if (isSupriseThisToken && strategy) {
         let budget = 0;
         if (strategyBudgetPercent) {
             budget = user.tradeBalance * (strategyBudgetPercent / 100); //Calculate budget per order
         } else {
-            const strategiesCount = await countUserTokenStrategies(user, strategyId);
+            const strategiesCount = await countUserTokenStrategies(user, strategy.id);
 
             budget = (user.tradeBalance * (strategy.contribution / 100)) / strategiesCount; //Calculate budget per order
         }
@@ -344,17 +343,10 @@ export const closeOrderAndStoploss = async (order: Order, token: Token, allowTri
                 // Nếu cho phép mở thêm 1 lệnh
                 if (allowTrigger) {
                     const strategy = await prisma.strategy.findUnique({ where: { id: order.strategyId } });
-                    const last5Dcandles = await broker!.getLastNDayCandle(token.name, 6);
                     // Kiểm tra chỉ có parent strategy được phép mở thêm 1 lệnh
-                    if (strategy && strategy.parentStrategy === null && last5Dcandles) {
-                        const isAllGreen = last5Dcandles.slice(0, 5).every((candle: BacktestCandleType) => candle.Close > candle.Open);
-                        const isAllRed = last5Dcandles.slice(0, 5).every((candle: BacktestCandleType) => candle.Close < candle.Open);
-
-                        const rule = isAllGreen || isAllRed ? "FIVE_SAME_COLOR" : "DEFAULT";
-
+                    if (strategy && strategy.parentStrategy === null) {
                         const triggerStrategies = await prisma.strategy.findMany({
                             where: {
-                                triggerRule: rule,
                                 isActive: true,
                                 parentStrategy: order.strategyId, // bảo đảm chỉ lấy strategy gốc
                             },
@@ -428,7 +420,7 @@ const cancelStoplossAndUpdateOrder = async (order: Order, token: Token, markPric
     targetStorageInstance.removeTarget({ orderId: order.orderId, token: token.name });
 
     // 4. Check if doesn't exitsts any order belongs to this token then we remove interval price check
-    isCloseIntervalToken(token);
+    isCloseIntervalToken(token.name, token.stable);
 
     const userChatId = await prisma.user.findUnique({ where: { id: order.userId }, select: { telegramChatId: true } });
 

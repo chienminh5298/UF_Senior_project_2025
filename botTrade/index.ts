@@ -9,12 +9,12 @@ import brokerInstancePool from "@src/classes/brokerInstancePool";
 import prisma, { connectDatabase } from "@root/prisma/database";
 import handleBacktestRoute from "@src/routes/backtest/backtest";
 import handleOrderRoute from "@src/routes/handleOrder";
-import { mutationUpdateData } from "@src/API/ultil";
-import { checkStrategies } from "@src/utils/process";
+import { mutationUpdateData } from "@root/src/API/ultil";
 import { isAuthorization } from "@src/middleware";
 import { logging } from "@src/utils/log";
-import { loadDEK } from "@src/utils/aws";
+// import { loadDEK } from "@src/utils/aws";
 import { Token } from "@prisma/client";
+import { checkStrategies } from "@src/strategies";
 
 const server = express();
 
@@ -62,7 +62,7 @@ const startServer = async () => {
     brokerInstancePool.refreshPool();
 
     if (process.env.isProduction) {
-        await loadDEK(); // Get data key from KMS to decrypt api
+        // await loadDEK(); // Get data key from KMS to decrypt api
 
         setInterval(async () => {
             const now = new Date();

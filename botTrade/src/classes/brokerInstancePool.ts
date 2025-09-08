@@ -1,7 +1,7 @@
 import { BrokerInterface } from "@src/interface/broker";
 import prisma from "@root/prisma/database";
 import { logging } from "@src/utils/log";
-import broker from "@src/api/broker";
+import broker from "@src/API/broker";
 import { handleError } from "../utils";
 
 class BrokerInstancePool {
@@ -26,7 +26,7 @@ class BrokerInstancePool {
                     newPool.set(u.id, userBroker);
                 }
             }
-            this.pool = newPool; // atomically replace khi đã có dữ liệu mới
+            this.pool = newPool; // automically replace when new data is ready
         } catch (err) {
             console.log(err);
             handleError("error", "[BrokerInstancePool] load failed:", [err]);

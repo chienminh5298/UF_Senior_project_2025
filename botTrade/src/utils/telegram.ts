@@ -1,3 +1,4 @@
+import { $Enums } from "@prisma/client";
 import axios from "axios";
 
 export const sendTelegramMessage = async (message: string, chatId: string | null) => {
@@ -16,7 +17,7 @@ type NewOrderType = {
     targetPrice: number;
     stoplossPrice: number;
     orderId: number | string;
-    side: "short" | "long";
+    side: $Enums.Side;
 };
 export const telegramNewOrderPayload = ({ entryTime, entryPrice, targetPrice, stoplossPrice, orderId, side }: NewOrderType) => {
     return `✅ Order Placed Successfully!
@@ -32,7 +33,7 @@ type MoveStoplossType = {
     targetPrice: number;
     stoplossPrice: number;
     orderId: number | string;
-    side: "short" | "long";
+    side: $Enums.Side;
 };
 export const telegramMoveStoplossPayload = ({ entryTime, targetPrice, stoplossPrice, orderId, side }: MoveStoplossType) => {
     return `🚀 Move stoploss!
@@ -47,7 +48,7 @@ type HitStoplossType = {
     stoplossPrice: number;
     orderId: number | string;
     entryPrice: number;
-    side: "short" | "long";
+    side: $Enums.Side;
 };
 export const telegramHitStoplossPayload = ({ entryTime, stoplossPrice, orderId, entryPrice, side }: HitStoplossType) => {
     return `💥 Stoploss hit
@@ -64,7 +65,7 @@ type HitTargetType = {
     entryPrice: number;
     executedPrice: number;
     orderId: number | string;
-    side: "short" | "long";
+    side: $Enums.Side;
 };
 export const telegramHitTargetPayload = ({ entryTime, orderId, entryPrice, executedPrice, side }: HitTargetType) => {
     return `🎯 Target hit
@@ -74,4 +75,24 @@ export const telegramHitTargetPayload = ({ entryTime, orderId, entryPrice, execu
     Buy at: ${entryPrice.toFixed(2)}
     Sell at: ${executedPrice.toFixed(2)}
     `;
+};
+
+type NotEnoughBalance = {
+    tradeBalance: number;
+};
+
+export const telegramNotEnoughBalancePayload = ({ tradeBalance }: NotEnoughBalance) => {
+    return `⚠️ *Insufficient Futures Balance*
+    Your current Futures Wallet has to greater than trade balance ${tradeBalance}USDT`;
+};
+
+type NewPillNeedToPay = {
+    amount: number;
+    before: string;
+};
+
+export const telegramNewPillNeedToPayPayload = ({ amount, before }: NewPillNeedToPay) => {
+    return `📄 *New Bill Pending*
+You have an outstanding bill of *${amount} USDT* that must be paid **before ${before}**.
+Please top‑up your Futures Wallet and settle this bill on time to avoid any service interruptions.`;
 };

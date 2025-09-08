@@ -1,8 +1,9 @@
 import intervalPriceOrderInstance from "@src/classes/intervalPriceOrder";
-import { loadTargetToStorage } from "@src/handleOrders/handleTarget";
-import { Token, Transaction, User } from "@prisma/client";
+import targetStorageInstance from "@src/classes/targetStorage";
 import { logging, writeLog } from "@src/utils/log";
+import { Token, User } from "@prisma/client";
 import prisma from "@root/prisma/database";
+import crypto from "crypto";
 
 /**
  - We will not open price socket for every token, just open socket for tokens which has at least 1 open order.
@@ -30,9 +31,9 @@ export const removeUSDT: (token: string) => string = (token: string) => {
     return token.slice(0, -4);
 };
 
-export const calculateMarkPrice = (percent: number, entryPrice: number, orderSide: "short" | "long") => {
+export const calculateMarkPrice = (percent: number, entryPrice: number, orderSide: "SELL" | "BUY") => {
     const differance = entryPrice * (percent / 100);
-    if (orderSide === "short") {
+    if (orderSide === "SELL") {
         return entryPrice - differance;
     } else {
         return entryPrice + differance;
@@ -50,91 +51,45 @@ export const roundStopPriceTo2Decimals = (price: string | number) => {
     return parseFloat(result);
 };
 
-export const roundQtyToNDecimal: (price: string | number, minQty: number) => number = (price: string | number, minQty: number) => {
+export const roundQtyToNDecimal: (qty: string | number, minQty: number) => number = (qty: string | number, minQty: number) => {
     const precision = getPrecisionDigits(minQty);
-    var indexOfDot = price.toString().indexOf(".");
-    var result = price;
+    const indexOfDot = qty.toString().indexOf(".");
+    let result = qty;
     if (indexOfDot !== -1) {
-        result = price.toString().slice(0, indexOfDot + precision + 1);
+        result = qty.toString().slice(0, indexOfDot + precision + 1);
     }
     result = result.toString();
     return parseFloat(result);
 };
 
-interface calculateProfitType {
-    side: "short" | "long";
+type calculateProfitType = {
+    side: "SELL" | "BUY";
     entryPrice: number;
     markPrice: number;
     qty: number;
-}
+};
 export const calculateProfit = ({ side, entryPrice, markPrice, qty }: calculateProfitType) => {
-    if (side === "short") {
+    if (side === "SELL") {
         return (entryPrice - markPrice) * qty;
     } else {
         return (markPrice - entryPrice) * qty;
     }
 };
 
-export const isCloseIntervalToken = async (token: Token) => {
-    let rootorders = await prisma.order.findMany({
-        where: {
-            tokenId: token.id,
-        },
-    });
-    if (rootorders.length === 0) {
-       intervalPriceOrderInstance.removeInterval(token.name + token.stable);
+export const isCloseIntervalToken = async (token: string, stable: string) => {
+    const orders = Object.keys(targetStorageInstance.getOrderTargetOfToken(token));
+
+    if (orders.length === 0) {
+        intervalPriceOrderInstance.removeInterval(token + stable);
     }
 };
 
-export const calculateProfitPercent = (entryPrice: number, sellPrice: number, side: "short" | "long") => {
-    if (side === "long") {
+export const calculateProfitPercent = (entryPrice: number, sellPrice: number, side: "SELL" | "BUY") => {
+    if (side === "BUY") {
         return ((sellPrice - entryPrice) * 100) / entryPrice;
     } else {
         return ((entryPrice - sellPrice) * 100) / entryPrice;
     }
-};
-
-export const updateUserAsset = async () => {
-    const users = await prisma.user.findMany({ where: { isActive: true } });
-    for (let u of users) {
-        // Update asset table
-        await prisma.asset.create({
-            data: { asset: u.availableBalance + u.profit + u.tradeBalance, userId: u.id },
-        });
-
-        // Update activity table
-        await prisma.activity.create({
-            data: {
-                userId: u.id,
-                type: 1,
-                availableBalance: u.availableBalance,
-                tradeBalance: u.tradeBalance,
-                value: null,
-            },
-        });
-    }
-};
-
-export const sumWithdrawTransactionByStatus: (status: "FINISHED" | "PENDING", userId?: number) => Promise<number> = async (status, userId) => {
-    const query = await prisma.transaction.findMany({
-        where: {
-            ...(userId !== undefined && { userId }), // Only include userId if it's defined
-            status: status,
-            type: "WITHDRAW",
-        },
-    });
-    return query.reduce((total: number, temp: Transaction) => total + temp.amount, 0);
-};
-
-export const sumDepositTransactionByStatus: (status: "FINISHED" | "PENDING", userId?: number) => Promise<number> = async (status, userId) => {
-    const query = await prisma.transaction.findMany({
-        where: {
-            ...(userId !== undefined && { userId }), // Only include userId if it's defined
-            status: status,
-            type: "DEPOSIT",
-        },
-    });
-    return query.reduce((total: number, temp: Transaction) => total + temp.amount, 0);
 };
 
 export const getTimeHour = () => {
@@ -176,21 +131,50 @@ const getPrecisionDigits = (floatNum: number) => {
 
 export const calculateCommissionPercent = async (user: User) => {
     try {
-        let currentCom = user!.commissionPercent;
-        const voucher = await prisma.voucher.findFirst({ where: { userId: user!.id, status: "inuse", expireDate: { gt: new Date() } } });
+        // ➊ Số % hoa hồng gốc
+        let adminCom = user.adminCommissionPercent; // ví dụ 8
+        let refCom = user.referralCommissionPercent; // ví dụ 2
+
+        const totalBefore = (adminCom + refCom) * 100; // 10
+
+        // ➋ Tìm voucher đang dùng
+        const voucher = await prisma.voucher.findFirst({
+            where: {
+                userId: user.id,
+                status: "inuse",
+                expireDate: { gt: new Date() },
+            },
+        });
+
         if (voucher) {
             if (voucher.type === "DC") {
-                currentCom = user!.commissionPercent - voucher.value;
+                // giảm cố định -> phân bổ theo tỉ lệ gốc
+                const adminRatio = adminCom / totalBefore; // 0.8
+                const refRatio = refCom / totalBefore; // 0.2
+
+                adminCom -= voucher.value * adminRatio; // 8 - 2*0.8 = 6.4
+                refCom -= voucher.value * refRatio; // 2 - 2*0.2 = 1.6
             }
+
             if (voucher.type === "DCP") {
-                currentCom = user!.commissionPercent - (voucher.value / 100) * user!.commissionPercent;
+                // giảm theo % trên từng khoản
+                const factor = 1 - voucher.value / 100; // 1 - 0.10 = 0.9
+                adminCom *= factor; // 8 * 0.9 = 7.2
+                refCom *= factor; // 2 * 0.9 = 1.8
             }
         }
-        if (currentCom < 0) currentCom = 0;
-        return currentCom;
-    } catch {
-        console.log(`Error calculate commission percent ultils/index.ts - userId: ${user.id}`);
-        return 0;
+
+        // ➌ Không cho âm
+        adminCom = Math.max(adminCom, 0);
+        refCom = Math.max(refCom, 0);
+
+        return {
+            adminPercent: +adminCom.toFixed(4), // 4 chữ số thập phân
+            referralPercent: +refCom.toFixed(4),
+        };
+    } catch (err) {
+        console.error(`Error calculate commission percent – userId: ${user.id}`, err);
+        return { adminPercent: 0, referralPercent: 0 };
     }
 };
 
@@ -203,10 +187,10 @@ export const checkExpireVouchers = async () => {
 
 export const getOrderSideDependOnDirection = ({ direction, prevClose, prevOpen }: { direction: "OPPOSITE" | "SAME"; prevClose: number; prevOpen: number }) => {
     if (direction === "SAME") {
-        if (prevClose > prevOpen) return "long";
-        else return "short";
+        if (prevClose > prevOpen) return "BUY";
+        else return "SELL";
     } else {
-        if (prevClose > prevOpen) return "short";
-        else return "long";
+        if (prevClose > prevOpen) return "SELL";
+        else return "BUY";
     }
 };

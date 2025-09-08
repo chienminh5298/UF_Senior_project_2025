@@ -1,10 +1,11 @@
 import brokerInstancePool from "@root/src/classes/brokerInstancePool";
 import express, { NextFunction, Response } from "express";
 import { roundQtyToNDecimal } from "@root/src/utils";
-import { getData1YearCandle } from "@src/api/ultil";
+import { getData1YearCandle } from "@root/src/API/ultil";
 import { CustomRequest } from "@src/middleware";
 import { Target, Token } from "@prisma/client";
 import prisma from "@root/prisma/database";
+import { BacktestCandleType, BacktestChartCandleType, BacktestCreateNewOrderType, BacktestLogicType, BacktestOrderType } from "@root/type";
 
 const router = express.Router();
 
@@ -174,19 +175,9 @@ const backtestLogic = async ({ strategyId, data, token, timeFrame }: BacktestLog
             },
         },
     });
-    const triggerFiveSameColorStrategies = await prisma.strategy.findMany({
-        where: { parentStrategy: strategyId, triggerRule: "FIVE_SAME_COLOR" },
-        include: {
-            targets: {
-                where: { tokenId: token.id },
-                orderBy: {
-                    targetPercent: "asc",
-                },
-            },
-        },
-    });
-    const triggerDefaultStrategies = await prisma.strategy.findMany({
-        where: { parentStrategy: strategyId, triggerRule: "DEFAULT" },
+
+    const triggerStrategies = await prisma.strategy.findMany({
+        where: { parentStrategy: strategyId },
         include: {
             targets: {
                 where: { tokenId: token.id },
@@ -198,8 +189,7 @@ const backtestLogic = async ({ strategyId, data, token, timeFrame }: BacktestLog
     });
 
     const strategyTargets: Target[] = strategy?.targets || [];
-    const triggerFiveSamecolorTargets: Target[] = triggerFiveSameColorStrategies[0]?.targets || [];
-    const triggerDefaultTargets: Target[] = triggerDefaultStrategies[0].targets || [];
+    const triggerDefaultTargets: Target[] = triggerStrategies[0].targets || [];
 
     const getPrevCandle = (candledate: string) => {
         const bucketKey = getBucketKey(candledate, timeFrame);
@@ -232,7 +222,6 @@ const backtestLogic = async ({ strategyId, data, token, timeFrame }: BacktestLog
             const order = openOrder[orderId];
 
             let targets: Target[] = order.targets;
-            const trend = order.trend;
 
             const markPrice = getMarkPRice(targets[order.stoplossIdx + 1].targetPercent, order.side, order.entryPrice);
 
@@ -246,19 +235,11 @@ const backtestLogic = async ({ strategyId, data, token, timeFrame }: BacktestLog
                     if (!order.isTrigger) {
                         // new trigger order
                         let side: "BUY" | "SELL" = order.side;
-                        if (trend === "GREEN" || trend === "RED") {
-                            if (triggerFiveSameColorStrategies[0].direction === "OPPOSITE") {
-                                if (side === "BUY") side = "SELL";
-                                else side = "BUY";
-                            }
-                            createNewOrder({ candle, entryPrice: markPrice, isTrigger: true, side, strategyId: 1 });
-                        } else {
-                            if (triggerDefaultStrategies[0].direction === "OPPOSITE") {
-                                if (side === "BUY") side = "SELL";
-                                else side = "BUY";
-                            }
-                            createNewOrder({ candle, entryPrice: markPrice, isTrigger: true, side, strategyId: 3 });
+                        if (triggerStrategies[0].direction === "OPPOSITE") {
+                            if (side === "BUY") side = "SELL";
+                            else side = "BUY";
                         }
+                        createNewOrder({ candle, entryPrice: markPrice, isTrigger: true, side, strategyId: 1 });
                     }
                     // Close order
                     closeOrder(order, markPrice, candle);
@@ -273,8 +254,7 @@ const backtestLogic = async ({ strategyId, data, token, timeFrame }: BacktestLog
 
             let targets: Target[] = order.targets;
             if (order.isTrigger) {
-                const trend = order.trend;
-                targets = trend === "MIXED" ? triggerDefaultTargets : triggerFiveSamecolorTargets;
+                targets = triggerDefaultTargets;
             }
 
             const markPrice = getMarkPRice(targets[order.stoplossIdx].stoplossPercent, order.side, order.entryPrice);
@@ -290,7 +270,7 @@ const backtestLogic = async ({ strategyId, data, token, timeFrame }: BacktestLog
         let targets: Target[] = strategyTargets;
         const trend = getLastFiveCandle(candle.Date);
         if (isTrigger) {
-            targets = trend === "MIXED" ? triggerDefaultTargets : triggerFiveSamecolorTargets;
+            targets = triggerDefaultTargets;
         }
 
         openOrder[orderId] = {
@@ -302,7 +282,6 @@ const backtestLogic = async ({ strategyId, data, token, timeFrame }: BacktestLog
             stoplossIdx: 0,
             strategyId,
             targets,
-            trend,
         };
 
         response[candle.Date] = { ...response[candle.Date], openOrderSide: side }; // This is not a part of logic
