@@ -100,7 +100,7 @@ model Target {
   strategyId            Int?
   strategy              Strategy? @relation(fields: [strategyId], references: [id], onDelete: Cascade)
   createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
+  updatedAt             DateTime @default(now())  @updatedAt
 }
 
 model Order {
@@ -155,7 +155,7 @@ model UserToken {
   user          User?    @relation(fields: [userId], references: [id])
   token         Token?   @relation(fields: [tokenId], references: [id])
   createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  updatedAt             DateTime @default(now())  @updatedAt
 }
 
 model TokenStrategy {

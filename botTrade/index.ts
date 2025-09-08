@@ -61,27 +61,32 @@ const startServer = async () => {
     // Refresh pool
     brokerInstancePool.refreshPool();
 
-    if (process.env.isProduction) {
-        // await loadDEK(); // Get data key from KMS to decrypt api
+    await testCase();
+    // if (process.env.isProduction) {
+    //     // await loadDEK(); // Get data key from KMS to decrypt api
 
-        setInterval(async () => {
-            const now = new Date();
-            const hour = now.getHours();
-            const minute = now.getMinutes();
-            const second = now.getSeconds();
-            // logging("info", `hour:${hour} - minute: ${minute} - second: ${second}`);
-            if (hour === 0 && minute === 0 && second === 5) {
-                logging("info", `hour:${hour} - minute: ${minute} - second: ${second}`);
-                await checkExpireVouchers();
-                await checkGenerateBill();
-                await checkAccountNotPayBill();
-                await checkTokens();
-            }
-        }, 1000);
-    }
+    //     setInterval(async () => {
+    //         const now = new Date();
+    //         const hour = now.getHours();
+    //         const minute = now.getMinutes();
+    //         const second = now.getSeconds();
+    //         // logging("info", `hour:${hour} - minute: ${minute} - second: ${second}`);
+    //         if (hour === 0 && minute === 0 && second === 5) {
+    //             logging("info", `hour:${hour} - minute: ${minute} - second: ${second}`);
+    //             await checkExpireVouchers();
+    //             await checkGenerateBill();
+    //             await checkAccountNotPayBill();
+    //             await checkTokens();
+    //         }
+    //     }, 1000);
+    // }
 };
 
 startServer();
+
+const testCase = async () =>{
+    
+}
 
 const checkTokens = async () => {
     let tokens: Token[] = await prisma.token.findMany();
