@@ -93,7 +93,7 @@ router.post('/login', async (req, res) => {
       });
     }
 
-    // Verify password 
+    // Verify password
     if (!(await bcrypt.compare(password, user.password))) {
       return res.status(401).json({
         success: false,
@@ -186,7 +186,7 @@ router.post('/signup', async (req, res) => {
 
     // Hash password
     const hashedPassword = await bcrypt.hash(password, 12);
-    
+
     // Create user
     await prisma.user.create({
       data: {
