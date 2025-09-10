@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import prisma from '../models/prismaClient';
 import jwt from 'jsonwebtoken';
+import bcrypt from 'bcrypt';
 
 const router = Router();
 
@@ -92,8 +93,8 @@ router.post('/login', async (req, res) => {
       });
     }
 
-    // Verify password --ill use bcrypt later--
-    if (user.password !== password) {
+    // Verify password 
+    if (!(await bcrypt.compare(password, user.password))) {
       return res.status(401).json({
         success: false,
         message: 'Invalid credentials',
@@ -183,13 +184,16 @@ router.post('/signup', async (req, res) => {
       });
     }
 
+    // Hash password
+    const hashedPassword = await bcrypt.hash(password, 12);
+    
     // Create user
     await prisma.user.create({
       data: {
         fullname,
         username,
         email,
-        password,
+        password: hashedPassword,
         apiKey: 'test',
         apiSecret: 'test',
         referralCode: 'test',

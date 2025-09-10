@@ -9,11 +9,27 @@ import {
   Network,
   ClaimStatus,
 } from '@prisma/client';
+import bcrypt from 'bcrypt';
 
 const prisma = new PrismaClient();
 
+// Helper function to hash passwords
+async function hashPassword(password: string): Promise<string> {
+  return await bcrypt.hash(password, 12);
+}
+
 async function main() {
   console.log('Starting database seeding aligned to UPDATED schema...');
+
+await prisma.order.deleteMany();
+await prisma.bill.deleteMany();
+await prisma.userToken.deleteMany();
+await prisma.voucher.deleteMany();
+await prisma.claim.deleteMany();
+await prisma.strategy.deleteMany();
+await prisma.token.deleteMany();
+await prisma.user.deleteMany();
+
 
   console.log('Cleaned existing data');
 
@@ -100,7 +116,7 @@ async function main() {
         fullname: 'John Doe',
         username: 'johndoe',
         email: 'john@example.com',
-        password: 'password123',
+        password: await hashPassword('password123'),
         adminCommissionPercent: 0.3,
         referralCommissionPercent: 0,
         adminInsurance: 0,
@@ -124,7 +140,7 @@ async function main() {
         fullname: 'Jane Smith',
         username: 'janesmith',
         email: 'jane@example.com',
-        password: 'password123',
+        password: await hashPassword('password123'),
         adminCommissionPercent: 0.3,
         referralCommissionPercent: 0,
         adminInsurance: 0,
@@ -148,7 +164,7 @@ async function main() {
         fullname: 'Bob Johnson',
         username: 'bobjohnson',
         email: 'bob@example.com',
-        password: 'password123',
+        password: await hashPassword('password123'),
         adminCommissionPercent: 0.3,
         referralCommissionPercent: 0,
         adminInsurance: 0,
@@ -172,7 +188,7 @@ async function main() {
         fullname: 'Alice Williams',
         username: 'alicewilliams',
         email: 'alice@example.com',
-        password: 'password123',
+        password: await hashPassword('password123'),
         adminCommissionPercent: 0.3,
         referralCommissionPercent: 0,
         adminInsurance: 0,
@@ -196,7 +212,7 @@ async function main() {
         fullname: 'Charlie Brown',
         username: 'charliebrown',
         email: 'charlie@example.com',
-        password: 'password123',
+        password: await hashPassword('password123'),
         adminCommissionPercent: 0.3,
         referralCommissionPercent: 0,
         adminInsurance: 0,
