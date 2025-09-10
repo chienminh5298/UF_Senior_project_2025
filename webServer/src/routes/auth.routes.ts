@@ -186,20 +186,16 @@ router.post('/signup', async (req, res) => {
     // Create user
     await prisma.user.create({
       data: {
+        fullname,
+        username,
         email,
         password,
-        isActive: true,
-        isVerified: false,
-        availableBalance: 0,
-        tradeBalance: 0,
-        profit: 0,
-        commission: 0,
-        fullname: fullname,
-        username: username,
-        createdAt: new Date(),
-        updatedAt: new Date(),
+        apiKey: "test",
+        apiSecret: "test",
+        referralCode: "test",
       },
     });
+    
 
     // Return success response
     res.json({
@@ -224,12 +220,13 @@ router.post('/create-test-user', async (req, res) => {
         username: 'testuser',
         email: 'test@example.com',
         password: 'password123',
-        availableBalance: 1000,
         tradeBalance: 500,
         profit: 0,
-        commission: 0,
         isActive: true,
         isVerified: true,
+        apiKey: 'test_api_key',
+        apiSecret: 'test_api_secret',
+        referralCode: 'TEST-REF',
       },
     });
 
