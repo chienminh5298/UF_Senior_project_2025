@@ -38,8 +38,8 @@ router.get('/landing', requireAuth, async (req, res) => {
       },
     });
 
-    // Get number of strategies
-    const count = await prisma.userOrder.count({
+    // Get number of orders
+    const count = await prisma.order.count({
       where: {
         userId: user.id,
       },
@@ -51,8 +51,8 @@ router.get('/landing', requireAuth, async (req, res) => {
       select: { tradeBalance: true },
     });
 
-    // Get active strategies per user id (user --> userOrder --> order --> token))
-    const activeStrategies = await prisma.userOrder.findMany({
+    // Get active orders per user id (user --> order --> token)
+    const activeStrategies = await prisma.order.findMany({
       where: {
         userId: user.id,
       },

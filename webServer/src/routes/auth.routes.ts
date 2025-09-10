@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import prisma from '../models/prismaClient';
 import jwt from 'jsonwebtoken';
+import bcrypt from 'bcrypt';
 
 const router = Router();
 
@@ -92,8 +93,8 @@ router.post('/login', async (req, res) => {
       });
     }
 
-    // Verify password --ill use bcrypt later--
-    if (user.password !== password) {
+    // Verify password
+    if (!(await bcrypt.compare(password, user.password))) {
       return res.status(401).json({
         success: false,
         message: 'Invalid credentials',
@@ -183,21 +184,19 @@ router.post('/signup', async (req, res) => {
       });
     }
 
+    // Hash password
+    const hashedPassword = await bcrypt.hash(password, 12);
+
     // Create user
     await prisma.user.create({
       data: {
+        fullname,
+        username,
         email,
-        password,
-        isActive: true,
-        isVerified: false,
-        availableBalance: 0,
-        tradeBalance: 0,
-        profit: 0,
-        commission: 0,
-        fullname: fullname,
-        username: username,
-        createdAt: new Date(),
-        updatedAt: new Date(),
+        password: hashedPassword,
+        apiKey: 'test',
+        apiSecret: 'test',
+        referralCode: 'test',
       },
     });
 
@@ -224,12 +223,13 @@ router.post('/create-test-user', async (req, res) => {
         username: 'testuser',
         email: 'test@example.com',
         password: 'password123',
-        availableBalance: 1000,
         tradeBalance: 500,
         profit: 0,
-        commission: 0,
         isActive: true,
         isVerified: true,
+        apiKey: 'test_api_key',
+        apiSecret: 'test_api_secret',
+        referralCode: 'TEST-REF',
       },
     });
 
