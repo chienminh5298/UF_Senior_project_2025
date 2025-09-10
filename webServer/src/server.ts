@@ -2,7 +2,7 @@
 import app from './app';
 import http from 'http';
 import { Server as SocketIOServer } from 'socket.io';
-import { connectDatabase } from '../prisma/database'; 
+import { connectDatabase } from '../prisma/database';
 
 const PORT = process.env.PORT || 3001;
 

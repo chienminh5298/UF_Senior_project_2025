@@ -190,12 +190,11 @@ router.post('/signup', async (req, res) => {
         username,
         email,
         password,
-        apiKey: "test",
-        apiSecret: "test",
-        referralCode: "test",
+        apiKey: 'test',
+        apiSecret: 'test',
+        referralCode: 'test',
       },
     });
-    
 
     // Return success response
     res.json({
