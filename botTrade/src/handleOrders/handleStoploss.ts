@@ -46,7 +46,6 @@ const setStoploss = async ({ token, order, target }: SetStoplossType): Promise<s
         qty: roundQtyToNDecimal(order.qty, token.minQty),
         side: order.side === "short" ? "BUY" : ("SELL" as "SELL" | "BUY"),
         stopPrice: roundStopPriceTo2Decimals(calculateMarkPrice(target.stoplossPercent, order.entryPrice, order.side)),
-        type: "STOP_MARKET",
     };
 
     const response = await broker.API_newStoploss(payload);

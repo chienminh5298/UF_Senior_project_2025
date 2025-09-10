@@ -45,8 +45,10 @@ class Binance implements BrokerInterface {
 
     private boot = async () => {
         await this.updateTimestamp(); // preload server-time & keep fresh
-        this.stoplossPoll(); // fallback in case WS misses events
-        this.API_socketEventDriven(); // start user data stream WS
+        if (this.userId !== 0) {
+            this.stoplossPoll(); // fallback in case WS misses events
+            this.API_socketEventDriven(); // start user data stream WS
+        }
     };
 
     private nowMs = () => String(Date.now() + this.timeOffsetMs);
@@ -126,7 +128,7 @@ class Binance implements BrokerInterface {
             // Ensure one-way mode (NOT dual / hedge)
             await this.signedPOST("/fapi/v1/positionSide/dual", { dualSidePosition: "false" });
         } catch (err) {
-            handleError("Error change position mode", "error", [err]);
+            return;
         }
     };
 
@@ -219,6 +221,7 @@ class Binance implements BrokerInterface {
                 timestamp: String(filledOrder.updateTime || this.nowMs()),
             };
         } catch (err) {
+            console.log(err);
             writeLog(["Error new root order", ``, err]);
             return { success: false };
         }
@@ -243,7 +246,6 @@ class Binance implements BrokerInterface {
                 side: stopSide,
                 type: "STOP_MARKET",
                 stopPrice: p.stopPrice.toString(),
-                workingType: "MARK_PRICE",
                 reduceOnly: "true",
                 quantity: p.qty.toString(),
             });
@@ -255,6 +257,7 @@ class Binance implements BrokerInterface {
 
             return { success: true, orderId: String(res.data.orderId) };
         } catch (err) {
+            console.log(err)
             handleError("API_newStoploss error", "error", [err]);
             return { success: false, orderId: null };
         }
@@ -338,20 +341,20 @@ class Binance implements BrokerInterface {
         }
     };
 
-    getLastNDayCandle = async (token: string, days: number) => {
+    getLastNDayCandle = async (symbol: string, days: number) => {
         const now = new Date();
         now.setUTCHours(0, 0, 0, 0); // Start of current UTC day
 
         const to = now.getTime(); // Start of current day
         const from = to - days * 24 * 60 * 60 * 1000; // Start of N days ago
 
-        const url = `https://api.binance.com/api/v3/klines?symbol=${token}USDT&interval=1d&startTime=${from}&endTime=${to}`;
+        const url = `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=1d&startTime=${from}&endTime=${to}`;
 
         try {
             const response = await axios.get(url, { timeout: 5000 });
 
             if (response.status !== 200) {
-                writeLog(["Error get last N 1D candles", `Token ${token}`, response]);
+                writeLog(["Error get last N 1D candles", `symbol ${symbol}`, response]);
                 return null;
             }
 
@@ -366,7 +369,7 @@ class Binance implements BrokerInterface {
 
             return candles;
         } catch (error) {
-            writeLog(["Exception get last N 1D candles", `Token ${token}`, error]);
+            writeLog(["Exception get last N 1D candles", `symbol ${symbol}`, error]);
             return null;
         }
     };
@@ -494,7 +497,7 @@ class Binance implements BrokerInterface {
      * Hàm sẽ gửi GET để lấy các stoploss đã executed mỗi 2 lần/phút rồi so sánh với stoploss của các open order
      *-------------------------------------------------------------------------------------------------------------*/
     private stoplossPoll = async () => {
-        const POLL_INTERVAL_MS = 30_000;
+        const POLL_INTERVAL_MS = 240_000;
         const checkedIds = new Set<string>();
         const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 

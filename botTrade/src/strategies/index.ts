@@ -35,7 +35,7 @@ export const checkStrategies = async (token: Token) => {
                 });
 
                 const broker = brokerInstancePool.getBroker();
-                const queryLastDayCandle = await broker!.getLastNDayCandle(token.name, 1);
+                const queryLastDayCandle = await broker!.getLastNDayCandle(token.name + token.stable, 1);
                 let side = "BUY" as "BUY" | "SELL";
                 if (queryLastDayCandle) {
                     const prevCandleData = queryLastDayCandle[0];

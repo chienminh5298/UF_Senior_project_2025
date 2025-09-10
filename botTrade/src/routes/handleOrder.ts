@@ -40,7 +40,6 @@ router.post("/setStoploss", async (req: CustomRequest, res: Response, next: Next
         const payload: __payloadNewStoplossType = {
             symbol: order.token.name + order.token.stable,
             side: order.side === "SELL" ? "BUY" : ("SELL" as "SELL" | "BUY"),
-            type: "STOP_MARKET",
             qty: roundQtyToNDecimal(order.qty, order.token.minQty),
             stopPrice: roundStopPriceTo2Decimals(calculateMarkPrice(stoplossPercent, order.entryPrice, order.side)), // This will be set in the function below
         };

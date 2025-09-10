@@ -20,11 +20,15 @@ class BrokerInstancePool {
 
             const newPool = new Map<number, BrokerInterface>();
             newPool.set(0, new broker({ userId: 0, API_KEY: "", API_SECRET: "", API_PASSPHRASE: "", skipDecrypt: true })); // Dummy instance to use some function not need authorize (getPrice, ...)
-            if (process.env.isProduction) {
-                for (const u of users) {
-                    const userBroker = new broker({ userId: u.id, API_KEY: u.apiKey || "", API_SECRET: u.apiSecret || "", API_PASSPHRASE: u.apiPassphrase });
-                    newPool.set(u.id, userBroker);
-                }
+            // if (process.env.isProduction) {
+            //     for (const u of users) {
+            //         const userBroker = new broker({ userId: u.id, API_KEY: u.apiKey || "", API_SECRET: u.apiSecret || "", API_PASSPHRASE: u.apiPassphrase });
+            //         newPool.set(u.id, userBroker);
+            //     }
+            // }
+            for (const u of users) {
+                const userBroker = new broker({ userId: u.id, API_KEY: u.apiKey || "", API_SECRET: u.apiSecret || "", API_PASSPHRASE: u.apiPassphrase });
+                newPool.set(u.id, userBroker);
             }
             this.pool = newPool; // automically replace when new data is ready
         } catch (err) {

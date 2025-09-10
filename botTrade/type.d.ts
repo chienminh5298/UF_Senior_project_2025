@@ -107,7 +107,6 @@ type __payloadOpenOrderType = {
 type __payloadNewStoplossType = {
     symbol: string;
     side: $Enums.Side;
-    type: "TAKE_PROFIT_MARKET" | "STOP_MARKET" | "MARKET";
     qty: number;
     stopPrice: number;
 }

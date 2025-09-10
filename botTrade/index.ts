@@ -1,7 +1,7 @@
 import "dotenv/config";
 import "module-alias/register";
 
-import { checkExpireVouchers, createTokenPriceInterval } from "@src/utils";
+import { calculateMarkPrice, checkExpireVouchers, createTokenPriceInterval, roundStopPriceTo2Decimals } from "@src/utils";
 import { checkAccountNotPayBill, checkGenerateBill } from "@src/utils/bill";
 import { loadTargetToStorage } from "@src/handleOrders/handleTarget";
 import express, { NextFunction, Request, Response } from "express";
@@ -15,6 +15,7 @@ import { logging } from "@src/utils/log";
 // import { loadDEK } from "@src/utils/aws";
 import { Token } from "@prisma/client";
 import { checkStrategies } from "@src/strategies";
+import { parse } from "path";
 
 const server = express();
 
@@ -84,9 +85,31 @@ const startServer = async () => {
 
 startServer();
 
-const testCase = async () =>{
-    
-}
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+const testCase = async () => {
+    const broker = brokerInstancePool.getBroker(1);
+    if (broker) {
+        // const r = await broker.API_newOrder({
+        //     symbol: "SOLUSDT",
+        //     side: "BUY",
+        //     qty: 0.05,
+        // });
+        // await sleep(5000);
+        // if (r.success) {
+        //     await broker.API_newStoploss({
+        //         symbol: "SOLUSDT",
+        //         side: "BUY",
+        //         qty: r.qty || 0,
+        //         stopPrice: roundStopPriceTo2Decimals(190),
+        //     });
+        // }
+        const r = await broker.getLastNDayCandle("SOL", 5);
+        console.log(r);
+    } else {
+        console.log("No broker");
+    }
+};
 
 const checkTokens = async () => {
     let tokens: Token[] = await prisma.token.findMany();
