@@ -83,7 +83,7 @@ router.get('/profile', requireAuth, async (req, res) => {
     select: {
       fullname: true,
       email: true,
-      username: true,      
+      username: true,
     },
   });
 
@@ -155,26 +155,30 @@ router.get('/orders', requireAuth, async (req, res) => {
 
   try {
     const orders = await prisma.order.findMany({
-        where: { userId: user.id },
-        select: {
-          id: true,
-          orderId: true,
-          side: true,
-          timestamp: true,
-          entryPrice: true,
-          qty: true,
-          budget: true,
-          status: true,
-        },
+      where: { userId: user.id },
+      select: {
+        id: true,
+        orderId: true,
+        side: true,
+        timestamp: true,
+        entryPrice: true,
+        qty: true,
+        budget: true,
+        status: true,
+      },
     });
 
-    res.status(200).json({ success: true, message: 'Orders fetched successfully', data: orders });
+    res
+      .status(200)
+      .json({
+        success: true,
+        message: 'Orders fetched successfully',
+        data: orders,
+      });
   } catch (error) {
-
     res.status(500).json({ error: 'Failed to fetch orders' });
   }
 });
-
 
 // POST /api/user/tokens     # Add token
 
