@@ -168,13 +168,11 @@ router.get('/orders', requireAuth, async (req, res) => {
       },
     });
 
-    res
-      .status(200)
-      .json({
-        success: true,
-        message: 'Orders fetched successfully',
-        data: orders,
-      });
+    res.status(200).json({
+      success: true,
+      message: 'Orders fetched successfully',
+      data: orders,
+    });
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch orders' });
   }
