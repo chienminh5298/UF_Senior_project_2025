@@ -75,24 +75,20 @@ router.get('/users', requireAuth, async (req, res) => {
         profit: true,
       },
     });
-    res
-      .status(200)
-      .json({
-        success: true,
-        message: 'Users fetched successfully',
-        data: { users },
-      });
+    res.status(200).json({
+      success: true,
+      message: 'Users fetched successfully',
+      data: { users },
+    });
   } catch (error) {
     res.status(500).json({ success: false, message: 'Failed to fetch users' });
   }
 
-  res
-    .status(200)
-    .json({
-      success: true,
-      message: 'Users fetched successfully',
-      data: { users: [] },
-    });
+  res.status(200).json({
+    success: true,
+    message: 'Users fetched successfully',
+    data: { users: [] },
+  });
 });
 
 // GET  /api/admin/landing   # Landing page data
