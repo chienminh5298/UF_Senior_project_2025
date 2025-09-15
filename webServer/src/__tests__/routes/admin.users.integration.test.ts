@@ -13,7 +13,6 @@ jest.mock('../../models/prismaClient', () => ({
 }));
 
 const mockRequireAuth = requireAuth as jest.MockedFunction<typeof requireAuth>;
-const mockPrisma = prisma as any;
 
 describe('GET /api/admin/users Integration Tests', () => {
   let app: express.Application;
@@ -29,7 +28,7 @@ describe('GET /api/admin/users Integration Tests', () => {
 
   describe('Authentication', () => {
     it('should return 401 when no authorization header is provided', async () => {
-      mockRequireAuth.mockImplementation((req, res, next) => {
+      mockRequireAuth.mockImplementation((req, res) => {
         return res.status(401).json({ message: 'Unauthorized' });
       });
 
@@ -39,7 +38,7 @@ describe('GET /api/admin/users Integration Tests', () => {
     });
 
     it('should return 401 when user is not authenticated', async () => {
-      mockRequireAuth.mockImplementation((req, res, next) => {
+      mockRequireAuth.mockImplementation((req, res) => {
         req.user = undefined;
         return res
           .status(401)
@@ -211,7 +210,7 @@ describe('GET /api/admin/users Integration Tests', () => {
 
   describe('Edge cases', () => {
     it('should handle null user object', async () => {
-      mockRequireAuth.mockImplementation((req, res, next) => {
+      mockRequireAuth.mockImplementation((req, res) => {
         req.user = null as any;
         return res
           .status(401)
@@ -230,7 +229,7 @@ describe('GET /api/admin/users Integration Tests', () => {
     });
 
     it('should handle undefined user object', async () => {
-      mockRequireAuth.mockImplementation((req, res, next) => {
+      mockRequireAuth.mockImplementation((req, res) => {
         req.user = undefined;
         return res
           .status(401)

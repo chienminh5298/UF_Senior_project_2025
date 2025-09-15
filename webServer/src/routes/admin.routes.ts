@@ -55,34 +55,45 @@ const router = Router();
  *                             type: number
  */
 router.get('/users', requireAuth, async (req, res) => {
-    const { user } = req;
-    if (!user) {
-        return res.status(401).json({ success: false, message: 'Unauthorized' });
-    }
+  const { user } = req;
+  if (!user) {
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
+  }
 
-    try{
-        const users = await prisma.user.findMany({
-            select: {
-                fullname: true,
-                username: true,
-                email: true,
-                isVerified: true,
-                isActive: true,
-                avatar: true,
-                tradeBalance: true,
-                adminCommissionPercent: true,
-                referralCommissionPercent: true,
-                profit: true,
-            }
-        });
-        res.status(200).json({success: true, message: 'Users fetched successfully', data: { users } });
-    } catch (error) {
-        res.status(500).json({ success: false, message: 'Failed to fetch users' });
-    }
+  try {
+    const users = await prisma.user.findMany({
+      select: {
+        fullname: true,
+        username: true,
+        email: true,
+        isVerified: true,
+        isActive: true,
+        avatar: true,
+        tradeBalance: true,
+        adminCommissionPercent: true,
+        referralCommissionPercent: true,
+        profit: true,
+      },
+    });
+    res
+      .status(200)
+      .json({
+        success: true,
+        message: 'Users fetched successfully',
+        data: { users },
+      });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Failed to fetch users' });
+  }
 
-    res.status(200).json({success: true, message: 'Users fetched successfully', data: { users: [] } });
+  res
+    .status(200)
+    .json({
+      success: true,
+      message: 'Users fetched successfully',
+      data: { users: [] },
+    });
 });
-
 
 // GET  /api/admin/landing   # Landing page data
 // GET  /api/admin/orders    # List orders
