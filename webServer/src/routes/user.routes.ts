@@ -6,19 +6,19 @@ const router = Router();
 
 /**
  * @swagger
- * /api/user/landing:
+ * /api/user/tokens:
  *   get:
- *     summary: Get user landing page data
+ *     summary: Get user tokens
  *     tags: [User]
  *     security:
  *       - bearerAuth: []
  *     responses:
  *       200:
- *         description: Landing page data retrieved
+ *         description: Tokens retrieved
  *       401:
  *         description: Unauthorized
  */
-router.get('/landing', requireAuth, async (req, res) => {
+router.get('/tokens', requireAuth, async (req, res) => {
   // Retrieve user object from requireAuth middleware
   const { user } = req;
 
@@ -30,7 +30,7 @@ router.get('/landing', requireAuth, async (req, res) => {
     });
   }
 
-  // Retrieve user data from database
+  // Retrieve user tokens
   try {
     const userTokens = await prisma.userToken.findMany({
       where: {
@@ -38,43 +38,17 @@ router.get('/landing', requireAuth, async (req, res) => {
       },
     });
 
-    // Get number of orders
-    const count = await prisma.order.count({
-      where: {
-        userId: user.id,
-      },
-    });
-
-    // Get the trade balance
-    const tradeBalance = await prisma.user.findUnique({
-      where: { id: user.id },
-      select: { tradeBalance: true },
-    });
-
-    // Get active orders per user id (user --> order --> token)
-    const activeStrategies = await prisma.order.findMany({
-      where: {
-        userId: user.id,
-      },
-      select: {
-        id: true,
-      },
-    });
-
     // Return success response
     res.status(200).json({
       success: true,
-      message: 'Landing page data fetched successfully',
+      message: 'Tokens fetched successfully',
       data: {
-        userTokens,
-        count,
-        tradeBalance,
-        activeStrategies,
+        tokens: userTokens,
       },
     });
   } catch (error) {
     // Return error response
-    res.status(500).json({ error: 'Failed to fetch landing data' });
+    res.status(500).json({ error: 'Failed to fetch tokens' });
   }
 });
 
@@ -103,12 +77,13 @@ router.get('/profile', requireAuth, async (req, res) => {
     });
   }
 
-  // Retrieve: firstName, lastName, email, timeZone
+  // Retrieve: firstName, username, email, timeZone
   const profile = await prisma.user.findUnique({
     where: { id: user.id },
     select: {
       fullname: true,
       email: true,
+      username: true,
     },
   });
 
@@ -119,7 +94,90 @@ router.get('/profile', requireAuth, async (req, res) => {
   });
 });
 
-// GET  /api/user/orders     # User orders
+// GET  /api/user/orders
+/**
+ * @swagger
+ * /api/user/orders:
+ *   get:
+ *     summary: Get user orders
+ *     tags: [User]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Orders fetched successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: integer
+ *                       orderId:
+ *                         type: string
+ *                       side:
+ *                         type: string
+ *                       timestamp:
+ *                         type: string
+ *                         format: date-time
+ *                       entryPrice:
+ *                         type: number
+ *                         format: float
+ *                       qty:
+ *                         type: number
+ *                       budget:
+ *                         type: number
+ *                         format: float
+ *                       status:
+ *                         type: string
+ *       401:
+ *         description: Unauthorized
+ */
+
+router.get('/orders', requireAuth, async (req, res) => {
+  const { user } = req;
+
+  if (!user) {
+    return res.status(401).json({
+      success: false,
+      message: 'Unauthorized',
+    });
+  }
+
+  try {
+    const orders = await prisma.order.findMany({
+      where: { userId: user.id },
+      select: {
+        id: true,
+        orderId: true,
+        side: true,
+        timestamp: true,
+        entryPrice: true,
+        qty: true,
+        budget: true,
+        status: true,
+      },
+    });
+
+    res.status(200).json({
+      success: true,
+      message: 'Orders fetched successfully',
+      data: orders,
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch orders' });
+  }
+});
+
 // POST /api/user/tokens     # Add token
 
 export default router;
