@@ -9,7 +9,7 @@ const router = Router();
  * @swagger
  * /api/admin/users:
  *   get:
- *     summary: Get admin users
+ *     summary: Get all users (admin user page)
  *     tags: [Admin]
  *     security:
  *       - bearerAuth: []
@@ -33,6 +33,8 @@ const router = Router();
  *                       items:
  *                         type: object
  *                         properties:
+ *                           id:
+ *                             type: integer
  *                           fullname:
  *                             type: string
  *                           username:
@@ -53,9 +55,14 @@ const router = Router();
  *                             type: number
  *                           profit:
  *                             type: number
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Failed to fetch users
  */
 router.get('/users', requireAuth, async (req, res) => {
   const { user } = req;
+
   if (!user) {
     return res.status(401).json({ success: false, message: 'Unauthorized' });
   }
@@ -63,6 +70,7 @@ router.get('/users', requireAuth, async (req, res) => {
   try {
     const users = await prisma.user.findMany({
       select: {
+        id: true,
         fullname: true,
         username: true,
         email: true,
@@ -75,20 +83,64 @@ router.get('/users', requireAuth, async (req, res) => {
         profit: true,
       },
     });
-    res.status(200).json({
+
+    return res.status(200).json({
       success: true,
       message: 'Users fetched successfully',
       data: { users },
     });
   } catch (error) {
-    res.status(500).json({ success: false, message: 'Failed to fetch users' });
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to fetch users',
+    });
+  }
+});
+
+/**UNFINISHED**/
+// GET /api/admin/users/:id # Get specific user
+router.get('/users/:id', requireAuth, async (req, res) => {
+  const { user } = req;
+
+  if (!user) {
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
   }
 
-  res.status(200).json({
-    success: true,
-    message: 'Users fetched successfully',
-    data: { users: [] },
+  const { id } = req.params;
+
+  if (!id) {
+    return res
+      .status(400)
+      .json({ success: false, message: 'User ID not found' });
+  }
+
+  const user_specific = await prisma.user.findUnique({
+    where: { id: parseInt(id) },
+    select: {
+      fullname: true,
+      username: true,
+      email: true,
+      isVerified: true,
+      isActive: true,
+      avatar: true,
+      tradeBalance: true,
+      adminCommissionPercent: true,
+      referralCommissionPercent: true,
+      profit: true,
+    },
   });
+
+  if (!user_specific) {
+    return res.status(404).json({ success: false, message: 'User not found' });
+  }
+
+  res
+    .status(200)
+    .json({
+      success: true,
+      message: 'User fetched successfully',
+      data: { user_specific },
+    });
 });
 
 // GET  /api/admin/landing   # Landing page data
@@ -98,7 +150,7 @@ router.get('/users', requireAuth, async (req, res) => {
  * @swagger
  * /api/admin/orders:
  *   get:
- *     summary: Get admin orders
+ *     summary: Get all orders (admin history view)
  *     tags: [Admin]
  *     security:
  *       - bearerAuth: []
@@ -122,67 +174,89 @@ router.get('/users', requireAuth, async (req, res) => {
  *                       items:
  *                         type: object
  *                         properties:
+ *                           id:
+ *                             type: integer
  *                           orderId:
  *                             type: string
- *                           buyDate:
+ *                           status:
  *                             type: string
- *                           sellDate:
+ *                             enum: [ACTIVE, EXPIRED, FINISHED]
+ *                           side:
  *                             type: string
+ *                             enum: [BUY, SELL]
  *                           token:
  *                             type: object
  *                             properties:
  *                               name:
  *                                 type: string
- *                           side:
- *                             type: string
- *                           budget:
+ *                           user:
+ *                             type: object
+ *                             properties:
+ *                               id:
+ *                                 type: integer
+ *                               email:
+ *                                 type: string
+ *                           entryPrice:
  *                             type: number
  *                           qty:
  *                             type: number
- *                           strategyId:
+ *                           budget:
  *                             type: number
  *                           netProfit:
  *                             type: number
- *                           entryPrice:
- *                             type: number
+ *                           buyDate:
+ *                             type: string
+ *                             format: date-time
+ *                           sellDate:
+ *                             type: string
+ *                             nullable: true
+ *                             format: date-time
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Failed to fetch orders
  */
 router.get('/orders', requireAuth, async (req, res) => {
   const { user } = req;
-
   if (!user) {
     return res.status(401).json({ success: false, message: 'Unauthorized' });
   }
 
   try {
     const orders = await prisma.order.findMany({
+      // Filters?
+      orderBy: { buyDate: 'desc' },
       select: {
+        id: true,
         orderId: true,
+        status: true,
+        side: true,
+        entryPrice: true,
+        qty: true,
+        budget: true,
+        netProfit: true,
         buyDate: true,
         sellDate: true,
-        token: {
-          select: {
-            name: true,
-          },
-        },
-        side: true,
-        budget: true,
-        qty: true,
-        strategyId: true,
-        netProfit: true,
-        entryPrice: true,
+        token: { select: { name: true } },
+        user: { select: { id: true, email: true } },
       },
     });
-    res.status(200).json({
+
+    return res.status(200).json({
       success: true,
       message: 'Orders fetched successfully',
       data: { orders },
     });
   } catch (error) {
-    res.status(500).json({ success: false, message: 'Failed to fetch orders' });
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to fetch orders',
+    });
   }
 });
 
 // GET /api/admin/orders/:id # Get specific order
+
 // GET  /api/admin/bills     # List bills
 
 export default router;
