@@ -1,5 +1,4 @@
 import { useState, useRef, useEffect } from 'react'
-import { LandingPage } from './components/landing/LandingPage'
 import { LoginPage } from './components/landing/LoginPage'
 import { Dashboard } from './components/dashboard/Dashboard'
 import { Sidebar } from './components/dashboard/Sidebar'
@@ -8,23 +7,22 @@ import { Backtesting } from './components/dashboard/Backtesting'
 import { Portfolio } from './components/dashboard/Portfolio'
 import { History } from './components/dashboard/History'
 import { Settings } from './components/dashboard/Settings'
+import { Admin } from './components/dashboard/Admin'
 import { Button } from './components/ui/button'
 import {
   ChevronDown, User, Settings as SettingsIcon, LogOut, Bell
 } from 'lucide-react'
 
-type AppState = 'landing' | 'login' | 'dashboard'
+type AppState = 'login' | 'dashboard'
 
 function App() {
-  const [currentPage, setCurrentPage] = useState<AppState>('landing')
+  const [currentPage, setCurrentPage] = useState<AppState>('login')
   const [activeTab, setActiveTab] = useState('dashboard')
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false)
   const userMenuRef = useRef<HTMLDivElement>(null)
 
-  const handleNavigateToLogin = () => { setCurrentPage('login') }
-  const handleNavigateToLanding = () => { setCurrentPage('landing') }
   const handleLogin = () => { setCurrentPage('dashboard') }
-  const handleSignOut = () => { setCurrentPage('landing'); setActiveTab('dashboard') }
+  const handleSignOut = () => { setCurrentPage('login'); setActiveTab('dashboard') }
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -39,16 +37,10 @@ function App() {
     }
   }, [])
 
-  // Landing Page
-  if (currentPage === 'landing') {
-    return <LandingPage onNavigateToLogin={handleNavigateToLogin} onLogin={handleLogin} />
-  }
-
   // Login Page
   if (currentPage === 'login') {
     return (
       <LoginPage
-        onNavigateToLanding={handleNavigateToLanding}
         onLogin={handleLogin}
       />
     )
@@ -61,6 +53,7 @@ function App() {
       case 'backtesting': return <Backtesting />
       case 'portfolio': return <Portfolio />
       case 'history': return <History />
+      case 'admin': return <Admin />
       case 'settings': return <Settings />
       default: return <Dashboard />
     }
@@ -97,12 +90,12 @@ function App() {
                   onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
                   className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-800 transition-colors"
                 >
-                  <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center">
+                  <div className="w-8 h-8 bg-purple-600 rounded-full flex items-center justify-center">
                     <User className="w-4 h-4 text-white" />
                   </div>
                   <div className="text-left">
-                    <div className="text-sm font-medium text-white">John Investor</div>
-                    <div className="text-xs text-gray-400">INVESTOR</div>
+                    <div className="text-sm font-medium text-white">Admin User</div>
+                    <div className="text-xs text-gray-400">ADMIN</div>
                   </div>
                   <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${isUserMenuOpen ? 'rotate-180' : ''}`} />
                 </button>
@@ -112,12 +105,12 @@ function App() {
                   <div className="absolute right-0 top-full mt-2 w-64 bg-gray-800 border border-gray-700 rounded-lg shadow-lg z-50">
                     <div className="p-4 border-b border-gray-700">
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center">
+                        <div className="w-10 h-10 bg-purple-600 rounded-full flex items-center justify-center">
                           <User className="w-5 h-5 text-white" />
                         </div>
                         <div>
-                          <div className="font-medium text-white">John Investor</div>
-                          <div className="text-sm text-gray-400">investor@example.com</div>
+                          <div className="font-medium text-white">Admin User</div>
+                          <div className="text-sm text-gray-400">admin@example.com</div>
                         </div>
                       </div>
                     </div>

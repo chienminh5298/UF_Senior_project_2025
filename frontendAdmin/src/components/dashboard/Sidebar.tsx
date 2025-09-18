@@ -1,14 +1,13 @@
-import React from 'react'
 import { 
   BarChart3, 
   TrendingUp, 
   Target, 
   History, 
   Briefcase, 
-  Settings, 
-  Bot
+  Settings,
+  Shield
 } from 'lucide-react'
-import { cn } from '../lib/utils'
+import { cn } from '../../lib/utils'
 
 interface SidebarProps {
   activeTab: string
@@ -17,11 +16,11 @@ interface SidebarProps {
 
 const menuItems = [
   { id: 'dashboard', label: 'Dashboard', icon: BarChart3 },
-  { id: 'trading', label: 'Trading', icon: TrendingUp },
-  { id: 'strategies', label: 'Strategies', icon: Bot, badge: '3' },
+  { id: 'trading', label: 'Trading', icon: TrendingUp, badge: '3' },
   { id: 'backtesting', label: 'Backtesting', icon: Target },
   { id: 'portfolio', label: 'Portfolio', icon: Briefcase },
   { id: 'history', label: 'History', icon: History },
+  { id: 'admin', label: 'Admin', icon: Shield },
   { id: 'settings', label: 'Settings', icon: Settings },
 ]
 

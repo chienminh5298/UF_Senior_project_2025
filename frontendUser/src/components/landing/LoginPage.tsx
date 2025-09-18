@@ -1,9 +1,8 @@
 import React, { useState } from 'react'
-import { Button } from './ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
-import { Badge } from './ui/badge'
-import { 
-  MessageCircle,
+import { Button } from '../ui/button'
+import { Card, CardContent, CardHeader, CardTitle } from '../ui/card'
+import { Badge } from '../ui/badge'
+import {
   ArrowLeft,
   Mail,
   Lock,
@@ -58,7 +57,7 @@ export function LoginPage({ onNavigateToLanding, onLogin }: LoginPageProps) {
           <div>
             <div className="flex items-center gap-3 mb-6">
               <div className="w-12 h-12 rounded-lg bg-blue-500 flex items-center justify-center">
-                <MessageCircle className="w-7 h-7 text-white" />
+                <TrendingUp className="w-7 h-7 text-white" />
               </div>
               <span className="text-3xl font-bold text-white">Buy-nance Bandits</span>
             </div>
@@ -130,7 +129,7 @@ export function LoginPage({ onNavigateToLanding, onLogin }: LoginPageProps) {
               <div className="text-center lg:hidden">
                 <div className="flex items-center justify-center gap-2 mb-4">
                   <div className="w-8 h-8 rounded-lg bg-blue-500 flex items-center justify-center">
-                    <MessageCircle className="w-5 h-5 text-white" />
+                    <TrendingUp className="w-5 h-5 text-white" />
                   </div>
                   <span className="text-xl font-bold text-white">Buy-nance Bandits</span>
                 </div>
@@ -348,7 +347,7 @@ export function LoginPage({ onNavigateToLanding, onLogin }: LoginPageProps) {
 
           <div className="mt-6 text-center text-xs text-gray-400">
             <p>Protected by enterprise-grade security</p>
-            <p>© 2024 Buy-nance Bandits. All rights reserved.</p>
+            <p>© 2025 Buy-nance Bandits. All rights reserved.</p>
           </div>
         </div>
       </div>
