@@ -1,7 +1,7 @@
 {
-  "name": "buy-nance-bandits-user-frontend",
+  "name": "buy-nance-bandits-admin-frontend",
   "version": "1.0.0",
-  "description": "Buy-nance Bandits User Dashboard - Trading interface for crypto bot management",
+  "description": "Buy-nance Bandits Admin Dashboard - Administrative interface for system management",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -43,6 +43,7 @@
     "crypto",
     "trading",
     "bot",
+    "admin",
     "react",
     "typescript",
     "dashboard"
@@ -50,3 +51,4 @@
   "author": "Buy-nance Bandits Team",
   "license": "MIT"
 }
+
