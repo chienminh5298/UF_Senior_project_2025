@@ -5,6 +5,7 @@ services:
             MYSQL_ROOT_PASSWORD: moneymachine
             MYSQL_DATABASE: moneymachine
         volumes:
+            - ./backupDB:/docker-entrypoint-initdb.d
             - db-volume:/var/lib/mysql
         healthcheck:
             test: ['CMD', 'mysqladmin', 'ping', '-h', 'localhost']
@@ -15,4 +16,5 @@ services:
         container_name: database
 
 volumes:
-    db-volume: 
+    db-volume:
+    log-volume:
