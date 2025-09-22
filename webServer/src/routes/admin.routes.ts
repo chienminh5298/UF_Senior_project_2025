@@ -75,12 +75,8 @@ router.get('/users', requireAuth, async (req, res) => {
         fullname: true,
         username: true,
         email: true,
-        isVerified: true,
         isActive: true,
-        avatar: true,
         tradeBalance: true,
-        adminCommissionPercent: true,
-        referralCommissionPercent: true,
         profit: true,
       },
     });
@@ -98,16 +94,44 @@ router.get('/users', requireAuth, async (req, res) => {
   }
 });
 
-/**UNFINISHED**/
-// GET /api/admin/users/:id # Get specific user
+/**
+ * @swagger
+ * /api/admin/users/{id}:
+ *   get:
+ *     summary: Get specific user (admin user page)
+ *     tags: [Admin]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         description: User ID
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: User fetched successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success: { type: boolean }
+ *                 message: { type: string }
+ *                 data: { type: object }
+ *       401: { description: Unauthorized }
+ *       400: { description: User ID not found }
+ *       404: { description: User not found }
+ *       500: { description: Failed to fetch user }
+ */
 router.get('/users/:id', requireAuth, async (req, res) => {
   const { user } = req;
+  const { id } = req.params;
 
   if (!user) {
     return res.status(401).json({ success: false, message: 'Unauthorized' });
   }
-
-  const { id } = req.params;
 
   if (!id) {
     return res
@@ -121,13 +145,11 @@ router.get('/users/:id', requireAuth, async (req, res) => {
       fullname: true,
       username: true,
       email: true,
-      isVerified: true,
       isActive: true,
       avatar: true,
       tradeBalance: true,
-      adminCommissionPercent: true,
-      referralCommissionPercent: true,
       profit: true,
+      createdAt: true,
     },
   });
 
@@ -142,6 +164,56 @@ router.get('/users/:id', requireAuth, async (req, res) => {
   });
 });
 
+// PATCH  /api/admin/users/{id}
+/**
+ * @swagger
+ * /api/admin/users/{id}:
+ *   patch:
+ *     summary: Suspend user (admin user page)
+ *     tags: [Admin]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         description: User ID
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: User suspended successfully
+ *       401:
+ *         description: Unauthorized
+ *       400:
+ *         description: User ID not found
+ *       500:
+ *         description: Failed to suspend user
+ */
+router.patch('/users/:id', requireAuth, async (req, res) => {
+  const { user } = req;
+  const { id } = req.params;
+
+  if (!user) {
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
+  }
+
+  if (!id) {
+    return res
+      .status(400)
+      .json({ success: false, message: 'User ID not found' });
+  }
+
+  const user_specific = await prisma.user.update({
+    where: { id: parseInt(id) },
+    data: { isActive: false },
+  });
+
+  return res.status(200).json({
+    success: user_specific ? true : false,
+    message: 'User suspended successfully',
+  });
+});
 // GET  /api/admin/landing   # Landing page data
 
 // GET  /api/admin/orders    # List orders (History)
@@ -272,6 +344,8 @@ router.get('/orders', requireAuth, async (req, res) => {
  *                     cancelledTrades: { type: integer }
  *                     totalProfit: { type: number }
  *                     avgProfit: { type: number }
+ *       401: { description: Unauthorized }
+ *       500: { description: Failed to fetch stats }
  */
 router.get('/orders/stats', requireAuth, async (req, res) => {
   const { user } = req;
@@ -327,8 +401,6 @@ router.get('/orders/stats', requireAuth, async (req, res) => {
     });
   }
 });
-
-// GET /api/admin/orders/:id # Get specific order
 
 // GET  /api/admin/bills     # List bills
 
