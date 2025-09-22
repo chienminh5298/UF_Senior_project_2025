@@ -135,13 +135,11 @@ router.get('/users/:id', requireAuth, async (req, res) => {
     return res.status(404).json({ success: false, message: 'User not found' });
   }
 
-  res
-    .status(200)
-    .json({
-      success: true,
-      message: 'User fetched successfully',
-      data: { user_specific },
-    });
+  res.status(200).json({
+    success: true,
+    message: 'User fetched successfully',
+    data: { user_specific },
+  });
 });
 
 // GET  /api/admin/landing   # Landing page data
@@ -151,7 +149,7 @@ router.get('/users/:id', requireAuth, async (req, res) => {
  * @swagger
  * /api/admin/orders:
  *   get:
- *     summary: Get all orders (admin history view)
+ *     summary: Get all orders (admin history page)
  *     tags: [Admin]
  *     security:
  *       - bearerAuth: []
@@ -238,7 +236,6 @@ router.get('/orders', requireAuth, async (req, res) => {
       message: 'Orders fetched successfully',
       data: { orders },
     });
-
   } catch (error) {
     return res.status(500).json({
       success: false,
@@ -246,15 +243,75 @@ router.get('/orders', requireAuth, async (req, res) => {
     });
   }
 });
+
 // GET /api/admin/orders/stats
+/**
+ * @swagger
+ * /api/admin/orders/stats:
+ *   get:
+ *     summary: Get stats of orders (Admin history page)
+ *     tags: [Admin]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Stats fetched successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success: { type: boolean }
+ *                 message: { type: string }
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     totalTrades: { type: integer }
+ *                     completedTrades: { type: integer }
+ *                     pendingTrades: { type: integer }
+ *                     cancelledTrades: { type: integer }
+ *                     sums: { type: object }
+ */
 router.get('/orders/stats', requireAuth, async (req, res) => {
   const { user } = req;
+
   if (!user) {
     return res.status(401).json({ success: false, message: 'Unauthorized' });
   }
 
+  try {
+    const [totalTrades, completedTrades, pendingTrades, cancelledTrades, sums] =
+      await Promise.all([
+        prisma.order.count(),
+        prisma.order.count({ where: { status: Status.FINISHED } }),
+        prisma.order.count({ where: { status: Status.ACTIVE } }),
+        prisma.order.count({ where: { status: Status.EXPIRED } }),
+        prisma.order.aggregate({
+          _sum: {
+            netProfit: true,
+          },
+        }),
+      ]);
 
+    return res.status(200).json({
+      success: true,
+      message: 'Stats fetched successfully',
+      data: {
+        totalTrades,
+        completedTrades,
+        pendingTrades,
+        cancelledTrades,
+        sums,
+      },
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to fetch stats',
+    });
+  }
 });
+
 // GET /api/admin/orders/:id # Get specific order
 
 // GET  /api/admin/bills     # List bills
