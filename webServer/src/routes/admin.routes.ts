@@ -270,7 +270,8 @@ router.get('/orders', requireAuth, async (req, res) => {
  *                     completedTrades: { type: integer }
  *                     pendingTrades: { type: integer }
  *                     cancelledTrades: { type: integer }
- *                     sums: { type: object }
+ *                     totalProfit: { type: number }
+ *                     avgProfit: { type: number }
  */
 router.get('/orders/stats', requireAuth, async (req, res) => {
   const { user } = req;
@@ -280,18 +281,32 @@ router.get('/orders/stats', requireAuth, async (req, res) => {
   }
 
   try {
-    const [totalTrades, completedTrades, pendingTrades, cancelledTrades, sums] =
-      await Promise.all([
-        prisma.order.count(),
-        prisma.order.count({ where: { status: Status.FINISHED } }),
-        prisma.order.count({ where: { status: Status.ACTIVE } }),
-        prisma.order.count({ where: { status: Status.EXPIRED } }),
-        prisma.order.aggregate({
-          _sum: {
-            netProfit: true,
-          },
-        }),
-      ]);
+    const [
+      totalTrades,
+      completedTrades,
+      pendingTrades,
+      cancelledTrades,
+      sums,
+      averageProfit,
+    ] = await Promise.all([
+      prisma.order.count(),
+      prisma.order.count({ where: { status: Status.FINISHED } }),
+      prisma.order.count({ where: { status: Status.ACTIVE } }),
+      prisma.order.count({ where: { status: Status.EXPIRED } }),
+      prisma.order.aggregate({
+        _sum: {
+          netProfit: true,
+        },
+      }),
+      prisma.order.aggregate({
+        _avg: {
+          netProfit: true,
+        },
+      }),
+    ]);
+
+    const totalProfit = sums._sum.netProfit;
+    const avgProfit = averageProfit._avg.netProfit;
 
     return res.status(200).json({
       success: true,
@@ -301,7 +316,8 @@ router.get('/orders/stats', requireAuth, async (req, res) => {
         completedTrades,
         pendingTrades,
         cancelledTrades,
-        sums,
+        totalProfit,
+        avgProfit,
       },
     });
   } catch (error) {
