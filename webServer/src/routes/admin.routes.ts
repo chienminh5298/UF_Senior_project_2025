@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import prisma from '../models/prismaClient';
 import { requireAuth } from '../middleware/auth';
+import { Status } from '@prisma/client';
 
 const router = Router();
 
@@ -154,6 +155,15 @@ router.get('/users/:id', requireAuth, async (req, res) => {
  *     tags: [Admin]
  *     security:
  *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: status
+ *         description: Filter by order status
+ *         required: false
+ *         schema:
+ *           type: string
+ *           enum: [ACTIVE, FINISHED, EXPIRED]
+ *           example: FINISHED
  *     responses:
  *       200:
  *         description: Orders fetched successfully
@@ -162,10 +172,8 @@ router.get('/users/:id', requireAuth, async (req, res) => {
  *             schema:
  *               type: object
  *               properties:
- *                 success:
- *                   type: boolean
- *                 message:
- *                   type: string
+ *                 success: { type: boolean }
+ *                 message: { type: string }
  *                 data:
  *                   type: object
  *                   properties:
@@ -174,57 +182,40 @@ router.get('/users/:id', requireAuth, async (req, res) => {
  *                       items:
  *                         type: object
  *                         properties:
- *                           id:
- *                             type: integer
- *                           orderId:
- *                             type: string
- *                           status:
- *                             type: string
- *                             enum: [ACTIVE, EXPIRED, FINISHED]
- *                           side:
- *                             type: string
- *                             enum: [BUY, SELL]
+ *                           id:         { type: integer }
+ *                           orderId:    { type: string }
+ *                           status:     { type: string, enum: [ACTIVE, FINISHED, EXPIRED] }
+ *                           side:       { type: string, enum: [BUY, SELL] }
  *                           token:
  *                             type: object
  *                             properties:
- *                               name:
- *                                 type: string
+ *                               name: { type: string }
  *                           user:
  *                             type: object
  *                             properties:
- *                               id:
- *                                 type: integer
- *                               email:
- *                                 type: string
- *                           entryPrice:
- *                             type: number
- *                           qty:
- *                             type: number
- *                           budget:
- *                             type: number
- *                           netProfit:
- *                             type: number
- *                           buyDate:
- *                             type: string
- *                             format: date-time
- *                           sellDate:
- *                             type: string
- *                             nullable: true
- *                             format: date-time
- *       401:
- *         description: Unauthorized
- *       500:
- *         description: Failed to fetch orders
+ *                               id:    { type: integer }
+ *                               email: { type: string }
+ *                           entryPrice: { type: number }
+ *                           fee:        { type: number }
+ *                           qty:        { type: number }
+ *                           budget:     { type: number }
+ *                           netProfit:  { type: number }
+ *                           buyDate:    { type: string, format: date-time }
+ *                           sellDate:   { type: string, format: date-time, nullable: true }
+ *       401: { description: Unauthorized }
+ *       500: { description: Failed to fetch orders }
  */
 router.get('/orders', requireAuth, async (req, res) => {
   const { user } = req;
+  const status = req.query.status as Status | undefined;
+
   if (!user) {
     return res.status(401).json({ success: false, message: 'Unauthorized' });
   }
 
   try {
     const orders = await prisma.order.findMany({
-      // Filters?
+      where: { status: status as Status },
       orderBy: { buyDate: 'desc' },
       select: {
         id: true,
@@ -232,11 +223,11 @@ router.get('/orders', requireAuth, async (req, res) => {
         status: true,
         side: true,
         entryPrice: true,
+        fee: true,
         qty: true,
         budget: true,
         netProfit: true,
         buyDate: true,
-        sellDate: true,
         token: { select: { name: true } },
         user: { select: { id: true, email: true } },
       },
@@ -247,6 +238,7 @@ router.get('/orders', requireAuth, async (req, res) => {
       message: 'Orders fetched successfully',
       data: { orders },
     });
+
   } catch (error) {
     return res.status(500).json({
       success: false,
@@ -254,7 +246,15 @@ router.get('/orders', requireAuth, async (req, res) => {
     });
   }
 });
+// GET /api/admin/orders/stats
+router.get('/orders/stats', requireAuth, async (req, res) => {
+  const { user } = req;
+  if (!user) {
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
+  }
 
+
+});
 // GET /api/admin/orders/:id # Get specific order
 
 // GET  /api/admin/bills     # List bills
