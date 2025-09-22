@@ -1,0 +1,235 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = "mysql://root:moneymachine@database:3306/moneymachine"
+}
+
+model User {
+  id                Int                @id @default(autoincrement())
+  fullname          String
+  username          String             @unique
+  email             String             @unique
+  password          String
+  adminCommissionPercent               Float              @default(0.3)
+  referralCommissionPercent               Float              @default(0)
+  adminInsurance         Float              @default(0)
+  referralInsurance         Float              @default(0)
+  insurancePercent  Float              @default(0)
+  profit            Float              @default(0)
+  isActive          Boolean            @default(false)
+  isVerified        Boolean            @default(false)
+  avatar            Int                @default(0)
+  bills             Bill[]
+  vouchers          Voucher[]
+  userTokens        UserToken[]
+  orders            Order[]
+  claims            Claim[]
+  apiKey            String              @unique
+  apiSecret            String              @unique
+  apiPassphrase            String?              @unique
+  referralUserId     Int?
+  referralCode      String              @unique
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @default(now())  @updatedAt
+  tradeBalance       Int                @default(0)
+  telegramChatId    String?
+}
+
+model Token {
+  id              Int         @id @default(autoincrement())
+  name            String      @unique
+  stable          String
+  minQty          Float       @default(0)
+  isActive        Boolean     @default(true)
+  orders      Order[]
+  targets         Target[]
+  userTokens      UserToken[]
+  tokenStrategies TokenStrategy[]
+  leverage    Int   @default(1)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @default(now())  @updatedAt
+}
+
+model Claim {
+  id                    Int                 @id @default(autoincrement())
+  bills                 Bill[]
+  status                ClaimStatus         @default(NEW)
+  amount                Float               @default(0)
+  userId                Int?
+  user                  User?               @relation(fields: [userId], references: [id])
+  hashId                String?             
+  network               Network
+  address               String             
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @default(now()) @updatedAt
+}
+
+model Bill {
+  id                    Int                 @id @default(autoincrement())
+  adminCommissionPercent       Float               @default(30)
+  referralCommissionPercent    Float               @default(0)
+  referralUserId        Int?
+  status                BillStatus
+  hashId                String?
+  userId                Int?
+  user                  User?               @relation(fields: [userId], references: [id])
+  orders                 Order[]
+  from                  DateTime 
+  to                    DateTime
+  note                  String?
+  netProfit             Float               @default(0)
+  claimId               Int?
+  claim                 Claim?              @relation(fields: [claimId], references: [id])
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @default(now()) @updatedAt
+}
+
+model Target {
+  id                    Int       @id @default(autoincrement())
+  targetPercent         Float     @default(0)
+  stoplossPercent       Float     @default(0)
+  order                 Order[]
+  tokenId               Int?
+  token                 Token?    @relation(fields: [tokenId], references: [id])
+  strategyId            Int?
+  strategy              Strategy? @relation(fields: [strategyId], references: [id], onDelete: Cascade)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @default(now())  @updatedAt
+}
+
+model Order {
+  id          Int      @id @default(autoincrement())
+  orderId     String   @unique
+  side        Side
+  timestamp   String
+  entryPrice  Float
+  qty         Float
+  budget      Float
+  status      Status  @default(ACTIVE)
+  netProfit      Float   @default(0)
+  markPrice   Float?
+  strategyId  Int
+  strategy    Strategy? @relation(fields: [strategyId], references: [id])
+  currentTargetId Int?
+  target      Target? @relation(fields: [currentTargetId], references: [id], onDelete: SetNull)
+  tokenId     Int
+  token       Token?   @relation(fields: [tokenId], references: [id])
+  fee  Float     @default(0)
+  stoplossOrderId   String?
+  leverage    Int   @default(1)
+  userId      Int  
+  user        User?    @relation(fields: [userId], references: [id])  
+  billId      Int?   
+  bill        Bill?    @relation(fields: [billId], references: [id])  
+  buyDate       DateTime   @default(now())
+  sellDate      DateTime?  
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @default(now())  @updatedAt
+}
+
+model Strategy {
+  id                      Int      @id @default(autoincrement())
+  description             String
+  contribution            Int      @default(0)
+  isActive                Boolean  @default(false)
+  isCloseBeforeNewCandle  Boolean  @default(false)
+  tokenStrategies         TokenStrategy[]
+  targets                 Target[]
+  order               Order[]
+  parentStrategy               Int?
+  direction               DirectionType @default(SAME)
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @default(now())  @updatedAt
+}
+
+model UserToken {
+  id            Int      @id @default(autoincrement())
+  userId        Int?
+  tokenId       Int?
+  user          User?    @relation(fields: [userId], references: [id])
+  token         Token?   @relation(fields: [tokenId], references: [id])
+  createdAt     DateTime @default(now())
+  updatedAt             DateTime @default(now())  @updatedAt
+}
+
+model TokenStrategy {
+  id         Int       @id @default(autoincrement())
+  tokenId    Int?
+  token      Token?    @relation(fields: [tokenId], references: [id])
+  strategyId Int?
+  strategy   Strategy? @relation(fields: [strategyId], references: [id])
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model Voucher{
+  id          Int       @id @default(autoincrement())
+  code        String    @unique
+  description String
+  type        String
+  value       Int
+  activeDate  DateTime?
+  effectDate  DateTime
+  expireDate  DateTime
+  status      VoucherStatus
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  userId      Int?
+  user        User?    @relation(fields: [userId], references: [id])
+}
+
+enum VoucherStatus {
+  inuse
+  expired
+  unused
+}
+
+enum Side {
+  SELL
+  BUY
+}
+
+enum DirectionType {
+  SAME
+  OPPOSITE
+}
+
+enum Status {
+  ACTIVE
+  EXPIRED
+  FINISHED
+}
+
+enum Network {
+  ERC20
+  SOLANA
+  BEP20
+}
+
+enum HeikinAshiType {
+  GREEN
+  RED
+  MIXED
+}
+
+enum ClaimStatus {
+  NEW
+  FINISHED
+}
+
+enum BillStatus {
+  NEW
+  FINISHED
+  REJECTED
+  PROCESSING
+  CLAIMED
+}
+
+
+

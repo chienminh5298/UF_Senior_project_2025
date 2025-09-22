@@ -12,9 +12,24 @@ services:
             timeout: 5s
             retries: 1
         ports:
-            - '3307:3306'
+            - '3306:3306'
         container_name: database
-
+    bottrade:
+        build:
+            context: ./botTrade
+            dockerfile: Dockerfile.dev
+        depends_on:
+            database:
+                condition: service_healthy
+        ports:
+            - '9999:9999'
+        env_file: ./botTrade/.env
+        volumes:
+            - ./botTrade:/app            # Mount local source for hot-reload
+            - /app/node_modules          # Prevent overwriting node_modules
+            - log-volume:/app/log
+            # - ~/.aws:/root/.aws:ro
+        container_name: bottrade
 volumes:
     db-volume:
     log-volume:
