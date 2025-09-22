@@ -15,7 +15,6 @@ import { logging } from "@src/utils/log";
 // import { loadDEK } from "@src/utils/aws";
 import { Token } from "@prisma/client";
 import { checkStrategies } from "@src/strategies";
-import { parse } from "path";
 
 const server = express();
 
@@ -62,54 +61,27 @@ const startServer = async () => {
     // Refresh pool
     brokerInstancePool.refreshPool();
 
-    await testCase();
-    // if (process.env.isProduction) {
-    //     // await loadDEK(); // Get data key from KMS to decrypt api
+    if (process.env.isProduction) {
+        // await loadDEK(); // Get data key from KMS to decrypt api
 
-    //     setInterval(async () => {
-    //         const now = new Date();
-    //         const hour = now.getHours();
-    //         const minute = now.getMinutes();
-    //         const second = now.getSeconds();
-    //         // logging("info", `hour:${hour} - minute: ${minute} - second: ${second}`);
-    //         if (hour === 0 && minute === 0 && second === 5) {
-    //             logging("info", `hour:${hour} - minute: ${minute} - second: ${second}`);
-    //             await checkExpireVouchers();
-    //             await checkGenerateBill();
-    //             await checkAccountNotPayBill();
-    //             await checkTokens();
-    //         }
-    //     }, 1000);
-    // }
+        setInterval(async () => {
+            const now = new Date();
+            const hour = now.getHours();
+            const minute = now.getMinutes();
+            const second = now.getSeconds();
+            // logging("info", `hour:${hour} - minute: ${minute} - second: ${second}`);
+            if (hour === 0 && minute === 0 && second === 5) {
+                logging("info", `hour:${hour} - minute: ${minute} - second: ${second}`);
+                await checkExpireVouchers();
+                await checkGenerateBill();
+                await checkAccountNotPayBill();
+                await checkTokens();
+            }
+        }, 1000);
+    }
 };
 
 startServer();
-
-const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
-
-const testCase = async () => {
-    const broker = brokerInstancePool.getBroker(1);
-    if (broker) {
-        // const r = await broker.API_newOrder({
-        //     symbol: "SOLUSDT",
-        //     side: "BUY",
-        //     qty: 0.05,
-        // });
-        // await sleep(5000);
-        // if (r.success) {
-        //     await broker.API_newStoploss({
-        //         symbol: "SOLUSDT",
-        //         side: "BUY",
-        //         qty: r.qty || 0,
-        //         stopPrice: roundStopPriceTo2Decimals(190),
-        //     });
-        // }
-        const r = await broker.getLastNDayCandle("SOL", 5);
-        console.log(r);
-    } else {
-        console.log("No broker");
-    }
-};
 
 const checkTokens = async () => {
     let tokens: Token[] = await prisma.token.findMany();
