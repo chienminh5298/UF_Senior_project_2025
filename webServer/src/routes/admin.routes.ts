@@ -404,4 +404,145 @@ router.get('/orders/stats', requireAuth, async (req, res) => {
 
 // GET  /api/admin/bills     # List bills
 
+/**
+ * @swagger
+ * /api/admin/strategies:
+ *   get:
+ *     summary: Get all strategies (Admin strategies page)
+ *     tags: [Admin]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Strategies fetched successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success: { type: boolean }
+ *                 message: { type: string }
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     strategies:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           id: { type: integer }
+ *                           isActive: { type: boolean }
+ *                           tokenStrategies:
+ *                             type: array
+ *                             items:
+ *                               type: object
+ *                               properties:
+ *                                 token:
+ *                                   type: object
+ *                                   properties:
+ *                                     name: { type: string }
+ *       401: { description: Unauthorized }
+ *       500: { description: Failed to fetch strategies }
+ */
+// Get /api/admin/strategies
+router.get('/strategies', requireAuth, async (req, res) => {
+  const { user } = req;
+
+  if (!user) {
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
+  }
+
+  const response = await prisma.strategy.findMany({
+    select: {
+      id: true,
+      isActive: true,
+
+      tokenStrategies: {
+        select: {
+          token: {
+            select: {
+              name: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  const targets = await prisma.target.findMany({
+    select: {
+      targetPercent: true,
+      stoplossPercent: true,
+    },
+  });
+
+  return res.status(200).json({
+    success: true,
+    message: 'Strategies fetched successfully',
+    data: { response, targets },
+  });
+});
+
+// GET /api/admin/strategies/{id}
+/**
+ * @swagger
+ * /api/admin/strategies/{id}:
+ *   get:
+ *     summary: Get a specific strategy (Admin strategies page)
+ *     tags: [Admin]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         description: Strategy ID
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Strategy fetched successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success: { type: boolean }
+ *                 message: { type: string }
+ *                 data: { type: object }
+ *                   properties:
+ *                     id: { type: integer }
+ *                     isActive: { type: boolean }
+ *       401: { description: Unauthorized }
+ *       500: { description: Failed to fetch strategy }
+ */
+router.get('/strategies/:id', requireAuth, async (req, res) => {
+  const { user } = req;
+  const { id } = req.params;
+
+  if (!user) {
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
+  }
+
+  try {
+    const response = await prisma.strategy.findUnique({
+      where: { id: parseInt(id) },
+      select: {
+        id: true,
+        isActive: true,
+      },
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: 'Strategy fetched successfully',
+      data: { response },
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to fetch strategy',
+    });
+  }
+});
 export default router;
