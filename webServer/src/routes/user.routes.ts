@@ -283,12 +283,10 @@ router.post('/settings', requireAuth, async (req, res) => {
     const { currentPassword, newPassword } = req.body;
 
     if (!currentPassword || !newPassword) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: 'Current password and new password are required',
-        });
+      return res.status(400).json({
+        success: false,
+        message: 'Current password and new password are required',
+      });
     }
 
     const user_password = await prisma.user.findUnique({
