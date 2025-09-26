@@ -117,13 +117,20 @@ router.get('/users', requireAuth, async (req, res) => {
  *             schema:
  *               type: object
  *               properties:
- *                 success: { type: boolean }
- *                 message: { type: string }
- *                 data: { type: object }
- *       401: { description: Unauthorized }
- *       400: { description: User ID not found }
- *       404: { description: User not found }
- *       500: { description: Failed to fetch user }
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 data:
+ *                   type: object
+ *       401:
+ *         description: Unauthorized
+ *       400:
+ *         description: User ID not found
+ *       404:
+ *         description: User not found
+ *       500:
+ *         description: Failed to fetch user
  */
 router.get('/users/:id', requireAuth, async (req, res) => {
   const { user } = req;
@@ -275,6 +282,7 @@ router.patch('/users/:id', requireAuth, async (req, res) => {
  *       401: { description: Unauthorized }
  *       500: { description: Failed to fetch orders }
  */
+
 router.get('/orders', requireAuth, async (req, res) => {
   const { user } = req;
   const status = req.query.status as Status | undefined;
@@ -403,5 +411,238 @@ router.get('/orders/stats', requireAuth, async (req, res) => {
 });
 
 // GET  /api/admin/bills     # List bills
+
+/**
+ * @swagger
+ * /api/admin/strategies:
+ *   get:
+ *     summary: Get all strategies (Admin strategies page)
+ *     tags: [Admin]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Strategies fetched successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success: { type: boolean }
+ *                 message: { type: string }
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     strategies:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           id: { type: integer }
+ *                           isActive: { type: boolean }
+ *                           tokenStrategies:
+ *                             type: array
+ *                             items:
+ *                               type: object
+ *                               properties:
+ *                                 token:
+ *                                   type: object
+ *                                   properties:
+ *                                     name: { type: string }
+ *       401: { description: Unauthorized }
+ *       500: { description: Failed to fetch strategies }
+ */
+// Get /api/admin/strategies
+router.get('/strategies', requireAuth, async (req, res) => {
+  const { user } = req;
+
+  if (!user) {
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
+  }
+
+  const response = await prisma.strategy.findMany({
+    select: {
+      id: true,
+      isActive: true,
+
+      tokenStrategies: {
+        select: {
+          token: {
+            select: {
+              name: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  const targets = await prisma.target.findMany({
+    select: {
+      targetPercent: true,
+      stoplossPercent: true,
+    },
+  });
+
+  return res.status(200).json({
+    success: true,
+    message: 'Strategies fetched successfully',
+    data: { response, targets },
+  });
+});
+
+// GET /api/admin/strategies/{id}
+/**
+ * @swagger
+ * /api/admin/strategies/{id}:
+ *   get:
+ *     summary: Get a specific strategy (Admin strategies page)
+ *     tags: [Admin]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         description: Strategy ID
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Strategy fetched successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: integer
+ *                     isActive:
+ *                       type: boolean
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Failed to fetch strategy
+ */
+
+router.get('/strategies/:id', requireAuth, async (req, res) => {
+  const { user } = req;
+  const { id } = req.params;
+
+  if (!user) {
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
+  }
+
+  try {
+    const response = await prisma.strategy.findUnique({
+      where: { id: parseInt(id) },
+      select: {
+        id: true,
+        isActive: true,
+      },
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: 'Strategy fetched successfully',
+      data: { response },
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to fetch strategy',
+    });
+  }
+});
+
+// POST /api/admin/Strategies
+/**
+ * @swagger
+ * /api/admin/strategies:
+ *   post:
+ *     summary: Create a new strategy (Admin strategies page)
+ *     tags: [Admin]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               description: { type: string }
+ *               contribution: { type: number }
+ *               isCloseBeforeNewCandle: { type: boolean }
+ *               tokenStrategies: { type: array }
+ *               targets: { type: array }
+ *               direction: { type: string }
+ *     responses:
+ *       200:
+ *         description: Strategy created successfully
+ *       401: { description: Unauthorized }
+ *       400: { description: Failed to create strategy }
+ */
+router.post('/strategies', requireAuth, async (req, res) => {
+  const { user } = req;
+
+  if (!user) {
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
+  }
+
+  try {
+    const {
+      description,
+      contribution,
+      isCloseBeforeNewCandle,
+      tokenStrategies,
+      targets,
+      direction,
+    } = req.body;
+
+    if (!description) {
+      return res
+        .status(400)
+        .json({ success: false, message: 'Description expected' });
+    }
+    if (!targets) {
+      return res
+        .status(400)
+        .json({ success: false, message: 'Targets expected' });
+    }
+
+    const isActive = false;
+
+    const strategy = await prisma.strategy.create({
+      data: {
+        description,
+        contribution,
+        isActive,
+        isCloseBeforeNewCandle,
+        tokenStrategies,
+        targets,
+        direction,
+      },
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: 'Strategy created successfully',
+      data: { strategy },
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to create strategy',
+    });
+  }
+});
 
 export default router;
