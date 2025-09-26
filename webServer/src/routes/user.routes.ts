@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import prisma from '../models/prismaClient';
 import { requireAuth } from '../middleware/auth';
-
+import bcrypt from 'bcrypt';
 const router = Router();
 
 /**
@@ -180,4 +180,146 @@ router.get('/orders', requireAuth, async (req, res) => {
 
 // POST /api/user/tokens     # Add token
 
+// GET /api/user/settings
+/**
+ * @swagger
+ * /api/user/settings:
+ *   get:
+ *     summary: Get user settings
+ *     tags: [User]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Settings fetched successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     fullname:
+ *                       type: string
+ *                     email:
+ *                       type: string
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Failed to fetch settings
+ */
+router.get('/settings', requireAuth, async (req, res) => {
+  const { user } = req;
+
+  if (!user) {
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
+  }
+  try {
+    const settings = await prisma.user.findUnique({
+      where: { id: user.id },
+      select: {
+        fullname: true,
+        email: true,
+      },
+    });
+
+    res.status(200).json({
+      success: true,
+      message: 'Settings fetched successfully',
+      data: settings,
+    });
+  } catch (error) {
+    return res
+      .status(500)
+      .json({ success: false, message: 'Failed to fetch settings' });
+  }
+});
+
 export default router;
+
+// POST /api/user/settings
+/**
+ * @swagger
+ * /api/user/settings:
+ *   post:
+ *     summary: Update user password
+ *     tags: [User]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               currentPassword:
+ *                 type: string
+ *               newPassword:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Settings updated successfully
+ *       400:
+ *         description: Current password and new password are required
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Failed to update settings
+ */
+router.post('/settings', requireAuth, async (req, res) => {
+  const { user } = req;
+
+  if (!user) {
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
+  }
+
+  try {
+    const { currentPassword, newPassword } = req.body;
+
+    if (!currentPassword || !newPassword) {
+      return res
+        .status(400)
+        .json({
+          success: false,
+          message: 'Current password and new password are required',
+        });
+    }
+
+    const user_password = await prisma.user.findUnique({
+      where: { id: user.id },
+      select: {
+        password: true,
+      },
+    });
+
+    if (
+      !(await bcrypt.compare(currentPassword, user_password?.password || ''))
+    ) {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid credentials',
+      });
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { password: hashedPassword },
+    });
+
+    return res
+      .status(200)
+      .json({ success: true, message: 'Password updated successfully' });
+  } catch (error) {
+    return res
+      .status(500)
+      .json({ success: false, message: 'Failed to update password' });
+  }
+});
