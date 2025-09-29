@@ -562,7 +562,7 @@ router.get('/strategies/:id', requireAuth, async (req, res) => {
   }
 });
 
-// POST /api/admin/Strategies
+// POST /api/admin/strategies
 /**
  * @swagger
  * /api/admin/strategies:
@@ -577,34 +577,74 @@ router.get('/strategies/:id', requireAuth, async (req, res) => {
  *         application/json:
  *           schema:
  *             type: object
+ *             required:
+ *               - description
+ *               - targets
  *             properties:
- *               description: { type: string }
- *               contribution: { type: number }
- *               isCloseBeforeNewCandle: { type: boolean }
- *               tokenStrategies: { type: array }
- *               targets: { type: array }
- *               direction: { type: string }
+ *               description:
+ *                 type: string
+ *                 example: "Breakout scalper"
+ *               contribution:
+ *                 type: number
+ *                 example: 150
+ *               isCloseBeforeNewCandle:
+ *                 type: boolean
+ *                 example: false
+ *               direction:
+ *                 type: string
+ *                 enum: [SAME, OPPOSITE]
+ *                 example: SAME
+ *               tokenStrategies:
+ *                 type: array
+ *                 description: Tokens linked to this strategy
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     tokenId:
+ *                       type: integer
+ *                       example: 5
+ *               targets:
+ *                 type: array
+ *                 description: Targets belonging to this strategy
+ *                 items:
+ *                   type: object
+ *                   required:
+ *                     - targetPercent
+ *                     - stoplossPercent
+ *                   properties:
+ *                     targetPercent:
+ *                       type: number
+ *                       example: 3.5
+ *                     stoplossPercent:
+ *                       type: number
+ *                       example: 1.2
+ *                     tokenId:
+ *                       type: integer
+ *                       description: Optional token reference for the target
+ *                       example: 7
  *     responses:
  *       200:
  *         description: Strategy created successfully
- *       401: { description: Unauthorized }
- *       400: { description: Failed to create strategy }
+ *       401:
+ *         description: Unauthorized
+ *       400:
+ *         description: Invalid input or missing fields
+ *       500:
+ *         description: Failed to create strategy
  */
+
 router.post('/strategies', requireAuth, async (req, res) => {
   const { user } = req;
-
-  if (!user) {
+  if (!user)
     return res.status(401).json({ success: false, message: 'Unauthorized' });
-  }
 
   try {
     const {
       description,
       contribution,
-      isCloseBeforeNewCandle,
-      tokenStrategies,
-      targets,
-      direction,
+      tokenStrategies = [],
+      targets = [],
+      direction = 'SAME',
     } = req.body;
 
     if (!description) {
@@ -612,23 +652,51 @@ router.post('/strategies', requireAuth, async (req, res) => {
         .status(400)
         .json({ success: false, message: 'Description expected' });
     }
-    if (!targets) {
+    if (!Array.isArray(targets) || targets.length === 0) {
       return res
         .status(400)
         .json({ success: false, message: 'Targets expected' });
     }
 
-    const isActive = false;
+    const allowedDirections = new Set(['SAME', 'OPPOSITE']);
+    if (!allowedDirections.has(direction)) {
+      return res
+        .status(400)
+        .json({ success: false, message: 'Invalid direction' });
+    }
+
+    const data = {
+      description,
+      contribution: Number(contribution) || 0,
+      isActive: false,
+      isCloseBeforeNewCandle: false,
+      direction,
+
+      targets: {
+        create: targets.map((t) => ({
+          targetPercent: Number(t.targetPercent) || 0,
+          stoplossPercent: Number(t.stoplossPercent) || 0,
+        })),
+      },
+
+      ...(tokenStrategies.length
+        ? {
+            tokenStrategies: {
+              create: tokenStrategies.map(
+                ({ tokenId }: { tokenId: number }) => ({
+                  token: { connect: { id: Number(tokenId) } },
+                })
+              ),
+            },
+          }
+        : {}),
+    };
 
     const strategy = await prisma.strategy.create({
-      data: {
-        description,
-        contribution,
-        isActive,
-        isCloseBeforeNewCandle,
-        tokenStrategies,
-        targets,
-        direction,
+      data,
+      include: {
+        targets: true,
+        tokenStrategies: { include: { token: true } },
       },
     });
 
@@ -638,10 +706,10 @@ router.post('/strategies', requireAuth, async (req, res) => {
       data: { strategy },
     });
   } catch (error) {
-    return res.status(500).json({
-      success: false,
-      message: 'Failed to create strategy',
-    });
+    console.error(error);
+    return res
+      .status(500)
+      .json({ success: false, message: 'Failed to create strategy' });
   }
 });
 
