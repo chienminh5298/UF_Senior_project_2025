@@ -635,7 +635,8 @@ router.get('/strategies/:id', requireAuth, async (req, res) => {
 
 router.post('/strategies', requireAuth, async (req, res) => {
   const { user } = req;
-  if (!user) return res.status(401).json({ success: false, message: 'Unauthorized' });
+  if (!user)
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
 
   try {
     const {
@@ -647,15 +648,21 @@ router.post('/strategies', requireAuth, async (req, res) => {
     } = req.body;
 
     if (!description) {
-      return res.status(400).json({ success: false, message: 'Description expected' });
+      return res
+        .status(400)
+        .json({ success: false, message: 'Description expected' });
     }
     if (!Array.isArray(targets) || targets.length === 0) {
-      return res.status(400).json({ success: false, message: 'Targets expected' });
+      return res
+        .status(400)
+        .json({ success: false, message: 'Targets expected' });
     }
 
     const allowedDirections = new Set(['SAME', 'OPPOSITE']);
     if (!allowedDirections.has(direction)) {
-      return res.status(400).json({ success: false, message: 'Invalid direction' });
+      return res
+        .status(400)
+        .json({ success: false, message: 'Invalid direction' });
     }
 
     const data = {
@@ -666,7 +673,7 @@ router.post('/strategies', requireAuth, async (req, res) => {
       direction,
 
       targets: {
-        create: targets.map(t => ({
+        create: targets.map((t) => ({
           targetPercent: Number(t.targetPercent) || 0,
           stoplossPercent: Number(t.stoplossPercent) || 0,
         })),
@@ -675,9 +682,11 @@ router.post('/strategies', requireAuth, async (req, res) => {
       ...(tokenStrategies.length
         ? {
             tokenStrategies: {
-              create: tokenStrategies.map(({ tokenId }: { tokenId: number }) => ({
-                token: { connect: { id: Number(tokenId) } }
-              })),
+              create: tokenStrategies.map(
+                ({ tokenId }: { tokenId: number }) => ({
+                  token: { connect: { id: Number(tokenId) } },
+                })
+              ),
             },
           }
         : {}),
@@ -698,9 +707,10 @@ router.post('/strategies', requireAuth, async (req, res) => {
     });
   } catch (error) {
     console.error(error);
-    return res.status(500).json({ success: false, message: 'Failed to create strategy' });
+    return res
+      .status(500)
+      .json({ success: false, message: 'Failed to create strategy' });
   }
 });
-
 
 export default router;

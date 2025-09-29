@@ -8,7 +8,8 @@ const router = Router();
 
 const genApiKey = () => `api_${crypto.randomBytes(16).toString('hex')}`;
 const genApiSecret = () => `sec_${crypto.randomBytes(24).toString('hex')}`;
-const genReferral = () => `REF-${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
+const genReferral = () =>
+  `REF-${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
 
 const requireEnv = (key: string) => {
   const val = process.env[key];
@@ -75,24 +76,34 @@ router.post('/login', async (req, res) => {
     const { email, password } = req.body ?? {};
 
     if (!email || !password) {
-      return res.status(400).json({ success: false, message: 'Email and password are required' });
+      return res
+        .status(400)
+        .json({ success: false, message: 'Email and password are required' });
     }
 
     const normalizedEmail = String(email).trim().toLowerCase();
 
-    const user = await prisma.user.findUnique({ where: { email: normalizedEmail } });
+    const user = await prisma.user.findUnique({
+      where: { email: normalizedEmail },
+    });
 
     if (!user) {
-      return res.status(401).json({ success: false, message: 'Invalid credentials' });
+      return res
+        .status(401)
+        .json({ success: false, message: 'Invalid credentials' });
     }
 
     if (!user.isActive) {
-      return res.status(401).json({ success: false, message: 'Account is deactivated' });
+      return res
+        .status(401)
+        .json({ success: false, message: 'Account is deactivated' });
     }
 
     const ok = await bcrypt.compare(String(password), user.password);
     if (!ok) {
-      return res.status(401).json({ success: false, message: 'Invalid credentials' });
+      return res
+        .status(401)
+        .json({ success: false, message: 'Invalid credentials' });
     }
 
     const token = jwt.sign(
@@ -114,8 +125,9 @@ router.post('/login', async (req, res) => {
       },
     });
   } catch (error) {
-
-    return res.status(500).json({ success: false, message: 'Internal server error' });
+    return res
+      .status(500)
+      .json({ success: false, message: 'Internal server error' });
   }
 });
 
@@ -165,7 +177,8 @@ router.post('/login', async (req, res) => {
  */
 router.post('/signup', async (req, res) => {
   try {
-    let { fullname, email, username, password } = req.body ?? {};
+    let { fullname, username } = req.body ?? {};
+    const { email, password } = req.body ?? {};
 
     if (!fullname || !email || !username || !password) {
       return res.status(400).json({
@@ -178,9 +191,13 @@ router.post('/signup', async (req, res) => {
     username = String(username).trim();
     const normalizedEmail = String(email).trim().toLowerCase();
 
-    const existingUser = await prisma.user.findUnique({ where: { email: normalizedEmail } });
+    const existingUser = await prisma.user.findUnique({
+      where: { email: normalizedEmail },
+    });
     if (existingUser) {
-      return res.status(400).json({ success: false, message: 'User already exists' });
+      return res
+        .status(400)
+        .json({ success: false, message: 'User already exists' });
     }
 
     const hashed = await bcrypt.hash(String(password), 12);
@@ -215,10 +232,16 @@ router.post('/signup', async (req, res) => {
     return res.json({ success: true, message: 'Signup successful', user });
   } catch (err: any) {
     if (err?.code === 'P2002') {
-      const target = Array.isArray(err.meta?.target) ? err.meta.target.join(', ') : 'unique field';
-      return res.status(409).json({ success: false, message: `Duplicate ${target}` });
+      const target = Array.isArray(err.meta?.target)
+        ? err.meta.target.join(', ')
+        : 'unique field';
+      return res
+        .status(409)
+        .json({ success: false, message: `Duplicate ${target}` });
     }
-    return res.status(500).json({ success: false, message: 'Internal server error' });
+    return res
+      .status(500)
+      .json({ success: false, message: 'Internal server error' });
   }
 });
 
