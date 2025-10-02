@@ -42,17 +42,9 @@ const router = Router();
  *                             type: string
  *                           email:
  *                             type: string
- *                           isVerified:
- *                             type: boolean
  *                           isActive:
  *                             type: boolean
- *                           avatar:
- *                             type: number
  *                           tradeBalance:
- *                             type: number
- *                           adminCommissionPercent:
- *                             type: number
- *                           referralCommissionPercent:
  *                             type: number
  *                           profit:
  *                             type: number
@@ -145,8 +137,8 @@ router.get('/users/:id', requireAuth, async (req, res) => {
       .status(400)
       .json({ success: false, message: 'User ID not found' });
   }
-
-  const user_specific = await prisma.user.findUnique({
+  try{  
+    const user_specific = await prisma.user.findUnique({
     where: { id: parseInt(id) },
     select: {
       fullname: true,
@@ -167,8 +159,12 @@ router.get('/users/:id', requireAuth, async (req, res) => {
   res.status(200).json({
     success: true,
     message: 'User fetched successfully',
-    data: { user_specific },
-  });
+      data: { user_specific },
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: 'Failed to fetch user' });
+  }
+
 });
 
 // PATCH  /api/admin/users/{id}
@@ -211,15 +207,20 @@ router.patch('/users/:id', requireAuth, async (req, res) => {
       .json({ success: false, message: 'User ID not found' });
   }
 
-  const user_specific = await prisma.user.update({
+  try {
+    const user_specific = await prisma.user.update({
     where: { id: parseInt(id) },
     data: { isActive: false },
-  });
+    });
 
-  return res.status(200).json({
-    success: user_specific ? true : false,
-    message: 'User suspended successfully',
-  });
+    return res.status(200).json({
+      success: user_specific ? true : false,
+      message: 'User suspended successfully',
+    });
+
+  } catch (error) {
+    return res.status(500).json({ success: false, message: 'Failed to suspend user' });
+  }
 });
 // GET  /api/admin/landing   # Landing page data
 
@@ -363,14 +364,8 @@ router.get('/orders/stats', requireAuth, async (req, res) => {
   }
 
   try {
-    const [
-      totalTrades,
-      completedTrades,
-      pendingTrades,
-      cancelledTrades,
-      sums,
-      averageProfit,
-    ] = await Promise.all([
+    const [totalTrades, completedTrades, pendingTrades, cancelledTrades, sums, averageProfit,] = 
+    await Promise.all([
       prisma.order.count(),
       prisma.order.count({ where: { status: Status.FINISHED } }),
       prisma.order.count({ where: { status: Status.ACTIVE } }),
@@ -449,46 +444,54 @@ router.get('/orders/stats', requireAuth, async (req, res) => {
  *                                   type: object
  *                                   properties:
  *                                     name: { type: string }
+ *                           targets:
+ *                             type: array
+ *                             items:
+ *                               type: object
+ *                               properties:
+ *                                 targetPercent: { type: number }
+ *                                 stoplossPercent: { type: number }
  *       401: { description: Unauthorized }
  *       500: { description: Failed to fetch strategies }
  */
-// Get /api/admin/strategies
+// GET /api/admin/strategies
 router.get('/strategies', requireAuth, async (req, res) => {
   const { user } = req;
 
   if (!user) {
     return res.status(401).json({ success: false, message: 'Unauthorized' });
   }
-
-  const response = await prisma.strategy.findMany({
-    select: {
-      id: true,
-      isActive: true,
-
-      tokenStrategies: {
-        select: {
-          token: {
-            select: {
-              name: true,
+  try {
+    const response = await prisma.strategy.findMany({
+      select: {
+        id: true,
+        isActive: true,
+        tokenStrategies: {
+          select: {
+            token: {
+              select: {
+                name: true,
+              },
             },
           },
         },
+        targets: {
+          select: {
+            targetPercent: true,
+            stoplossPercent: true,
+          },
+        }
       },
-    },
-  });
+    });
 
-  const targets = await prisma.target.findMany({
-    select: {
-      targetPercent: true,
-      stoplossPercent: true,
-    },
-  });
-
-  return res.status(200).json({
-    success: true,
-    message: 'Strategies fetched successfully',
-    data: { response, targets },
-  });
+    return res.status(200).json({
+      success: true,
+      message: 'Strategies fetched successfully',
+      data: { response},
+      });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: 'Failed to fetch strategies' });
+  }
 });
 
 // GET /api/admin/strategies/{id}
@@ -528,6 +531,8 @@ router.get('/strategies', requireAuth, async (req, res) => {
  *                       type: boolean
  *       401:
  *         description: Unauthorized
+ *       404:
+ *         description: Strategy not found
  *       500:
  *         description: Failed to fetch strategy
  */
