@@ -1,7 +1,7 @@
 import { closeOrderManually } from "@src/handleOrders/handleOrder";
 import { excutedStoploss } from "@src/handleOrders/handleStoploss";
 import { BrokerInterface } from "@src/interface/broker";
-import { writeLog } from "@src/utils/log";
+import { logging, writeLog } from "@src/utils/log";
 import axios from "axios";
 import { handleError, removeUSDT } from "@src/utils";
 import jsonbig from "json-bigint";
@@ -24,7 +24,6 @@ class Binance implements BrokerInterface {
     private lastTimeSync = 0;
     private listenKey: string | null = null;
     private listenKeyKeepAlive?: NodeJS.Timeout;
-    private ws?: WebSocket;
 
     private readonly RECV_WINDOW = 10_000;
     private readonly CLOSE_ORDER_CID_PREFIX = "MM_CLOSE_";
@@ -45,6 +44,7 @@ class Binance implements BrokerInterface {
 
     private boot = async () => {
         await this.updateTimestamp(); // preload server-time & keep fresh
+
         if (this.userId !== 0) {
             this.stoplossPoll(); // fallback in case WS misses events
             this.API_socketEventDriven(); // start user data stream WS
@@ -62,12 +62,27 @@ class Binance implements BrokerInterface {
 
     /* -------------------------------- Sign & Headers -------------------------------- */
 
-    private buildQS = (params: Record<string, string | number | boolean | undefined>) => {
-        const sp = new URLSearchParams();
-        for (const [k, v] of Object.entries(params)) {
-            if (v !== undefined && v !== null) sp.append(k, String(v));
+    private buildQS = (params: Record<string, unknown>) => {
+        const entries = Object.entries(params); // you can sort for stable signing if you like
+        const parts: string[] = [];
+
+        for (const [k, v] of entries) {
+            if (v === undefined || v === null) continue;
+
+            if (Array.isArray(v)) {
+                // -> orderIdList=[123,456] or ["id1","id2"]
+                parts.push(`${k}=[${v}]`);
+            } else if (typeof v === "object") {
+                // Rare, but keep behavior sane for nested data
+                parts.push(`${k}=${encodeURIComponent(JSON.stringify(v))}`);
+            } else if (typeof v === "boolean") {
+                parts.push(`${k}=${v ? "true" : "false"}`);
+            } else {
+                parts.push(`${k}=${encodeURIComponent(String(v))}`);
+            }
         }
-        return sp.toString();
+
+        return parts.join("&");
     };
 
     private signQS = (qs: string) => {
@@ -136,6 +151,7 @@ class Binance implements BrokerInterface {
         try {
             return await this.signedDELETE("/fapi/v1/batchOrders", { symbol: value.symbol, orderIdList: value.orderIds });
         } catch (err) {
+            console.log(err);
             writeLog(["Error cancel stoploss", value.orderIds, err]);
         }
     };
@@ -257,7 +273,7 @@ class Binance implements BrokerInterface {
 
             return { success: true, orderId: String(res.data.orderId) };
         } catch (err) {
-            console.log(err)
+            console.log(err);
             handleError("API_newStoploss error", "error", [err]);
             return { success: false, orderId: null };
         }
@@ -402,7 +418,6 @@ class Binance implements BrokerInterface {
                 // 2) Open WS
                 const url = `${this.BASE_URL_WS}/${this.listenKey}`;
                 const socket = new WebSocket(url);
-                this.ws = socket;
 
                 const attemptReconnect = async () => {
                     try {
@@ -415,6 +430,7 @@ class Binance implements BrokerInterface {
 
                 socket.on("open", () => {
                     // no auth message needed
+                    logging("info", `Open socket Binance successfull.`);
                 });
 
                 socket.on("message", async (msg: WebSocket.RawData) => {
@@ -424,7 +440,6 @@ class Binance implements BrokerInterface {
                         const { e, o } = (parsed?.data ?? parsed) as any; // fallback if broker sends without .data
 
                         if (e !== "ORDER_TRADE_UPDATE") return;
-
                         /* ─── Stop-loss / Take-profit hit ───────────────────── */
                         if (
                             o.x === "TRADE" && // executionReport
@@ -448,7 +463,7 @@ class Binance implements BrokerInterface {
                         ) {
                             const token = removeUSDT(o.s);
                             const markPrice = parseFloat(o.ap);
-                            await closeOrderManually(token, markPrice, 0);
+                            await closeOrderManually(token, markPrice, this.userId);
                             return;
                         }
 
@@ -474,21 +489,30 @@ class Binance implements BrokerInterface {
                 writeLog(["WS connect error", e]);
                 setTimeout(() => connect(), 3000);
             }
-
-            void connect();
         };
+        void connect();
     };
 
     private updateTimestamp = async () => {
-        try {
-            const r = await axios.get(`${this.BASE_URL_API}/fapi/v1/time`);
-            const serverMs = Number(r.data?.serverTime);
-            if (!Number.isFinite(serverMs)) throw new Error("Bad serverTime");
-            this.timeOffsetMs = serverMs - Date.now();
-            this.lastTimeSync = Date.now();
-        } catch (e) {
-            handleError("Can't update timestamp", "error", [e]);
+        const url = `${this.BASE_URL_API}/fapi/v1/time`;
+        let delay = 500;
+        for (let attempt = 0; attempt < 4; attempt++) {
+            try {
+                const r = await axios.get(url, { timeout: 2000 });
+                const serverMs = Number(r.data?.serverTime);
+                if (!Number.isFinite(serverMs)) throw new Error("Bad serverTime");
+                this.timeOffsetMs = serverMs - Date.now();
+                this.lastTimeSync = Date.now();
+                return;
+            } catch (e: any) {
+                // backoff on 429 or network blips
+                if (e?.response?.status !== 429 && attempt > 0) break;
+                await new Promise((res) => setTimeout(res, delay + Math.random() * 200)); // jitter
+                delay *= 2;
+            }
         }
+        // fall back to local time; keep previous offset
+        handleError("Can't update timestamp", "error", []);
     };
 
     /*-------------------------------------------------------------------------------------------------------------*

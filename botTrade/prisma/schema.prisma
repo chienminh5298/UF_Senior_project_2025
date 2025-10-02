@@ -7,7 +7,7 @@ generator client {
 
 datasource db {
   provider = "mysql"
-  url      = "mysql://root:moneymachine@database:3306/moneymachine"
+  url      = "mysql://root:moneymachine@ufdatabase:3306/moneymachine"
 }
 
 model User {

@@ -61,7 +61,8 @@ const startServer = async () => {
     // Refresh pool
     brokerInstancePool.refreshPool();
 
-    if (process.env.isProduction) {
+    // if (process.env.isProduction) {
+    if (true) {
         // await loadDEK(); // Get data key from KMS to decrypt api
 
         setInterval(async () => {
@@ -70,7 +71,7 @@ const startServer = async () => {
             const minute = now.getMinutes();
             const second = now.getSeconds();
             // logging("info", `hour:${hour} - minute: ${minute} - second: ${second}`);
-            if (hour === 0 && minute === 0 && second === 5) {
+            if (hour === 18 && minute === 32 && second === 5) {
                 logging("info", `hour:${hour} - minute: ${minute} - second: ${second}`);
                 await checkExpireVouchers();
                 await checkGenerateBill();
@@ -90,7 +91,7 @@ const checkTokens = async () => {
 
 const checkToken = async (token: Token) => {
     // Goi 1 api den AWS Lamda de update token
-    await mutationUpdateData(token.name);
+    // await mutationUpdateData(token.name);
 
     // Check stratergy for open order
     await checkStrategies(token);
