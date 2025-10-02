@@ -549,6 +549,10 @@ router.get('/strategies/:id', requireAuth, async (req, res) => {
       },
     });
 
+    if(!response) {
+      return res.status(404).json({ success: false, message: 'Strategy not found' });
+    }
+
     return res.status(200).json({
       success: true,
       message: 'Strategy fetched successfully',

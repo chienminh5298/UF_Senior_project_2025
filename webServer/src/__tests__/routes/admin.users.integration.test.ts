@@ -229,7 +229,7 @@ describe('GET /api/admin/users Integration Tests', () => {
     });
 
     it('should handle undefined user object', async () => {
-      mockRequireAuth.mockImplementation((req, res) => {
+      mockRequireAuth.mockImplementation((req, res, next) => {
         req.user = undefined;
         return res
           .status(401)
