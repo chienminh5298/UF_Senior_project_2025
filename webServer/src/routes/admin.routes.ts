@@ -568,7 +568,6 @@ router.get('/strategies/:id', requireAuth, async (req, res) => {
       message: 'Strategy fetched successfully',
       data: { response },
     });
-
   } catch (error) {
     return res.status(500).json({
       success: false,
@@ -650,7 +649,8 @@ router.get('/strategies/:id', requireAuth, async (req, res) => {
 
 router.post('/strategies', requireAuth, async (req, res) => {
   const { user } = req;
-  if (!user) return res.status(401).json({ success: false, message: 'Unauthorized' });
+  if (!user)
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
 
   try {
     const {
@@ -662,15 +662,21 @@ router.post('/strategies', requireAuth, async (req, res) => {
     } = req.body;
 
     if (!description) {
-      return res.status(400).json({ success: false, message: 'Description expected' });
+      return res
+        .status(400)
+        .json({ success: false, message: 'Description expected' });
     }
     if (!Array.isArray(targets) || targets.length === 0) {
-      return res.status(400).json({ success: false, message: 'Targets expected' });
+      return res
+        .status(400)
+        .json({ success: false, message: 'Targets expected' });
     }
 
     const allowedDirections = new Set(['SAME', 'OPPOSITE']);
     if (!allowedDirections.has(direction)) {
-      return res.status(400).json({ success: false, message: 'Invalid direction' });
+      return res
+        .status(400)
+        .json({ success: false, message: 'Invalid direction' });
     }
 
     const data = {
@@ -681,7 +687,7 @@ router.post('/strategies', requireAuth, async (req, res) => {
       direction,
 
       targets: {
-        create: targets.map(t => ({
+        create: targets.map((t) => ({
           targetPercent: Number(t.targetPercent) || 0,
           stoplossPercent: Number(t.stoplossPercent) || 0,
         })),
@@ -690,9 +696,11 @@ router.post('/strategies', requireAuth, async (req, res) => {
       ...(tokenStrategies.length
         ? {
             tokenStrategies: {
-              create: tokenStrategies.map(({ tokenId }: { tokenId: number }) => ({
-                token: { connect: { id: Number(tokenId) } }
-              })),
+              create: tokenStrategies.map(
+                ({ tokenId }: { tokenId: number }) => ({
+                  token: { connect: { id: Number(tokenId) } },
+                })
+              ),
             },
           }
         : {}),
@@ -713,10 +721,11 @@ router.post('/strategies', requireAuth, async (req, res) => {
     });
   } catch (error) {
     console.error(error);
-    return res.status(500).json({ success: false, message: 'Failed to create strategy' });
+    return res
+      .status(500)
+      .json({ success: false, message: 'Failed to create strategy' });
   }
 });
-
 
 export default router;
 
@@ -763,7 +772,8 @@ export default router;
 
 router.get('/bills', requireAuth, async (req, res) => {
   const { user } = req;
-  if (!user) return res.status(401).json({ success: false, message: 'Unauthorized' });
+  if (!user)
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
   try {
     const bills = await prisma.bill.findMany({
       select: {
@@ -785,7 +795,7 @@ router.get('/bills', requireAuth, async (req, res) => {
       success: false,
       message: 'Failed to fetch bills',
     });
-}
+  }
 });
 
 // GET /api/admin/bills/{id}
@@ -834,7 +844,8 @@ router.get('/bills', requireAuth, async (req, res) => {
  */
 router.get('/bills/:id', requireAuth, async (req, res) => {
   const { user } = req;
-  if (!user) return res.status(401).json({ success: false, message: 'Unauthorized' });
+  if (!user)
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
 
   try {
     const bill = await prisma.bill.findUnique({
@@ -847,7 +858,18 @@ router.get('/bills/:id', requireAuth, async (req, res) => {
         to: true,
         note: true,
         claimId: true,
-        orders: { select: { id: true, orderId: true, side: true, entryPrice: true, qty: true, budget: true, netProfit: true, token: { select: { name: true } } } },
+        orders: {
+          select: {
+            id: true,
+            orderId: true,
+            side: true,
+            entryPrice: true,
+            qty: true,
+            budget: true,
+            netProfit: true,
+            token: { select: { name: true } },
+          },
+        },
         user: { select: { id: true, username: true } },
       },
     });
@@ -863,5 +885,4 @@ router.get('/bills/:id', requireAuth, async (req, res) => {
       message: 'Failed to fetch bill',
     });
   }
-  }
-);
+});
