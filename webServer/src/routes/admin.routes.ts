@@ -176,7 +176,7 @@ router.get('/users/:id', requireAuth, async (req, res) => {
  * @swagger
  * /api/admin/users/{id}:
  *   patch:
- *     summary: Suspend user (admin user page)
+ *     summary: Suspend/reinstate user (admin user page)
  *     tags: [Admin]
  *     security:
  *       - bearerAuth: []
@@ -187,22 +187,36 @@ router.get('/users/:id', requireAuth, async (req, res) => {
  *         required: true
  *         schema:
  *           type: integer
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               deactivate:
+ *                 type: boolean
  *     responses:
  *       200:
- *         description: User suspended successfully
+ *         description: User suspended/reinstated successfully
  *       401:
  *         description: Unauthorized
  *       400:
- *         description: User ID not found
+ *         description: User ID not found or `deactivate` must be a boolean or missing
  *       500:
- *         description: Failed to suspend user
+ *         description: Failed to suspend/reinstate user
  */
 router.patch('/users/:id', requireAuth, async (req, res) => {
   const { user } = req;
   const { id } = req.params;
+  const { deactivate } = req.body;
 
   if (!user) {
     return res.status(401).json({ success: false, message: 'Unauthorized' });
+  }
+
+  if(!deactivate || typeof deactivate !== 'boolean') {
+    return res.status(400).json({ success: false, message: '`deactivate` must be a boolean or missing' });
   }
 
   if (!id) {
@@ -211,17 +225,21 @@ router.patch('/users/:id', requireAuth, async (req, res) => {
       .json({ success: false, message: 'User ID not found' });
   }
 
+  const userId = parseInt(id);
+  if(isNaN(userId)) {
+    return res.status(400).json({ success: false, message: 'Invalid user ID' });
+  }
+
   const user_specific = await prisma.user.update({
-    where: { id: parseInt(id) },
-    data: { isActive: false },
+    where: { id: userId },
+    data: { isActive: deactivate },
   });
 
   return res.status(200).json({
     success: user_specific ? true : false,
-    message: 'User suspended successfully',
+    message: "User ${deactivate ? 'deactivated' : 'activated'} successfully",
   });
 });
-// GET  /api/admin/landing   # Landing page data
 
 // GET  /api/admin/orders    # List orders (History)
 /**
@@ -306,8 +324,8 @@ router.get('/orders', requireAuth, async (req, res) => {
         budget: true,
         netProfit: true,
         buyDate: true,
-        token: { select: { name: true } },
-        user: { select: { id: true, email: true } },
+        token: { where: { isActive: true }, select: { name: true } },
+        user: { where: { isActive: true }, select: { id: true, email: true } },
       },
     });
 
@@ -556,6 +574,7 @@ router.get('/strategies/:id', requireAuth, async (req, res) => {
         tokenStrategies: {
           select: {
             token: {
+              where: { isActive: true },
               select: { name: true },
             },
           },
@@ -842,6 +861,8 @@ router.get('/bills', requireAuth, async (req, res) => {
  *       401: { description: Unauthorized }
  *       500: { description: Failed to fetch bill }
  */
+
+// GET /api/admin/bills/{id}
 router.get('/bills/:id', requireAuth, async (req, res) => {
   const { user } = req;
   if (!user)
@@ -867,10 +888,10 @@ router.get('/bills/:id', requireAuth, async (req, res) => {
             qty: true,
             budget: true,
             netProfit: true,
-            token: { select: { name: true } },
+            token: { where: { isActive: true }, select: { name: true } },
           },
         },
-        user: { select: { id: true, username: true } },
+        user: { where: { isActive: true }, select: { id: true, username: true } },
       },
     });
 
@@ -886,3 +907,70 @@ router.get('/bills/:id', requireAuth, async (req, res) => {
     });
   }
 });
+
+
+// PATCH api/admin/tokens/{id}
+/**
+ * @swagger
+ * /api/admin/tokens/{id}:
+ *   patch:
+ *     summary: Update a token (Admin tokens page)
+ *     tags: [Admin]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         description: Token ID
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               deactivate:
+ *                 type: boolean
+ *     responses:
+ *       200:
+ *         description: Token updated successfully
+ *       401: { description: Unauthorized }
+ *       400: { description: Token ID not found or `deactivate` must be a boolean or missing }
+ *       500: { description: Failed to update token }
+ */
+router.patch('/tokens/:id', requireAuth, async (req, res) => {
+  try{
+    const { user } = req;
+    const { id } = req.params;
+    const { deactivate } = req.body;
+
+    if (!deactivate || typeof deactivate !== 'boolean') {
+      return res.status(400).json({ success: false, message: '`deactivate` must be a boolean or missing' });
+    }
+
+    if (!user) {
+      return res.status(401).json({ success: false, message: 'Unauthorized' });
+    }
+    
+    if (!id) {
+      return res.status(400).json({ success: false, message: 'Token ID not found' });
+    }
+
+    const tokenId = parseInt(id);
+    if (isNaN(tokenId)) {
+      return res.status(400).json({ success: false, message: 'Invalid token ID' });
+    }
+
+    await prisma.token.update({
+      where: { id: tokenId },
+      data: { isActive: deactivate },
+    });
+
+    return res.status(200).json({ success: true, message: "Token ${deactivate ? 'deactivated' : 'activated'} successfully" });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: 'Failed to update token' });
+  }
+  });

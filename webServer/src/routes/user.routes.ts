@@ -4,57 +4,12 @@ import { requireAuth } from '../middleware/auth';
 import bcrypt from 'bcrypt';
 const router = Router();
 
-/**
- * @swagger
- * /api/user/tokens:
- *   get:
- *     summary: Get user tokens
- *     tags: [User]
- *     security:
- *       - bearerAuth: []
- *     responses:
- *       200:
- *         description: Tokens retrieved
- *       401:
- *         description: Unauthorized
- */
-router.get('/tokens', requireAuth, async (req, res) => {
-  try {
-
-    const { user } = req;
-
-    if (!user) {
-      return res.status(401).json({
-        success: false,
-        message: 'Unauthorized',
-      });
-    }
-
-      const userTokens = await prisma.userToken.findMany({
-        where: {
-          userId: user.id,
-        },
-      });
-
-      res.status(200).json({
-        success: true,
-        message: 'Tokens fetched successfully',
-        data: {
-          tokens: userTokens,
-        },
-    }
-  );
-  } catch (error) {
-    return res.status(500).json({ success: false, message: 'Failed to fetch tokens' });
-  }
-});
-
 // POST /api/user/tokens
 /**
  * @swagger
  * /api/user/tokens:
  *   post:
- *     summary: Add token
+ *     summary: Add user token
  *     tags: [User]
  *     security:
  *       - bearerAuth: []
