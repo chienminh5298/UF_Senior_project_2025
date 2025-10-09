@@ -19,36 +19,83 @@ const router = Router();
  *         description: Unauthorized
  */
 router.get('/tokens', requireAuth, async (req, res) => {
-  // Retrieve user object from requireAuth middleware
-  const { user } = req;
-
-  // If user is not found, return 401
-  if (!user) {
-    return res.status(401).json({
-      success: false,
-      message: 'Unauthorized',
-    });
-  }
-
-  // Retrieve user tokens
   try {
-    const userTokens = await prisma.userToken.findMany({
-      where: {
-        userId: user.id,
-      },
+
+    const { user } = req;
+
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        message: 'Unauthorized',
+      });
+    }
+
+      const userTokens = await prisma.userToken.findMany({
+        where: {
+          userId: user.id,
+        },
+      });
+
+      res.status(200).json({
+        success: true,
+        message: 'Tokens fetched successfully',
+        data: {
+          tokens: userTokens,
+        },
+    }
+  );
+  } catch (error) {
+    return res.status(500).json({ success: false, message: 'Failed to fetch tokens' });
+  }
+});
+
+// POST /api/user/tokens
+/**
+ * @swagger
+ * /api/user/tokens:
+ *   post:
+ *     summary: Add token
+ *     tags: [User]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               tokenId:
+ *                 type: integer
+ *                 description: The ID of the token to add
+ *                 example: 1
+ *     responses:
+ *       201:
+ *         description: Token added successfully
+ *       404:
+ *         description: Token not found
+ *       500:
+ *         description: Failed to add token
+ */
+router.post('/tokens', requireAuth, async (req, res) => {
+  try {
+    const user = (req as any).user;
+    const { tokenId } = req.body;  
+
+    const token = await prisma.token.findUnique({ where: { id: tokenId } });
+
+    if (!token) {
+      return res.status(404).json({ success: false, message: 'Token not found' });
+    }
+
+    const newUserToken = await prisma.userToken.create({
+      data: { userId: user.id, tokenId },
     });
 
-    // Return success response
-    res.status(200).json({
-      success: true,
-      message: 'Tokens fetched successfully',
-      data: {
-        tokens: userTokens,
-      },
-    });
-  } catch (error) {
-    // Return error response
-    res.status(500).json({ error: 'Failed to fetch tokens' });
+    return res.status(201).json({ success: true, message: 'Token added successfully', data: newUserToken });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ success: false, message: 'Failed to add token' });
   }
 });
 
@@ -69,7 +116,6 @@ router.get('/tokens', requireAuth, async (req, res) => {
 router.get('/profile', requireAuth, async (req, res) => {
   const { user } = req;
 
-  // If user is not found, return 401
   if (!user) {
     return res.status(401).json({
       success: false,
@@ -77,7 +123,6 @@ router.get('/profile', requireAuth, async (req, res) => {
     });
   }
 
-  // Retrieve: firstName, username, email, timeZone
   const profile = await prisma.user.findUnique({
     where: { id: user.id },
     select: {
@@ -177,8 +222,6 @@ router.get('/orders', requireAuth, async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch orders' });
   }
 });
-
-// POST /api/user/tokens     # Add token
 
 // GET /api/user/settings
 /**
