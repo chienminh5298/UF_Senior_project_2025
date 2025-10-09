@@ -202,7 +202,7 @@ router.get('/users/:id', requireAuth, async (req, res) => {
  *       401:
  *         description: Unauthorized
  *       400:
- *         description: User ID not found or `deactivate` must be a boolean or missing
+ *         description: User ID not found or deactivate must be a boolean or missing
  *       500:
  *         description: Failed to suspend/reinstate user
  */
@@ -211,12 +211,13 @@ router.patch('/users/:id', requireAuth, async (req, res) => {
   const { id } = req.params;
   const { deactivate } = req.body;
 
+try{
   if (!user) {
     return res.status(401).json({ success: false, message: 'Unauthorized' });
   }
 
-  if(!deactivate || typeof deactivate !== 'boolean') {
-    return res.status(400).json({ success: false, message: '`deactivate` must be a boolean or missing' });
+  if(deactivate === undefined || typeof deactivate !== 'boolean') {
+    return res.status(400).json({ success: false, message: 'deactivate must be a boolean or missing' });
   }
 
   if (!id) {
@@ -232,13 +233,17 @@ router.patch('/users/:id', requireAuth, async (req, res) => {
 
   const user_specific = await prisma.user.update({
     where: { id: userId },
-    data: { isActive: deactivate },
+    data: { isActive: !deactivate },
   });
 
   return res.status(200).json({
     success: user_specific ? true : false,
-    message: "User ${deactivate ? 'deactivated' : 'activated'} successfully",
+    message:  "User ${!deactivate ? 'deactivated' : 'activated'} successfully",
   });
+} catch (error) {
+  return res.status(500).json({ success: false, message: 'Failed to suspend/reinstate user' });
+}
+ 
 });
 
 // GET  /api/admin/orders    # List orders (History)
@@ -938,7 +943,7 @@ router.get('/bills/:id', requireAuth, async (req, res) => {
  *       200:
  *         description: Token updated successfully
  *       401: { description: Unauthorized }
- *       400: { description: Token ID not found or `deactivate` must be a boolean or missing }
+ *       400: { description: Token ID not found or deactivate must be a boolean or missing }
  *       500: { description: Failed to update token }
  */
 router.patch('/tokens/:id', requireAuth, async (req, res) => {
@@ -947,8 +952,8 @@ router.patch('/tokens/:id', requireAuth, async (req, res) => {
     const { id } = req.params;
     const { deactivate } = req.body;
 
-    if (!deactivate || typeof deactivate !== 'boolean') {
-      return res.status(400).json({ success: false, message: '`deactivate` must be a boolean or missing' });
+    if (deactivate === undefined || typeof deactivate !== 'boolean') {
+      return res.status(400).json({ success: false, message: 'deactivate must be a boolean or missing' });
     }
 
     if (!user) {
@@ -966,10 +971,10 @@ router.patch('/tokens/:id', requireAuth, async (req, res) => {
 
     await prisma.token.update({
       where: { id: tokenId },
-      data: { isActive: deactivate },
+      data: { isActive: !deactivate },
     });
 
-    return res.status(200).json({ success: true, message: "Token ${deactivate ? 'deactivated' : 'activated'} successfully" });
+    return res.status(200).json({ success: true, message:  "Token ${!deactivate ? 'deactivated' : 'activated'} successfully" });
   } catch (error) {
     return res.status(500).json({ success: false, message: 'Failed to update token' });
   }
