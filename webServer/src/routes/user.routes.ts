@@ -35,22 +35,32 @@ const router = Router();
 router.post('/tokens', requireAuth, async (req, res) => {
   try {
     const user = (req as any).user;
-    const { tokenId } = req.body;  
+    const { tokenId } = req.body;
 
     const token = await prisma.token.findUnique({ where: { id: tokenId } });
 
     if (!token) {
-      return res.status(404).json({ success: false, message: 'Token not found' });
+      return res
+        .status(404)
+        .json({ success: false, message: 'Token not found' });
     }
 
     const newUserToken = await prisma.userToken.create({
       data: { userId: user.id, tokenId },
     });
 
-    return res.status(201).json({ success: true, message: 'Token added successfully', data: newUserToken });
+    return res
+      .status(201)
+      .json({
+        success: true,
+        message: 'Token added successfully',
+        data: newUserToken,
+      });
   } catch (err) {
     console.error(err);
-    return res.status(500).json({ success: false, message: 'Failed to add token' });
+    return res
+      .status(500)
+      .json({ success: false, message: 'Failed to add token' });
   }
 });
 

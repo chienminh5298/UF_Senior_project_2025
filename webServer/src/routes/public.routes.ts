@@ -24,12 +24,14 @@ const router = Router();
  *       500: { description: Failed to check health }
  */
 router.get('/health', async (req, res) => {
-    try {
-        const uptime = process.uptime();
-        res.status(200).json({ success: true, message: 'Health check successful', uptime });
-    } catch (error) {
-        res.status(500).json({ success: false, message: 'Failed to check health' });
-    }
+  try {
+    const uptime = process.uptime();
+    res
+      .status(200)
+      .json({ success: true, message: 'Health check successful', uptime });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Failed to check health' });
+  }
 });
 
 // GET  /api/public/landing
@@ -70,7 +72,7 @@ router.get('/health', async (req, res) => {
  */
 
 router.get('/landing', async (req, res) => {
-  try{
+  try {
     const total_user = await prisma.user.count();
 
     const total_fund = await prisma.order.aggregate({
@@ -80,23 +82,25 @@ router.get('/landing', async (req, res) => {
     });
 
     const tokens = await prisma.token.findMany({
-        where: {
-            isActive: true,
-        },
-        select: {
+      where: {
+        isActive: true,
+      },
+      select: {
         name: true,
         id: true,
-    }});
+      },
+    });
 
-    res.status(200).json({ 
-        success: true,
-        message: 'Landing fetched successfully', 
-        data: { total_user, total_fund, tokens } });
+    res.status(200).json({
+      success: true,
+      message: 'Landing fetched successfully',
+      data: { total_user, total_fund, tokens },
+    });
+  } catch (error) {
+    res
+      .status(500)
+      .json({ success: false, message: 'Failed to fetch landing' });
   }
-  catch(error){
-    res.status(500).json({ success: false, message: 'Failed to fetch landing' });
-  }
-
 });
 
 export default router;

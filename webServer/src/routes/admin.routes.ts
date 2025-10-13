@@ -211,39 +211,47 @@ router.patch('/users/:id', requireAuth, async (req, res) => {
   const { id } = req.params;
   const { deactivate } = req.body;
 
-try{
-  if (!user) {
-    return res.status(401).json({ success: false, message: 'Unauthorized' });
-  }
+  try {
+    if (!user) {
+      return res.status(401).json({ success: false, message: 'Unauthorized' });
+    }
 
-  if(deactivate === undefined || typeof deactivate !== 'boolean') {
-    return res.status(400).json({ success: false, message: 'deactivate must be a boolean or missing' });
-  }
+    if (deactivate === undefined || typeof deactivate !== 'boolean') {
+      return res
+        .status(400)
+        .json({
+          success: false,
+          message: 'deactivate must be a boolean or missing',
+        });
+    }
 
-  if (!id) {
+    if (!id) {
+      return res
+        .status(400)
+        .json({ success: false, message: 'User ID not found' });
+    }
+
+    const userId = parseInt(id);
+    if (isNaN(userId)) {
+      return res
+        .status(400)
+        .json({ success: false, message: 'Invalid user ID' });
+    }
+
+    const user_specific = await prisma.user.update({
+      where: { id: userId },
+      data: { isActive: !deactivate },
+    });
+
+    return res.status(200).json({
+      success: user_specific ? true : false,
+      message: "User ${!deactivate ? 'deactivated' : 'activated'} successfully",
+    });
+  } catch (error) {
     return res
-      .status(400)
-      .json({ success: false, message: 'User ID not found' });
+      .status(500)
+      .json({ success: false, message: 'Failed to suspend/reinstate user' });
   }
-
-  const userId = parseInt(id);
-  if(isNaN(userId)) {
-    return res.status(400).json({ success: false, message: 'Invalid user ID' });
-  }
-
-  const user_specific = await prisma.user.update({
-    where: { id: userId },
-    data: { isActive: !deactivate },
-  });
-
-  return res.status(200).json({
-    success: user_specific ? true : false,
-    message:  "User ${!deactivate ? 'deactivated' : 'activated'} successfully",
-  });
-} catch (error) {
-  return res.status(500).json({ success: false, message: 'Failed to suspend/reinstate user' });
-}
- 
 });
 
 // GET  /api/admin/orders    # List orders (History)
@@ -896,7 +904,10 @@ router.get('/bills/:id', requireAuth, async (req, res) => {
             token: { where: { isActive: true }, select: { name: true } },
           },
         },
-        user: { where: { isActive: true }, select: { id: true, username: true } },
+        user: {
+          where: { isActive: true },
+          select: { id: true, username: true },
+        },
       },
     });
 
@@ -912,7 +923,6 @@ router.get('/bills/:id', requireAuth, async (req, res) => {
     });
   }
 });
-
 
 // PATCH api/admin/tokens/{id}
 /**
@@ -947,26 +957,35 @@ router.get('/bills/:id', requireAuth, async (req, res) => {
  *       500: { description: Failed to update token }
  */
 router.patch('/tokens/:id', requireAuth, async (req, res) => {
-  try{
+  try {
     const { user } = req;
     const { id } = req.params;
     const { deactivate } = req.body;
 
     if (deactivate === undefined || typeof deactivate !== 'boolean') {
-      return res.status(400).json({ success: false, message: 'deactivate must be a boolean or missing' });
+      return res
+        .status(400)
+        .json({
+          success: false,
+          message: 'deactivate must be a boolean or missing',
+        });
     }
 
     if (!user) {
       return res.status(401).json({ success: false, message: 'Unauthorized' });
     }
-    
+
     if (!id) {
-      return res.status(400).json({ success: false, message: 'Token ID not found' });
+      return res
+        .status(400)
+        .json({ success: false, message: 'Token ID not found' });
     }
 
     const tokenId = parseInt(id);
     if (isNaN(tokenId)) {
-      return res.status(400).json({ success: false, message: 'Invalid token ID' });
+      return res
+        .status(400)
+        .json({ success: false, message: 'Invalid token ID' });
     }
 
     await prisma.token.update({
@@ -974,8 +993,16 @@ router.patch('/tokens/:id', requireAuth, async (req, res) => {
       data: { isActive: !deactivate },
     });
 
-    return res.status(200).json({ success: true, message:  "Token ${!deactivate ? 'deactivated' : 'activated'} successfully" });
+    return res
+      .status(200)
+      .json({
+        success: true,
+        message:
+          "Token ${!deactivate ? 'deactivated' : 'activated'} successfully",
+      });
   } catch (error) {
-    return res.status(500).json({ success: false, message: 'Failed to update token' });
+    return res
+      .status(500)
+      .json({ success: false, message: 'Failed to update token' });
   }
-  });
+});
