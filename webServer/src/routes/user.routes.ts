@@ -49,13 +49,11 @@ router.post('/tokens', requireAuth, async (req, res) => {
       data: { userId: user.id, tokenId },
     });
 
-    return res
-      .status(201)
-      .json({
-        success: true,
-        message: 'Token added successfully',
-        data: newUserToken,
-      });
+    return res.status(201).json({
+      success: true,
+      message: 'Token added successfully',
+      data: newUserToken,
+    });
   } catch (err) {
     console.error(err);
     return res

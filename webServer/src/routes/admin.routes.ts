@@ -217,12 +217,10 @@ router.patch('/users/:id', requireAuth, async (req, res) => {
     }
 
     if (deactivate === undefined || typeof deactivate !== 'boolean') {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: 'deactivate must be a boolean or missing',
-        });
+      return res.status(400).json({
+        success: false,
+        message: 'deactivate must be a boolean or missing',
+      });
     }
 
     if (!id) {
@@ -963,12 +961,10 @@ router.patch('/tokens/:id', requireAuth, async (req, res) => {
     const { deactivate } = req.body;
 
     if (deactivate === undefined || typeof deactivate !== 'boolean') {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: 'deactivate must be a boolean or missing',
-        });
+      return res.status(400).json({
+        success: false,
+        message: 'deactivate must be a boolean or missing',
+      });
     }
 
     if (!user) {
@@ -993,13 +989,11 @@ router.patch('/tokens/:id', requireAuth, async (req, res) => {
       data: { isActive: !deactivate },
     });
 
-    return res
-      .status(200)
-      .json({
-        success: true,
-        message:
-          "Token ${!deactivate ? 'deactivated' : 'activated'} successfully",
-      });
+    return res.status(200).json({
+      success: true,
+      message:
+        "Token ${!deactivate ? 'deactivated' : 'activated'} successfully",
+    });
   } catch (error) {
     return res
       .status(500)
