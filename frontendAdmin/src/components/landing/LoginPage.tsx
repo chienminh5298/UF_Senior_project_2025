@@ -1,12 +1,7 @@
-import { useState } from 'react'
 import { Button } from '../ui/button'
 import { Card, CardContent, CardHeader } from '../ui/card'
 import { Badge } from '../ui/badge'
 import {
-  Mail,
-  Lock,
-  Eye,
-  EyeOff,
   Shield,
   TrendingUp
 } from 'lucide-react'
@@ -16,22 +11,20 @@ interface LoginPageProps {
 }
 
 export function LoginPage({ onLogin }: LoginPageProps) {
-  const [showPassword, setShowPassword] = useState(false)
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const API_BASE = import.meta.env.VITE_API_BASE_URL ?? ''
+  const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3001'
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    // Login
-    console.log(`${API_BASE}/api/auth/login`)
-    const response = await fetch(`${API_BASE}/api/auth/login`,{
+    // Admin Login - no credentials needed, uses environment variables
+    console.log(`${API_BASE}/api/auth/login/admin`)
+    const response = await fetch(`${API_BASE}/api/auth/login/admin`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' }, 
-      body: JSON.stringify({ email, password }),
+      headers: { 'Content-Type': 'application/json' }
     })
     const data = await response.json()
     if (data.success) {
+      // Store the token for future requests
+      localStorage.setItem('adminToken', data.token)
       onLogin()
     } else {
       alert(data.message)
@@ -63,58 +56,16 @@ export function LoginPage({ onLogin }: LoginPageProps) {
 
             <CardContent>
               <form onSubmit={handleSubmit} className="space-y-4">
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
-                    Email Address
-                  </label>
-                  <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center">
-                      <Mail className="h-5 w-5 text-gray-400" />
-                    </div>
-                    <input
-                      type="email"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      className="w-full pl-10 pr-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      placeholder="admin@example.com"
-                      required
-                    />
-                  </div>
+                <div className="text-center text-gray-400 mb-6">
+                  <p>Admin access uses secure environment credentials</p>
+                  <p className="text-sm mt-2">No manual login required</p>
                 </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
-                    Password
-                  </label>
-                  <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center">
-                      <Lock className="h-5 w-5 text-gray-400" />
-                    </div>
-                    <input
-                      type={showPassword ? "text" : "password"}
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      className="w-full pl-10 pr-10 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      placeholder="••••••••"
-                      required
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-white"
-                    >
-                      {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
-                    </button>
-                  </div>
-                </div>
-
 
                 <Button
                   type="submit"
                   className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2"
                 >
-                  Sign In
+                  Access Admin Panel
                 </Button>
               </form>
 

@@ -285,7 +285,11 @@ router.post('/login/admin', async (req, res) => {
     if (!adminUsername || !adminPassword) {
       return res.status(500).json({
         success: false,
+<<<<<<< HEAD
         message: 'Admin credentials not configured',
+=======
+        message: 'Admin credentials not configured'
+>>>>>>> origin/main
       });
     }
 
@@ -293,7 +297,11 @@ router.post('/login/admin', async (req, res) => {
     const adminUser = {
       id: 0, // Special admin ID
       email: adminUsername,
+<<<<<<< HEAD
       isAdmin: true,
+=======
+      isAdmin: true
+>>>>>>> origin/main
     };
 
     const token = jwt.sign(
@@ -306,12 +314,20 @@ router.post('/login/admin', async (req, res) => {
       success: true,
       message: 'Admin login successful',
       token,
+<<<<<<< HEAD
       user: adminUser,
+=======
+      user: adminUser
+>>>>>>> origin/main
     });
   } catch (error) {
     return res.status(500).json({
       success: false,
+<<<<<<< HEAD
       message: 'Internal server error',
+=======
+      message: 'Internal server error'
+>>>>>>> origin/main
     });
   }
 });
