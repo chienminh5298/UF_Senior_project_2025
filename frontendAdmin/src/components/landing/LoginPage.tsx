@@ -1,12 +1,7 @@
-import { useState } from 'react'
 import { Button } from '../ui/button'
 import { Card, CardContent, CardHeader } from '../ui/card'
 import { Badge } from '../ui/badge'
 import {
-  Mail,
-  Lock,
-  Eye,
-  EyeOff,
   Shield,
   TrendingUp
 } from 'lucide-react'
@@ -16,9 +11,6 @@ interface LoginPageProps {
 }
 
 export function LoginPage({ onLogin }: LoginPageProps) {
-  const [showPassword, setShowPassword] = useState(false)
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
   const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3001'
 
   const handleSubmit = async (e: React.FormEvent) => {
