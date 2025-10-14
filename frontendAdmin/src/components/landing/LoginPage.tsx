@@ -19,8 +19,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
     console.log(`${API_BASE}/api/auth/login/admin`)
     const response = await fetch(`${API_BASE}/api/auth/login/admin`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include' // Include cookies for CORS
+      headers: { 'Content-Type': 'application/json' }
     })
     const data = await response.json()
     if (data.success) {

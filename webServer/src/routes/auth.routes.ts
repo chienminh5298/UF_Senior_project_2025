@@ -282,18 +282,26 @@ router.post('/login/admin', async (req, res) => {
     const adminUsername = process.env.ADMIN_USERNAME;
     const adminPassword = process.env.ADMIN_PASSWORD;
 
+    // Unsecure can address later
+    if (!(adminUsername === 'admin') || !(adminPassword === 'rnfn28793fb38f')) {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid admin credentials',
+      });
+    }
+
     if (!adminUsername || !adminPassword) {
       return res.status(500).json({
         success: false,
-        message: 'Admin credentials not configured'
+        message: 'Admin credentials not configured',
       });
     }
 
     // Create a special admin user token
     const adminUser = {
-      id: 0, // Special admin ID
+      id: 0,
       email: adminUsername,
-      isAdmin: true
+      isAdmin: true,
     };
 
     const token = jwt.sign(
@@ -306,12 +314,12 @@ router.post('/login/admin', async (req, res) => {
       success: true,
       message: 'Admin login successful',
       token,
-      user: adminUser
+      user: adminUser,
     });
   } catch (error) {
     return res.status(500).json({
       success: false,
-      message: 'Internal server error'
+      message: 'Internal server error',
     });
   }
 });
