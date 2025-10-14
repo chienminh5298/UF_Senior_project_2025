@@ -27,19 +27,59 @@ export function LoginPage({ onNavigateToLanding, onLogin }: LoginPageProps) {
   const [firstName, setFirstName] = useState('')
   const [lastName, setLastName] = useState('')
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const API_BASE = 'http://localhost:3001'
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (isSignUp) {
-      // Simulate sign up - validate passwords match, then navigate to dashboard
       if (password !== confirmPassword) {
         alert('Passwords do not match!')
         return
       }
-      // Simulate successful sign up
-      onLogin()
+      
+      try {
+        const response = await fetch(`${API_BASE}/api/auth/signup`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            fullname: `${firstName} ${lastName}`,
+            username: email.split('@')[0],
+            email,
+            password
+          })
+        })
+        const data = await response.json()
+        if (data.success) {
+          // Store jwt token for future requests
+          localStorage.setItem('userToken', data.token)
+          onLogin()
+        } else {
+          alert(data.message)
+        }
+      } catch (error) {
+        alert('Sign up failed. Please try again.')
+      }
     } else {
-      // Simulate login - just navigate to dashboard
-      onLogin()
+      // Handle login
+      try {
+        const response = await fetch(`${API_BASE}/api/auth/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ email, password })
+        })
+        const data = await response.json()
+        if (data.success) {
+          // Store the token for future requests
+          localStorage.setItem('userToken', data.token)
+          onLogin()
+        } else {
+          alert(data.message)
+        }
+      } catch (error) {
+        alert('Login failed. Please try again.')
+      }
     }
   }
 
