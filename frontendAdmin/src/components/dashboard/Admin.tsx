@@ -49,6 +49,25 @@ interface ApiUser {
   profit: number
 }
 
+interface ApiToken {
+  id: number
+  name: string
+  isActive: boolean
+}
+
+interface NewStrategyForm {
+  description: string
+  contribution: number
+  direction: 'SAME' | 'OPPOSITE'
+  isCloseBeforeNewCandle: boolean
+  selectedTokens: number[]
+  targets: Array<{
+    targetPercent: number
+    stoplossPercent: number
+    tokenId?: number
+  }>
+}
+
 // Mock data
 const users = [
   {
@@ -222,6 +241,52 @@ const fetchOrderStats = async () => {
   return data.data
 }
 
+const fetchTokens = async (): Promise<ApiToken[]> => {
+  const token = localStorage.getItem('adminToken')
+  
+  const response = await fetch(`${API_BASE}/api/admin/tokens`, {
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    }
+  })
+  
+  if (!response.ok) {
+    throw new Error('Failed to fetch tokens')
+  }
+  
+  const data = await response.json()
+  return data.data.tokens
+}
+
+const createStrategy = async (strategyData: NewStrategyForm) => {
+  const token = localStorage.getItem('adminToken')
+  
+  const response = await fetch(`${API_BASE}/api/admin/strategies`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      description: strategyData.description,
+      contribution: strategyData.contribution,
+      direction: strategyData.direction,
+      isCloseBeforeNewCandle: strategyData.isCloseBeforeNewCandle,
+      tokenStrategies: strategyData.selectedTokens.map(tokenId => ({ tokenId })),
+      targets: strategyData.targets
+    })
+  })
+  
+  if (!response.ok) {
+    const errorData = await response.json()
+    throw new Error(errorData.message || 'Failed to create strategy')
+  }
+  
+  const data = await response.json()
+  return data.data.strategy
+}
+
 export function Admin() {
   const [activeTab, setActiveTab] = useState('Analyze')
   const [selectedUser, setSelectedUser] = useState<typeof users[0] | null>(null)
@@ -234,6 +299,18 @@ export function Admin() {
   const [orderStats, setOrderStats] = useState<any>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  
+  // Strategy Form State
+  const [showNewStrategyForm, setShowNewStrategyForm] = useState(false)
+  const [availableTokens, setAvailableTokens] = useState<ApiToken[]>([])
+  const [newStrategyForm, setNewStrategyForm] = useState<NewStrategyForm>({
+    description: '',
+    contribution: 0,
+    direction: 'SAME',
+    isCloseBeforeNewCandle: false,
+    selectedTokens: [],
+    targets: [{ targetPercent: 0, stoplossPercent: 0 }]
+  })
   
   const tabs = ['Analyze', 'Orders', 'Transactions', 'Strategies', 'Users']
 
@@ -253,6 +330,9 @@ export function Admin() {
         } else if (activeTab === 'Analyze') {
           const statsData = await fetchOrderStats()
           setOrderStats(statsData)
+        } else if (activeTab === 'Strategies') {
+          const tokensData = await fetchTokens()
+          setAvailableTokens(tokensData)
         }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'An error occurred')
@@ -769,7 +849,10 @@ export function Admin() {
           <h1 className="text-2xl font-bold text-white">Strategy Management</h1>
           <p className="text-gray-400">Configure trading bot strategies and conditions</p>
         </div>
-        <Button className="bg-blue-600 hover:bg-blue-700">
+        <Button 
+          onClick={() => setShowNewStrategyForm(true)}
+          className="bg-blue-600 hover:bg-blue-700"
+        >
           <Settings className="w-4 h-4 mr-2" />
           New Strategy
         </Button>
@@ -1042,6 +1125,272 @@ export function Admin() {
     )
   }
 
+  const renderNewStrategyForm = () => {
+    const handleSubmit = async (e: React.FormEvent) => {
+      e.preventDefault()
+      setLoading(true)
+      setError(null)
+      
+      try {
+        await createStrategy(newStrategyForm)
+        setShowNewStrategyForm(false)
+        setNewStrategyForm({
+          description: '',
+          contribution: 0,
+          direction: 'SAME',
+          isCloseBeforeNewCandle: false,
+          selectedTokens: [],
+          targets: [{ targetPercent: 0, stoplossPercent: 0 }]
+        })
+        // Refresh strategies data
+        const tokensData = await fetchTokens()
+        setAvailableTokens(tokensData)
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to create strategy')
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    const addTarget = () => {
+      setNewStrategyForm(prev => ({
+        ...prev,
+        targets: [...prev.targets, { targetPercent: 0, stoplossPercent: 0 }]
+      }))
+    }
+
+    const removeTarget = (index: number) => {
+      setNewStrategyForm(prev => ({
+        ...prev,
+        targets: prev.targets.filter((_, i) => i !== index)
+      }))
+    }
+
+    const updateTarget = (index: number, field: 'targetPercent' | 'stoplossPercent', value: number) => {
+      setNewStrategyForm(prev => ({
+        ...prev,
+        targets: prev.targets.map((target, i) => 
+          i === index ? { ...target, [field]: value } : target
+        )
+      }))
+    }
+
+    const toggleToken = (tokenId: number) => {
+      setNewStrategyForm(prev => ({
+        ...prev,
+        selectedTokens: prev.selectedTokens.includes(tokenId)
+          ? prev.selectedTokens.filter(id => id !== tokenId)
+          : [...prev.selectedTokens, tokenId]
+      }))
+    }
+
+    return (
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+        <Card className="bg-gray-900 border-gray-800 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+          <CardHeader className="flex flex-row items-center justify-between">
+            <div>
+              <CardTitle className="text-white">Create New Strategy</CardTitle>
+              <p className="text-gray-400 text-sm">Configure a new trading strategy</p>
+            </div>
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              onClick={() => setShowNewStrategyForm(false)}
+              className="hover:bg-gray-800"
+            >
+              <X className="w-4 h-4" />
+            </Button>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleSubmit} className="space-y-6">
+              {error && (
+                <div className="bg-red-900/20 border border-red-600 rounded-lg p-4">
+                  <p className="text-red-400">Error: {error}</p>
+                </div>
+              )}
+
+              {/* Basic Information */}
+              <div className="space-y-4">
+                <h3 className="text-lg font-semibold text-white">Basic Information</h3>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    Strategy Description *
+                  </label>
+                  <input
+                    type="text"
+                    value={newStrategyForm.description}
+                    onChange={(e) => setNewStrategyForm(prev => ({ ...prev, description: e.target.value }))}
+                    className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="e.g., Breakout Scalper"
+                    required
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                      Contribution
+                    </label>
+                    <input
+                      type="value"
+                      value={newStrategyForm.contribution}
+                      onChange={(e) => setNewStrategyForm(prev => ({ ...prev, contribution: Number(e.target.value) }))}
+                      className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="0"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                      Direction
+                    </label>
+                    <select
+                      value={newStrategyForm.direction}
+                      onChange={(e) => setNewStrategyForm(prev => ({ ...prev, direction: e.target.value as 'SAME' | 'OPPOSITE' }))}
+                      className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="SAME">Same Direction</option>
+                      <option value="OPPOSITE">Opposite Direction</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="flex items-center space-x-2">
+                  <input
+                    type="checkbox"
+                    id="closeBeforeNewCandle"
+                    checked={newStrategyForm.isCloseBeforeNewCandle}
+                    onChange={(e) => setNewStrategyForm(prev => ({ ...prev, isCloseBeforeNewCandle: e.target.checked }))}
+                    className="w-4 h-4 text-blue-600 bg-gray-800 border-gray-700 rounded focus:ring-blue-500"
+                  />
+                  <label htmlFor="closeBeforeNewCandle" className="text-sm text-gray-300">
+                    Close before new candle
+                  </label>
+                </div>
+              </div>
+
+              {/* Token Selection */}
+              <div className="space-y-4">
+                <h3 className="text-lg font-semibold text-white">Token Pairs</h3>
+                <div className="grid grid-cols-2 gap-2">
+                  {availableTokens.map((token) => (
+                    <div
+                      key={token.id}
+                      className={`p-3 rounded-lg border cursor-pointer transition-colors ${
+                        newStrategyForm.selectedTokens.includes(token.id)
+                          ? 'bg-blue-600/20 border-blue-600 text-blue-400'
+                          : 'bg-gray-800 border-gray-700 hover:bg-gray-700'
+                      }`}
+                      onClick={() => toggleToken(token.id)}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-white font-medium">{token.name}</span>
+                        {newStrategyForm.selectedTokens.includes(token.id) && (
+                          <CheckCircle className="w-4 h-4 text-blue-400" />
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Targets */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-lg font-semibold text-white">Targets</h3>
+                  <Button
+                    type="button"
+                    onClick={addTarget}
+                    variant="outline"
+                    size="sm"
+                    className="border-gray-700 hover:bg-gray-800"
+                  >
+                    Add Target
+                  </Button>
+                </div>
+
+                {newStrategyForm.targets.map((target, index) => (
+                  <div key={index} className="p-4 bg-gray-800 rounded-lg">
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="text-white font-medium">Target {index + 1}</span>
+                      {newStrategyForm.targets.length > 1 && (
+                        <Button
+                          type="button"
+                          onClick={() => removeTarget(index)}
+                          variant="ghost"
+                          size="sm"
+                          className="text-red-400 hover:text-red-300 hover:bg-red-900/20"
+                        >
+                          <X className="w-4 h-4" />
+                        </Button>
+                      )}
+                    </div>
+                    
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-1">
+                          Target Percent
+                        </label>
+                        <input
+                          type="number"
+                          step="0.5"
+                          value={target.targetPercent}
+                          onChange={(e) => updateTarget(index, 'targetPercent', Number(e.target.value))}
+                          className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          placeholder="0.1"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-1">
+                          Stop Loss Percent
+                        </label>
+                        <input
+                          type="number"
+                          step="0.5"
+                          value={target.stoplossPercent}
+                          onChange={(e) => updateTarget(index, 'stoplossPercent', Number(e.target.value))}
+                          className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          placeholder="0.1"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Submit Buttons */}
+              <div className="flex justify-end space-x-3 pt-4 border-t border-gray-800">
+                <Button
+                  type="button"
+                  onClick={() => setShowNewStrategyForm(false)}
+                  variant="outline"
+                  className="border-gray-700 hover:bg-gray-800"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={loading || !newStrategyForm.description || newStrategyForm.targets.length === 0}
+                  className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {loading ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                      Creating...
+                    </>
+                  ) : (
+                    'Create Strategy'
+                  )}
+                </Button>
+              </div>
+            </form>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
   const renderTabContent = () => {
     switch (activeTab) {
       case 'Analyze':
@@ -1061,6 +1410,8 @@ export function Admin() {
 
   return (
     <div className="min-h-screen bg-gray-950 text-white">
+      {/* New Strategy Modal */}
+      {showNewStrategyForm && renderNewStrategyForm()}
       {/* Header */}
       <div className="p-6">
         <div>
