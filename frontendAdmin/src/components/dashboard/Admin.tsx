@@ -175,10 +175,6 @@ const getStatusColor = (status: string) => {
   }
 }
 
-const getRoleColor = (role: string) => {
-  return role === 'ADMIN' ? 'bg-purple-600' : 'bg-blue-600'
-}
-
 const getReturnsColor = (returns: number) => {
   if (returns > 0) return 'text-green-400'
   if (returns < 0) return 'text-red-400'
@@ -305,6 +301,26 @@ const fetchUserDetails = async (userId: number) => {
   return data.data.user_specific
 }
 
+const updateUserStatus = async (userId: number) => {
+  const token = localStorage.getItem('adminToken')
+  
+  const response = await fetch(`${API_BASE}/api/admin/users/${userId}`, {
+    method: 'PATCH',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    }
+  })
+  
+  if (!response.ok) {
+    const errorData = await response.json()
+    throw new Error(errorData.message || 'Failed to update user status')
+  }
+  
+  const data = await response.json()
+  return data
+}
+
 export function Admin() {
   const [activeTab, setActiveTab] = useState('Analyze')
   const [selectedUser, setSelectedUser] = useState<typeof users[0] | null>(null)
@@ -333,6 +349,7 @@ export function Admin() {
   // User Details State
   const [userDetails, setUserDetails] = useState<any>(null)
   const [loadingUserDetails, setLoadingUserDetails] = useState(false)
+  const [updatingUserStatus, setUpdatingUserStatus] = useState(false)
   
   const tabs = ['Analyze', 'Orders', 'Transactions', 'Strategies', 'Users']
 
@@ -977,6 +994,42 @@ export function Admin() {
       }
     }
 
+    const handleUserStatusUpdate = async () => {
+      if (!selectedUser || !userDetails) return
+      
+      setUpdatingUserStatus(true)
+      setError(null)
+      
+      try {
+        await updateUserStatus(selectedUser.id)
+        
+        // Toggle the user details status
+        setUserDetails((prev: any) => ({
+          ...prev,
+          isActive: !prev.isActive
+        }))
+        
+        // Update the users list
+        setApiUsers(prev => prev.map(user => 
+          user.id === selectedUser.id 
+            ? { ...user, isActive: !user.isActive }
+            : user
+        ))
+        
+        // Update selected user status
+        setSelectedUser(prev => prev ? {
+          ...prev,
+          status: prev.status === 'ACTIVE' ? 'SUSPENDED' : 'ACTIVE'
+        } : null)
+        
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to update user status')
+        console.error('Failed to update user status:', err)
+      } finally {
+        setUpdatingUserStatus(false)
+      }
+    }
+
     return (
       <div className="space-y-6">
         {/* Header */}
@@ -1172,14 +1225,42 @@ export function Admin() {
                         Edit User
                       </Button>
                       {userDetails.isActive ? (
-                        <Button variant="outline" className="w-full border-red-600 text-red-400 hover:bg-red-600 hover:text-white">
-                          <X className="w-4 h-4 mr-2" />
-                          Suspend User
+                        <Button 
+                          onClick={handleUserStatusUpdate}
+                          disabled={updatingUserStatus}
+                          variant="outline" 
+                          className="w-full border-red-600 text-red-400 hover:bg-red-600 hover:text-white disabled:opacity-50"
+                        >
+                          {updatingUserStatus ? (
+                            <>
+                              <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                              Updating...
+                            </>
+                          ) : (
+                            <>
+                              <X className="w-4 h-4 mr-2" />
+                              Suspend User
+                            </>
+                          )}
                         </Button>
                       ) : (
-                        <Button variant="outline" className="w-full border-green-600 text-green-400 hover:bg-green-600 hover:text-white">
-                          <CheckCircle className="w-4 h-4 mr-2" />
-                          Activate User
+                        <Button 
+                          onClick={handleUserStatusUpdate}
+                          disabled={updatingUserStatus}
+                          variant="outline" 
+                          className="w-full border-green-600 text-green-400 hover:bg-green-600 hover:text-white disabled:opacity-50"
+                        >
+                          {updatingUserStatus ? (
+                            <>
+                              <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                              Updating...
+                            </>
+                          ) : (
+                            <>
+                              <CheckCircle className="w-4 h-4 mr-2" />
+                              Activate User
+                            </>
+                          )}
                         </Button>
                       )}
                     </div>
