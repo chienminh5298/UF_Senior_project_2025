@@ -556,13 +556,15 @@ export function Admin() {
           status: order.status,
           timestamp: new Date(order.buyDate).toLocaleString(),
           pnl: order.netProfit,
-          user: order.user.email.split('@')[0], // Use email prefix as name
+          user: order.user.email.split('@')[0], 
           userId: order.user.id,
           userEmail: order.user.email,
-          orderType: 'Market', // Default since not in API
           fillPrice: order.entryPrice,
           fees: order.fee,
-          strategy: 'API Strategy' // Default since not in API
+
+          // TODO: Need to add these fields to the API
+          orderType: 'Market', 
+          strategy: 'API Strategy' 
         }
         setSelectedOrder(displayOrder as any)
       }
@@ -581,7 +583,7 @@ export function Admin() {
       }
     }
 
-    // Calculate total P&L from API data
+    // Calculate total profits from API data
     const totalPnL = apiOrders.reduce((sum, order) => sum + order.netProfit, 0)
 
     return (
@@ -976,7 +978,9 @@ export function Admin() {
           balance: user.tradeBalance,
           returns: user.profit,
           returnsPercent: user.tradeBalance > 0 ? (user.profit / user.tradeBalance) * 100 : 0,
-          joinDate: '2024-01-01' // Default since not in API
+
+          // TODO: Need to add these fields to the API
+          joinDate: '2024-01-01'
         }
         setSelectedUser(displayUser as any)
         
@@ -994,6 +998,7 @@ export function Admin() {
       }
     }
 
+    // Admin can suspend or activate a user
     const handleUserStatusUpdate = async () => {
       if (!selectedUser || !userDetails) return
       
