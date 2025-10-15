@@ -287,6 +287,24 @@ const createStrategy = async (strategyData: NewStrategyForm) => {
   return data.data.strategy
 }
 
+const fetchUserDetails = async (userId: number) => {
+  const token = localStorage.getItem('adminToken')
+  
+  const response = await fetch(`${API_BASE}/api/admin/users/${userId}`, {
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    }
+  })
+  
+  if (!response.ok) {
+    throw new Error('Failed to fetch user details')
+  }
+  
+  const data = await response.json()
+  return data.data.user_specific
+}
+
 export function Admin() {
   const [activeTab, setActiveTab] = useState('Analyze')
   const [selectedUser, setSelectedUser] = useState<typeof users[0] | null>(null)
@@ -311,6 +329,10 @@ export function Admin() {
     selectedTokens: [],
     targets: [{ targetPercent: 0, stoplossPercent: 0 }]
   })
+  
+  // User Details State
+  const [userDetails, setUserDetails] = useState<any>(null)
+  const [loadingUserDetails, setLoadingUserDetails] = useState(false)
   
   const tabs = ['Analyze', 'Orders', 'Transactions', 'Strategies', 'Users']
 
@@ -922,9 +944,10 @@ export function Admin() {
   )
 
   const renderUsersContent = () => {
-    const handleUserClick = (user: ApiUser) => {
+    const handleUserClick = async (user: ApiUser) => {
       if (selectedUser?.id === user.id) {
         setSelectedUser(null)
+        setUserDetails(null)
       } else {
         // Convert API user to display format
         const displayUser = {
@@ -939,6 +962,18 @@ export function Admin() {
           joinDate: '2024-01-01' // Default since not in API
         }
         setSelectedUser(displayUser as any)
+        
+        // Fetch detailed user information
+        setLoadingUserDetails(true)
+        try {
+          const details = await fetchUserDetails(user.id)
+          setUserDetails(details)
+        } catch (err) {
+          console.error('Failed to fetch user details:', err)
+          setUserDetails(null)
+        } finally {
+          setLoadingUserDetails(false)
+        }
       }
     }
 
@@ -1048,62 +1083,95 @@ export function Admin() {
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => setSelectedUser(null)}
+                    onClick={() => {
+                      setSelectedUser(null)
+                      setUserDetails(null)
+                    }}
                     className="hover:bg-gray-800"
                   >
                     <X className="w-4 h-4" />
                   </Button>
                 </CardHeader>
                 <CardContent>
-                  <div className="space-y-4">
-                    <div className="flex items-center gap-4 p-4 bg-gray-800 rounded-lg">
-                      <div className="w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center">
-                        <Users className="w-8 h-8 text-white" />
-                      </div>
-                      <div>
-                        <h3 className="text-white font-semibold">{selectedUser.name}</h3>
-                        <p className="text-gray-400 text-sm">{selectedUser.email}</p>
-                        <Badge className={`${getRoleColor(selectedUser.role)} text-white mt-1`}>
-                          {selectedUser.role}
-                        </Badge>
-                      </div>
+                  {loadingUserDetails ? (
+                    <div className="flex items-center justify-center py-8">
+                      <RefreshCw className="w-6 h-6 animate-spin text-gray-400" />
+                      <span className="ml-2 text-gray-400">Loading user details...</span>
                     </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="p-3 bg-gray-800 rounded-lg">
-                        <p className="text-gray-400 text-sm">Status</p>
-                        <Badge className={`${getStatusColor(selectedUser.status)} text-white mt-1`}>
-                          {selectedUser.status}
-                        </Badge>
+                  ) : userDetails ? (
+                    <div className="space-y-4">
+                      {/* User Avatar and Basic Info */}
+                      <div className="flex items-center gap-4 p-4 bg-gray-800 rounded-lg">
+                        <div className="w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center">
+                          <Users className="w-8 h-8 text-white" />
+                        </div>
+                        <div>
+                          <h3 className="text-white font-semibold">{userDetails.fullname}</h3>
+                          <p className="text-gray-400 text-sm">{userDetails.email}</p>
+                          <p className="text-gray-400 text-xs">@{userDetails.username}</p>
+                          <Badge className="bg-blue-600 text-white mt-1">
+                            INVESTOR
+                          </Badge>
+                        </div>
                       </div>
+
+                      {/* Status and Avatar */}
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="p-3 bg-gray-800 rounded-lg">
+                          <p className="text-gray-400 text-sm">Status</p>
+                          <Badge className={`${getStatusColor(userDetails.isActive ? 'ACTIVE' : 'SUSPENDED')} text-white mt-1`}>
+                            {userDetails.isActive ? 'ACTIVE' : 'SUSPENDED'}
+                          </Badge>
+                        </div>
+                        <div className="p-3 bg-gray-800 rounded-lg">
+                          <p className="text-gray-400 text-sm">Avatar ID</p>
+                          <p className="text-white font-medium">{userDetails.avatar}</p>
+                        </div>
+                      </div>
+
+                      {/* Financial Information */}
+                      <div className="space-y-3">
+                        <div className="p-3 bg-gray-800 rounded-lg">
+                          <p className="text-gray-400 text-sm">Trade Balance</p>
+                          <p className="text-white font-semibold text-lg">
+                            ${userDetails.tradeBalance.toLocaleString()}
+                          </p>
+                        </div>
+                        <div className="p-3 bg-gray-800 rounded-lg">
+                          <p className="text-gray-400 text-sm">Total Profit</p>
+                          <p className={`font-semibold text-lg ${getReturnsColor(userDetails.profit)}`}>
+                            {userDetails.profit === 0 ? '$0' : 
+                             (userDetails.profit > 0 ? '+' : '') + `$${userDetails.profit.toLocaleString()}`}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Account Creation Date */}
                       <div className="p-3 bg-gray-800 rounded-lg">
                         <p className="text-gray-400 text-sm">Member Since</p>
-                        <p className="text-white font-medium">{selectedUser.joinDate}</p>
-                      </div>
-                    </div>
-
-                    <div className="space-y-3">
-                      <div className="p-3 bg-gray-800 rounded-lg">
-                        <p className="text-gray-400 text-sm">Account Balance</p>
-                        <p className="text-white font-semibold text-lg">
-                          ${selectedUser.balance.toLocaleString()}
-                        </p>
-                      </div>
-                      <div className="p-3 bg-gray-800 rounded-lg">
-                        <p className="text-gray-400 text-sm">Total Returns</p>
-                        <p className={`font-semibold text-lg ${getReturnsColor(selectedUser.returns)}`}>
-                          {selectedUser.returns === 0 ? '$0 (0%)' : 
-                           (selectedUser.returns > 0 ? '+' : '') + `$${selectedUser.returns.toLocaleString()} (${selectedUser.returnsPercent > 0 ? '+' : ''}${selectedUser.returnsPercent}%)`}
+                        <p className="text-white font-medium">
+                          {new Date(userDetails.createdAt).toLocaleDateString('en-US', {
+                            year: 'numeric',
+                            month: 'long',
+                            day: 'numeric'
+                          })}
                         </p>
                       </div>
                     </div>
+                  ) : (
+                    <div className="text-center py-8">
+                      <p className="text-gray-400">Failed to load user details</p>
+                    </div>
+                  )}
 
+                  {/* Action Buttons */}
+                  {userDetails && (
                     <div className="space-y-2 pt-4">
                       <Button className="w-full bg-blue-600 hover:bg-blue-700">
                         <Settings className="w-4 h-4 mr-2" />
                         Edit User
                       </Button>
-                      {selectedUser.status === 'ACTIVE' ? (
+                      {userDetails.isActive ? (
                         <Button variant="outline" className="w-full border-red-600 text-red-400 hover:bg-red-600 hover:text-white">
                           <X className="w-4 h-4 mr-2" />
                           Suspend User
@@ -1115,7 +1183,7 @@ export function Admin() {
                         </Button>
                       )}
                     </div>
-                  </div>
+                  )}
                 </CardContent>
               </Card>
             </div>
