@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card'
 import { Badge } from '../ui/badge'
 import { Button } from '../ui/button'
@@ -11,8 +11,43 @@ import {
   X,
   Settings,
   Calendar,
-  BarChart3
+  BarChart3,
+  RefreshCw
 } from 'lucide-react'
+
+// API Configuration
+const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3001'
+
+// Types for API responses
+interface ApiOrder {
+  id: number
+  orderId: string
+  status: 'ACTIVE' | 'FINISHED' | 'EXPIRED'
+  side: 'BUY' | 'SELL'
+  entryPrice: number
+  fee: number
+  qty: number
+  budget: number
+  netProfit: number
+  buyDate: string
+  token: {
+    name: string
+  }
+  user: {
+    id: number
+    email: string
+  }
+}
+
+interface ApiUser {
+  id: number
+  fullname: string
+  username: string
+  email: string
+  isActive: boolean
+  tradeBalance: number
+  profit: number
+}
 
 // Mock data
 const users = [
@@ -73,76 +108,6 @@ const users = [
   }
 ]
 
-const orders = [
-  { 
-    id: 1, 
-    symbol: 'BTC/USDT', 
-    type: 'BUY', 
-    amount: 0.5, 
-    price: 68500, 
-    status: 'FILLED', 
-    timestamp: '2024-09-18 14:30:00', 
-    pnl: 1250,
-    user: 'John Thompson',
-    userId: 1,
-    userEmail: 'john.thompson@example.com',
-    orderType: 'Market',
-    fillPrice: 68520,
-    fees: 34.26,
-    strategy: 'Momentum Scalper'
-  },
-  { 
-    id: 2, 
-    symbol: 'ETH/USDT', 
-    type: 'SELL', 
-    amount: 2.0, 
-    price: 3400, 
-    status: 'PENDING', 
-    timestamp: '2024-09-18 14:25:00', 
-    pnl: 0,
-    user: 'Sarah Chen',
-    userId: 2,
-    userEmail: 'sarah.chen@example.com',
-    orderType: 'Limit',
-    fillPrice: null,
-    fees: 0,
-    strategy: 'Trend Follower'
-  },
-  { 
-    id: 3, 
-    symbol: 'BTC/USDT', 
-    type: 'BUY', 
-    amount: 0.25, 
-    price: 67800, 
-    status: 'FILLED', 
-    timestamp: '2024-09-18 14:15:00', 
-    pnl: 175,
-    user: 'Emily Watson',
-    userId: 4,
-    userEmail: 'emily.watson@example.com',
-    orderType: 'Market',
-    fillPrice: 67850,
-    fees: 16.96,
-    strategy: 'Arbitrage Hunter'
-  },
-  { 
-    id: 4, 
-    symbol: 'ETH/USDT', 
-    type: 'SELL', 
-    amount: 1.5, 
-    price: 3350, 
-    status: 'CANCELLED', 
-    timestamp: '2024-09-18 14:10:00', 
-    pnl: -85,
-    user: 'Michael Rodriguez',
-    userId: 3,
-    userEmail: 'michael.rodriguez@example.com',
-    orderType: 'Limit',
-    fillPrice: null,
-    fees: 0,
-    strategy: 'Manual Trade'
-  }
-]
 
 const transactions = [
   { id: 1, user: 'John Thompson', type: 'DEPOSIT', amount: 15000, status: 'PENDING', timestamp: '2024-09-18 12:00:00' },
@@ -201,13 +166,104 @@ const getReturnsColor = (returns: number) => {
   return 'text-gray-400'
 }
 
+// API Functions
+const fetchOrders = async (status?: string): Promise<ApiOrder[]> => {
+  const token = localStorage.getItem('adminToken')
+  const url = status ? `${API_BASE}/api/admin/orders?status=${status}` : `${API_BASE}/api/admin/orders`
+  
+  const response = await fetch(url, {
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    }
+  })
+  
+  if (!response.ok) {
+    throw new Error('Failed to fetch orders')
+  }
+  
+  const data = await response.json()
+  return data.data.orders
+}
+
+const fetchUsers = async (): Promise<ApiUser[]> => {
+  const token = localStorage.getItem('adminToken')
+  
+  const response = await fetch(`${API_BASE}/api/admin/users`, {
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    }
+  })
+  
+  if (!response.ok) {
+    throw new Error('Failed to fetch users')
+  }
+  
+  const data = await response.json()
+  return data.data.users
+}
+
+const fetchOrderStats = async () => {
+  const token = localStorage.getItem('adminToken')
+  
+  const response = await fetch(`${API_BASE}/api/admin/orders/stats`, {
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    }
+  })
+  
+  if (!response.ok) {
+    throw new Error('Failed to fetch order stats')
+  }
+  
+  const data = await response.json()
+  return data.data
+}
+
 export function Admin() {
   const [activeTab, setActiveTab] = useState('Analyze')
   const [selectedUser, setSelectedUser] = useState<typeof users[0] | null>(null)
-  const [selectedOrder, setSelectedOrder] = useState<typeof orders[0] | null>(null)
+  const [selectedOrder, setSelectedOrder] = useState<any | null>(null)
   const [selectedYear, setSelectedYear] = useState('2024')
   
+  // API Data State
+  const [apiOrders, setApiOrders] = useState<ApiOrder[]>([])
+  const [apiUsers, setApiUsers] = useState<ApiUser[]>([])
+  const [orderStats, setOrderStats] = useState<any>(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  
   const tabs = ['Analyze', 'Orders', 'Transactions', 'Strategies', 'Users']
+
+  // Load data when component mounts or tab changes
+  useEffect(() => {
+    const loadData = async () => {
+      setLoading(true)
+      setError(null)
+      
+      try {
+        if (activeTab === 'Orders') {
+          const ordersData = await fetchOrders()
+          setApiOrders(ordersData)
+        } else if (activeTab === 'Users') {
+          const usersData = await fetchUsers()
+          setApiUsers(usersData)
+        } else if (activeTab === 'Analyze') {
+          const statsData = await fetchOrderStats()
+          setOrderStats(statsData)
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'An error occurred')
+        console.error('Error loading data:', err)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    loadData()
+  }, [activeTab])
 
   const renderAnalyzeContent = () => (
     <div className="space-y-6">
@@ -285,17 +341,52 @@ export function Admin() {
           <BarChart3 className="w-5 h-5" />
           Trading Performance
         </h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <Card className="bg-gray-900 border-gray-800">
-            <CardContent className="p-4">
-              <p className="text-gray-400 text-sm">Total Profit</p>
-              <p className="text-xl font-bold text-green-400">$45,670</p>
-            </CardContent>
-          </Card>
-          <Card className="bg-gray-900 border-gray-800">
-            <CardContent className="p-4">
-              <p className="text-gray-400 text-sm">Total Loss</p>
-              <p className="text-xl font-bold text-red-400">-$12,340</p>
+        {loading ? (
+          <div className="flex items-center justify-center py-8">
+            <RefreshCw className="w-6 h-6 animate-spin text-gray-400" />
+            <span className="ml-2 text-gray-400">Loading stats...</span>
+          </div>
+        ) : orderStats ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <Card className="bg-gray-900 border-gray-800">
+              <CardContent className="p-4">
+                <p className="text-gray-400 text-sm">Total Trades</p>
+                <p className="text-xl font-bold text-white">{orderStats.totalTrades}</p>
+              </CardContent>
+            </Card>
+            <Card className="bg-gray-900 border-gray-800">
+              <CardContent className="p-4">
+                <p className="text-gray-400 text-sm">Completed Trades</p>
+                <p className="text-xl font-bold text-green-400">{orderStats.completedTrades}</p>
+              </CardContent>
+            </Card>
+            <Card className="bg-gray-900 border-gray-800">
+              <CardContent className="p-4">
+                <p className="text-gray-400 text-sm">Pending Trades</p>
+                <p className="text-xl font-bold text-yellow-400">{orderStats.pendingTrades}</p>
+              </CardContent>
+            </Card>
+            <Card className="bg-gray-900 border-gray-800">
+              <CardContent className="p-4">
+                <p className="text-gray-400 text-sm">Total Profit</p>
+                <p className={`text-xl font-bold ${orderStats.totalProfit >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                  ${orderStats.totalProfit?.toFixed(2) || '0.00'}
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <Card className="bg-gray-900 border-gray-800">
+              <CardContent className="p-4">
+                <p className="text-gray-400 text-sm">Total Profit</p>
+                <p className="text-xl font-bold text-green-400">$45,670</p>
+              </CardContent>
+            </Card>
+            <Card className="bg-gray-900 border-gray-800">
+              <CardContent className="p-4">
+                <p className="text-gray-400 text-sm">Total Loss</p>
+                <p className="text-xl font-bold text-red-400">-$12,340</p>
             </CardContent>
           </Card>
           <Card className="bg-gray-900 border-gray-800">
@@ -311,6 +402,7 @@ export function Admin() {
             </CardContent>
           </Card>
         </div>
+        )}
       </div>
 
       {/* Performance Chart Placeholder */}
@@ -331,13 +423,47 @@ export function Admin() {
   )
 
   const renderOrdersContent = () => {
-    const handleOrderClick = (order: typeof orders[0]) => {
+    const handleOrderClick = (order: ApiOrder) => {
       if (selectedOrder?.id === order.id) {
         setSelectedOrder(null)
       } else {
-        setSelectedOrder(order)
+        // Convert API order to display format
+        const displayOrder = {
+          id: order.id,
+          symbol: order.token.name,
+          type: order.side,
+          amount: order.qty,
+          price: order.entryPrice,
+          status: order.status,
+          timestamp: new Date(order.buyDate).toLocaleString(),
+          pnl: order.netProfit,
+          user: order.user.email.split('@')[0], // Use email prefix as name
+          userId: order.user.id,
+          userEmail: order.user.email,
+          orderType: 'Market', // Default since not in API
+          fillPrice: order.entryPrice,
+          fees: order.fee,
+          strategy: 'API Strategy' // Default since not in API
+        }
+        setSelectedOrder(displayOrder as any)
       }
     }
+
+    const handleRefresh = async () => {
+      setLoading(true)
+      setError(null)
+      try {
+        const ordersData = await fetchOrders()
+        setApiOrders(ordersData)
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to refresh orders')
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    // Calculate total P&L from API data
+    const totalPnL = apiOrders.reduce((sum, order) => sum + order.netProfit, 0)
 
     return (
       <div className="space-y-6">
@@ -346,11 +472,30 @@ export function Admin() {
             <h1 className="text-2xl font-bold text-white">Order Management</h1>
             <p className="text-gray-400">Monitor current orders and P&L</p>
           </div>
-          <div className="text-right">
-            <p className="text-sm text-gray-400">Total P&L</p>
-            <p className="text-2xl font-bold text-green-400">+$1,340</p>
+          <div className="flex items-center gap-4">
+            <div className="text-right">
+              <p className="text-sm text-gray-400">Total P&L</p>
+              <p className={`text-2xl font-bold ${totalPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                {totalPnL >= 0 ? '+' : ''}${totalPnL.toFixed(2)}
+              </p>
+            </div>
+            <Button 
+              onClick={handleRefresh} 
+              disabled={loading}
+              variant="outline" 
+              size="sm"
+              className="border-gray-700 hover:bg-gray-800"
+            >
+              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+            </Button>
           </div>
         </div>
+
+        {error && (
+          <div className="bg-red-900/20 border border-red-600 rounded-lg p-4">
+            <p className="text-red-400">Error: {error}</p>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Orders Table */}
@@ -375,42 +520,57 @@ export function Admin() {
                       </tr>
                     </thead>
                     <tbody>
-                      {orders.map((order) => (
-                        <tr 
-                          key={order.id} 
-                          className={`border-b border-gray-800/50 cursor-pointer transition-colors ${
-                            selectedOrder?.id === order.id 
-                              ? 'bg-blue-600/10 border-blue-600/30' 
-                              : 'hover:bg-gray-800/30'
-                          }`}
-                          onClick={() => handleOrderClick(order)}
-                        >
-                          <td className="py-3">
-                            <div>
-                              <p className="text-white font-medium text-sm">{order.user}</p>
-                              <p className="text-gray-400 text-xs">{order.userEmail}</p>
-                            </div>
-                          </td>
-                          <td className="py-3 text-white font-medium">{order.symbol}</td>
-                          <td className="py-3">
-                            <Badge className={order.type === 'BUY' ? 'bg-green-600' : 'bg-red-600'}>
-                              {order.type}
-                            </Badge>
-                          </td>
-                          <td className="py-3 text-white">{order.amount}</td>
-                          <td className="py-3 text-white">${order.price.toLocaleString()}</td>
-                          <td className="py-3">
-                            <Badge className={`${getStatusColor(order.status)} text-white`}>
-                              {order.status}
-                            </Badge>
-                          </td>
-                          <td className="py-3">
-                            <span className={order.pnl > 0 ? 'text-green-400' : order.pnl < 0 ? 'text-red-400' : 'text-gray-400'}>
-                              {order.pnl > 0 ? '+' : ''}${order.pnl}
-                            </span>
+                      {loading ? (
+                        <tr>
+                          <td colSpan={7} className="py-8 text-center text-gray-400">
+                            <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2" />
+                            Loading orders...
                           </td>
                         </tr>
-                      ))}
+                      ) : apiOrders.length === 0 ? (
+                        <tr>
+                          <td colSpan={7} className="py-8 text-center text-gray-400">
+                            No orders found
+                          </td>
+                        </tr>
+                      ) : (
+                        apiOrders.map((order) => (
+                          <tr 
+                            key={order.id} 
+                            className={`border-b border-gray-800/50 cursor-pointer transition-colors ${
+                              selectedOrder?.id === order.id 
+                                ? 'bg-blue-600/10 border-blue-600/30' 
+                                : 'hover:bg-gray-800/30'
+                            }`}
+                            onClick={() => handleOrderClick(order)}
+                          >
+                            <td className="py-3">
+                              <div>
+                                <p className="text-white font-medium text-sm">{order.user.email.split('@')[0]}</p>
+                                <p className="text-gray-400 text-xs">{order.user.email}</p>
+                              </div>
+                            </td>
+                            <td className="py-3 text-white font-medium">{order.token.name}</td>
+                            <td className="py-3">
+                              <Badge className={order.side === 'BUY' ? 'bg-green-600' : 'bg-red-600'}>
+                                {order.side}
+                              </Badge>
+                            </td>
+                            <td className="py-3 text-white">{order.qty}</td>
+                            <td className="py-3 text-white">${order.entryPrice.toLocaleString()}</td>
+                            <td className="py-3">
+                              <Badge className={`${getStatusColor(order.status)} text-white`}>
+                                {order.status}
+                              </Badge>
+                            </td>
+                            <td className="py-3">
+                              <span className={order.netProfit > 0 ? 'text-green-400' : order.netProfit < 0 ? 'text-red-400' : 'text-gray-400'}>
+                                {order.netProfit > 0 ? '+' : ''}${order.netProfit.toFixed(2)}
+                              </span>
+                            </td>
+                          </tr>
+                        ))
+                      )}
                     </tbody>
                   </table>
                 </div>
@@ -679,11 +839,23 @@ export function Admin() {
   )
 
   const renderUsersContent = () => {
-    const handleUserClick = (user: typeof users[0]) => {
+    const handleUserClick = (user: ApiUser) => {
       if (selectedUser?.id === user.id) {
         setSelectedUser(null)
       } else {
-        setSelectedUser(user)
+        // Convert API user to display format
+        const displayUser = {
+          id: user.id,
+          name: user.fullname,
+          email: user.email,
+          role: 'INVESTOR',
+          status: user.isActive ? 'ACTIVE' : 'SUSPENDED',
+          balance: user.tradeBalance,
+          returns: user.profit,
+          returnsPercent: user.tradeBalance > 0 ? (user.profit / user.tradeBalance) * 100 : 0,
+          joinDate: '2024-01-01' // Default since not in API
+        }
+        setSelectedUser(displayUser as any)
       }
     }
 
@@ -697,7 +869,7 @@ export function Admin() {
           </div>
           <div className="text-right">
             <p className="text-sm text-gray-400">Total Users</p>
-            <p className="text-2xl font-bold text-white">5</p>
+            <p className="text-2xl font-bold text-white">{apiUsers.length}</p>
           </div>
         </div>
 
@@ -722,43 +894,58 @@ export function Admin() {
                       </tr>
                     </thead>
                     <tbody>
-                      {users.map((user) => (
-                        <tr
-                          key={user.id}
-                          className={`border-b border-gray-800/50 cursor-pointer transition-colors ${
-                            selectedUser?.id === user.id
-                              ? 'bg-blue-600/10 border-blue-600/30'
-                              : 'hover:bg-gray-800/30'
-                          }`}
-                          onClick={() => handleUserClick(user)}
-                        >
+                      {loading ? (
+                        <tr>
+                          <td colSpan={6} className="py-8 text-center text-gray-400">
+                            <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2" />
+                            Loading users...
+                          </td>
+                        </tr>
+                      ) : apiUsers.length === 0 ? (
+                        <tr>
+                          <td colSpan={6} className="py-8 text-center text-gray-400">
+                            No users found
+                          </td>
+                        </tr>
+                      ) : (
+                        apiUsers.map((user) => (
+                          <tr
+                            key={user.id}
+                            className={`border-b border-gray-800/50 cursor-pointer transition-colors ${
+                              selectedUser?.id === user.id
+                                ? 'bg-blue-600/10 border-blue-600/30'
+                                : 'hover:bg-gray-800/30'
+                            }`}
+                            onClick={() => handleUserClick(user)}
+                          >
                           <td className="py-3">
                             <div>
-                              <p className="text-white font-medium text-sm">{user.name}</p>
+                              <p className="text-white font-medium text-sm">{user.fullname}</p>
                               <p className="text-gray-400 text-xs">{user.email}</p>
                             </div>
                           </td>
                           <td className="py-3">
-                            <Badge className={`${getRoleColor(user.role)} text-white`}>
-                              {user.role}
+                            <Badge className="bg-blue-600 text-white">
+                              INVESTOR
                             </Badge>
                           </td>
                           <td className="py-3">
-                            <Badge className={`${getStatusColor(user.status)} text-white`}>
-                              {user.status}
+                            <Badge className={`${getStatusColor(user.isActive ? 'ACTIVE' : 'SUSPENDED')} text-white`}>
+                              {user.isActive ? 'ACTIVE' : 'SUSPENDED'}
                             </Badge>
                           </td>
                           <td className="py-3 text-white">
-                            {user.balance > 0 ? `$${user.balance.toLocaleString()}` : '$0'}
+                            ${user.tradeBalance.toLocaleString()}
                           </td>
                           <td className="py-3">
-                            <span className={`font-medium ${getReturnsColor(user.returns)}`}>
-                              {user.returns === 0 ? '+$0 (0%)' : 
-                               (user.returns > 0 ? '+' : '') + `$${user.returns.toLocaleString()} (${user.returnsPercent > 0 ? '+' : ''}${user.returnsPercent}%)`}
+                            <span className={`font-medium ${getReturnsColor(user.profit)}`}>
+                              {user.profit === 0 ? '+$0 (0%)' : 
+                               (user.profit > 0 ? '+' : '') + `$${user.profit.toLocaleString()} (${user.tradeBalance > 0 ? ((user.profit / user.tradeBalance) * 100).toFixed(1) : '0.0'}%)`}
                             </span>
                           </td>
                         </tr>
-                      ))}
+                        ))
+                      )}
                     </tbody>
                   </table>
                 </div>
