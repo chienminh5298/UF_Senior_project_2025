@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card'
 import { Badge } from '../ui/badge'
 import { Button } from '../ui/button'
@@ -11,8 +11,62 @@ import {
   X,
   Settings,
   Calendar,
-  BarChart3
+  BarChart3,
+  RefreshCw
 } from 'lucide-react'
+
+// API Configuration
+const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3001'
+
+// Types for API responses
+interface ApiOrder {
+  id: number
+  orderId: string
+  status: 'ACTIVE' | 'FINISHED' | 'EXPIRED'
+  side: 'BUY' | 'SELL'
+  entryPrice: number
+  fee: number
+  qty: number
+  budget: number
+  netProfit: number
+  buyDate: string
+  token: {
+    name: string
+  }
+  user: {
+    id: number
+    email: string
+  }
+}
+
+interface ApiUser {
+  id: number
+  fullname: string
+  username: string
+  email: string
+  isActive: boolean
+  tradeBalance: number
+  profit: number
+}
+
+interface ApiToken {
+  id: number
+  name: string
+  isActive: boolean
+}
+
+interface NewStrategyForm {
+  description: string
+  contribution: number
+  direction: 'SAME' | 'OPPOSITE'
+  isCloseBeforeNewCandle: boolean
+  selectedTokens: number[]
+  targets: Array<{
+    targetPercent: number
+    stoplossPercent: number
+    tokenId?: number
+  }>
+}
 
 // Mock data
 const users = [
@@ -73,76 +127,6 @@ const users = [
   }
 ]
 
-const orders = [
-  { 
-    id: 1, 
-    symbol: 'BTC/USDT', 
-    type: 'BUY', 
-    amount: 0.5, 
-    price: 68500, 
-    status: 'FILLED', 
-    timestamp: '2024-09-18 14:30:00', 
-    pnl: 1250,
-    user: 'John Thompson',
-    userId: 1,
-    userEmail: 'john.thompson@example.com',
-    orderType: 'Market',
-    fillPrice: 68520,
-    fees: 34.26,
-    strategy: 'Momentum Scalper'
-  },
-  { 
-    id: 2, 
-    symbol: 'ETH/USDT', 
-    type: 'SELL', 
-    amount: 2.0, 
-    price: 3400, 
-    status: 'PENDING', 
-    timestamp: '2024-09-18 14:25:00', 
-    pnl: 0,
-    user: 'Sarah Chen',
-    userId: 2,
-    userEmail: 'sarah.chen@example.com',
-    orderType: 'Limit',
-    fillPrice: null,
-    fees: 0,
-    strategy: 'Trend Follower'
-  },
-  { 
-    id: 3, 
-    symbol: 'BTC/USDT', 
-    type: 'BUY', 
-    amount: 0.25, 
-    price: 67800, 
-    status: 'FILLED', 
-    timestamp: '2024-09-18 14:15:00', 
-    pnl: 175,
-    user: 'Emily Watson',
-    userId: 4,
-    userEmail: 'emily.watson@example.com',
-    orderType: 'Market',
-    fillPrice: 67850,
-    fees: 16.96,
-    strategy: 'Arbitrage Hunter'
-  },
-  { 
-    id: 4, 
-    symbol: 'ETH/USDT', 
-    type: 'SELL', 
-    amount: 1.5, 
-    price: 3350, 
-    status: 'CANCELLED', 
-    timestamp: '2024-09-18 14:10:00', 
-    pnl: -85,
-    user: 'Michael Rodriguez',
-    userId: 3,
-    userEmail: 'michael.rodriguez@example.com',
-    orderType: 'Limit',
-    fillPrice: null,
-    fees: 0,
-    strategy: 'Manual Trade'
-  }
-]
 
 const transactions = [
   { id: 1, user: 'John Thompson', type: 'DEPOSIT', amount: 15000, status: 'PENDING', timestamp: '2024-09-18 12:00:00' },
@@ -191,23 +175,214 @@ const getStatusColor = (status: string) => {
   }
 }
 
-const getRoleColor = (role: string) => {
-  return role === 'ADMIN' ? 'bg-purple-600' : 'bg-blue-600'
-}
-
 const getReturnsColor = (returns: number) => {
   if (returns > 0) return 'text-green-400'
   if (returns < 0) return 'text-red-400'
   return 'text-gray-400'
 }
 
+// API Functions
+const fetchOrders = async (status?: string): Promise<ApiOrder[]> => {
+  const token = localStorage.getItem('adminToken')
+  const url = status ? `${API_BASE}/api/admin/orders?status=${status}` : `${API_BASE}/api/admin/orders`
+  
+  const response = await fetch(url, {
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    }
+  })
+  
+  if (!response.ok) {
+    throw new Error('Failed to fetch orders')
+  }
+  
+  const data = await response.json()
+  return data.data.orders
+}
+
+const fetchUsers = async (): Promise<ApiUser[]> => {
+  const token = localStorage.getItem('adminToken')
+  
+  const response = await fetch(`${API_BASE}/api/admin/users`, {
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    }
+  })
+  
+  if (!response.ok) {
+    throw new Error('Failed to fetch users')
+  }
+  
+  const data = await response.json()
+  return data.data.users
+}
+
+const fetchOrderStats = async () => {
+  const token = localStorage.getItem('adminToken')
+  
+  const response = await fetch(`${API_BASE}/api/admin/orders/stats`, {
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    }
+  })
+  
+  if (!response.ok) {
+    throw new Error('Failed to fetch order stats')
+  }
+  
+  const data = await response.json()
+  return data.data
+}
+
+const fetchTokens = async (): Promise<ApiToken[]> => {
+  const token = localStorage.getItem('adminToken')
+  
+  const response = await fetch(`${API_BASE}/api/admin/tokens`, {
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    }
+  })
+  
+  if (!response.ok) {
+    throw new Error('Failed to fetch tokens')
+  }
+  
+  const data = await response.json()
+  return data.data.tokens
+}
+
+const createStrategy = async (strategyData: NewStrategyForm) => {
+  const token = localStorage.getItem('adminToken')
+  
+  const response = await fetch(`${API_BASE}/api/admin/strategies`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      description: strategyData.description,
+      contribution: strategyData.contribution,
+      direction: strategyData.direction,
+      isCloseBeforeNewCandle: strategyData.isCloseBeforeNewCandle,
+      tokenStrategies: strategyData.selectedTokens.map(tokenId => ({ tokenId })),
+      targets: strategyData.targets
+    })
+  })
+  
+  if (!response.ok) {
+    const errorData = await response.json()
+    throw new Error(errorData.message || 'Failed to create strategy')
+  }
+  
+  const data = await response.json()
+  return data.data.strategy
+}
+
+const fetchUserDetails = async (userId: number) => {
+  const token = localStorage.getItem('adminToken')
+  
+  const response = await fetch(`${API_BASE}/api/admin/users/${userId}`, {
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    }
+  })
+  
+  if (!response.ok) {
+    throw new Error('Failed to fetch user details')
+  }
+  
+  const data = await response.json()
+  return data.data.user_specific
+}
+
+const updateUserStatus = async (userId: number) => {
+  const token = localStorage.getItem('adminToken')
+  
+  const response = await fetch(`${API_BASE}/api/admin/users/${userId}`, {
+    method: 'PATCH',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    }
+  })
+  
+  if (!response.ok) {
+    const errorData = await response.json()
+    throw new Error(errorData.message || 'Failed to update user status')
+  }
+  
+  const data = await response.json()
+  return data
+}
+
 export function Admin() {
   const [activeTab, setActiveTab] = useState('Analyze')
   const [selectedUser, setSelectedUser] = useState<typeof users[0] | null>(null)
-  const [selectedOrder, setSelectedOrder] = useState<typeof orders[0] | null>(null)
+  const [selectedOrder, setSelectedOrder] = useState<any | null>(null)
   const [selectedYear, setSelectedYear] = useState('2024')
   
+  // API Data State
+  const [apiOrders, setApiOrders] = useState<ApiOrder[]>([])
+  const [apiUsers, setApiUsers] = useState<ApiUser[]>([])
+  const [orderStats, setOrderStats] = useState<any>(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  
+  // Strategy Form State
+  const [showNewStrategyForm, setShowNewStrategyForm] = useState(false)
+  const [availableTokens, setAvailableTokens] = useState<ApiToken[]>([])
+  const [newStrategyForm, setNewStrategyForm] = useState<NewStrategyForm>({
+    description: '',
+    contribution: 0,
+    direction: 'SAME',
+    isCloseBeforeNewCandle: false,
+    selectedTokens: [],
+    targets: [{ targetPercent: 0, stoplossPercent: 0 }]
+  })
+  
+  // User Details State
+  const [userDetails, setUserDetails] = useState<any>(null)
+  const [loadingUserDetails, setLoadingUserDetails] = useState(false)
+  const [updatingUserStatus, setUpdatingUserStatus] = useState(false)
+  
   const tabs = ['Analyze', 'Orders', 'Transactions', 'Strategies', 'Users']
+
+  // Load data when component mounts or tab changes
+  useEffect(() => {
+    const loadData = async () => {
+      setLoading(true)
+      setError(null)
+      
+      try {
+        if (activeTab === 'Orders') {
+          const ordersData = await fetchOrders()
+          setApiOrders(ordersData)
+        } else if (activeTab === 'Users') {
+          const usersData = await fetchUsers()
+          setApiUsers(usersData)
+        } else if (activeTab === 'Analyze') {
+          const statsData = await fetchOrderStats()
+          setOrderStats(statsData)
+        } else if (activeTab === 'Strategies') {
+          const tokensData = await fetchTokens()
+          setAvailableTokens(tokensData)
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'An error occurred')
+        console.error('Error loading data:', err)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    loadData()
+  }, [activeTab])
 
   const renderAnalyzeContent = () => (
     <div className="space-y-6">
@@ -285,17 +460,52 @@ export function Admin() {
           <BarChart3 className="w-5 h-5" />
           Trading Performance
         </h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <Card className="bg-gray-900 border-gray-800">
-            <CardContent className="p-4">
-              <p className="text-gray-400 text-sm">Total Profit</p>
-              <p className="text-xl font-bold text-green-400">$45,670</p>
-            </CardContent>
-          </Card>
-          <Card className="bg-gray-900 border-gray-800">
-            <CardContent className="p-4">
-              <p className="text-gray-400 text-sm">Total Loss</p>
-              <p className="text-xl font-bold text-red-400">-$12,340</p>
+        {loading ? (
+          <div className="flex items-center justify-center py-8">
+            <RefreshCw className="w-6 h-6 animate-spin text-gray-400" />
+            <span className="ml-2 text-gray-400">Loading stats...</span>
+          </div>
+        ) : orderStats ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <Card className="bg-gray-900 border-gray-800">
+              <CardContent className="p-4">
+                <p className="text-gray-400 text-sm">Total Trades</p>
+                <p className="text-xl font-bold text-white">{orderStats.totalTrades}</p>
+              </CardContent>
+            </Card>
+            <Card className="bg-gray-900 border-gray-800">
+              <CardContent className="p-4">
+                <p className="text-gray-400 text-sm">Completed Trades</p>
+                <p className="text-xl font-bold text-green-400">{orderStats.completedTrades}</p>
+              </CardContent>
+            </Card>
+            <Card className="bg-gray-900 border-gray-800">
+              <CardContent className="p-4">
+                <p className="text-gray-400 text-sm">Pending Trades</p>
+                <p className="text-xl font-bold text-yellow-400">{orderStats.pendingTrades}</p>
+              </CardContent>
+            </Card>
+            <Card className="bg-gray-900 border-gray-800">
+              <CardContent className="p-4">
+                <p className="text-gray-400 text-sm">Total Profit</p>
+                <p className={`text-xl font-bold ${orderStats.totalProfit >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                  ${orderStats.totalProfit?.toFixed(2) || '0.00'}
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <Card className="bg-gray-900 border-gray-800">
+              <CardContent className="p-4">
+                <p className="text-gray-400 text-sm">Total Profit</p>
+                <p className="text-xl font-bold text-green-400">$45,670</p>
+              </CardContent>
+            </Card>
+            <Card className="bg-gray-900 border-gray-800">
+              <CardContent className="p-4">
+                <p className="text-gray-400 text-sm">Total Loss</p>
+                <p className="text-xl font-bold text-red-400">-$12,340</p>
             </CardContent>
           </Card>
           <Card className="bg-gray-900 border-gray-800">
@@ -311,6 +521,7 @@ export function Admin() {
             </CardContent>
           </Card>
         </div>
+        )}
       </div>
 
       {/* Performance Chart Placeholder */}
@@ -331,13 +542,49 @@ export function Admin() {
   )
 
   const renderOrdersContent = () => {
-    const handleOrderClick = (order: typeof orders[0]) => {
+    const handleOrderClick = (order: ApiOrder) => {
       if (selectedOrder?.id === order.id) {
         setSelectedOrder(null)
       } else {
-        setSelectedOrder(order)
+        // Convert API order to display format
+        const displayOrder = {
+          id: order.id,
+          symbol: order.token.name,
+          type: order.side,
+          amount: order.qty,
+          price: order.entryPrice,
+          status: order.status,
+          timestamp: new Date(order.buyDate).toLocaleString(),
+          pnl: order.netProfit,
+          user: order.user.email.split('@')[0], 
+          userId: order.user.id,
+          userEmail: order.user.email,
+          fillPrice: order.entryPrice,
+          fees: order.fee,
+
+          // TODO: Need to add these fields to the API
+          orderType: 'Market', 
+          strategy: 'API Strategy' 
+        }
+        setSelectedOrder(displayOrder as any)
       }
     }
+
+    const handleRefresh = async () => {
+      setLoading(true)
+      setError(null)
+      try {
+        const ordersData = await fetchOrders()
+        setApiOrders(ordersData)
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to refresh orders')
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    // Calculate total profits from API data
+    const totalPnL = apiOrders.reduce((sum, order) => sum + order.netProfit, 0)
 
     return (
       <div className="space-y-6">
@@ -346,11 +593,30 @@ export function Admin() {
             <h1 className="text-2xl font-bold text-white">Order Management</h1>
             <p className="text-gray-400">Monitor current orders and P&L</p>
           </div>
-          <div className="text-right">
-            <p className="text-sm text-gray-400">Total P&L</p>
-            <p className="text-2xl font-bold text-green-400">+$1,340</p>
+          <div className="flex items-center gap-4">
+            <div className="text-right">
+              <p className="text-sm text-gray-400">Total P&L</p>
+              <p className={`text-2xl font-bold ${totalPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                {totalPnL >= 0 ? '+' : ''}${totalPnL.toFixed(2)}
+              </p>
+            </div>
+            <Button 
+              onClick={handleRefresh} 
+              disabled={loading}
+              variant="outline" 
+              size="sm"
+              className="border-gray-700 hover:bg-gray-800"
+            >
+              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+            </Button>
           </div>
         </div>
+
+        {error && (
+          <div className="bg-red-900/20 border border-red-600 rounded-lg p-4">
+            <p className="text-red-400">Error: {error}</p>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Orders Table */}
@@ -375,42 +641,57 @@ export function Admin() {
                       </tr>
                     </thead>
                     <tbody>
-                      {orders.map((order) => (
-                        <tr 
-                          key={order.id} 
-                          className={`border-b border-gray-800/50 cursor-pointer transition-colors ${
-                            selectedOrder?.id === order.id 
-                              ? 'bg-blue-600/10 border-blue-600/30' 
-                              : 'hover:bg-gray-800/30'
-                          }`}
-                          onClick={() => handleOrderClick(order)}
-                        >
-                          <td className="py-3">
-                            <div>
-                              <p className="text-white font-medium text-sm">{order.user}</p>
-                              <p className="text-gray-400 text-xs">{order.userEmail}</p>
-                            </div>
-                          </td>
-                          <td className="py-3 text-white font-medium">{order.symbol}</td>
-                          <td className="py-3">
-                            <Badge className={order.type === 'BUY' ? 'bg-green-600' : 'bg-red-600'}>
-                              {order.type}
-                            </Badge>
-                          </td>
-                          <td className="py-3 text-white">{order.amount}</td>
-                          <td className="py-3 text-white">${order.price.toLocaleString()}</td>
-                          <td className="py-3">
-                            <Badge className={`${getStatusColor(order.status)} text-white`}>
-                              {order.status}
-                            </Badge>
-                          </td>
-                          <td className="py-3">
-                            <span className={order.pnl > 0 ? 'text-green-400' : order.pnl < 0 ? 'text-red-400' : 'text-gray-400'}>
-                              {order.pnl > 0 ? '+' : ''}${order.pnl}
-                            </span>
+                      {loading ? (
+                        <tr>
+                          <td colSpan={7} className="py-8 text-center text-gray-400">
+                            <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2" />
+                            Loading orders...
                           </td>
                         </tr>
-                      ))}
+                      ) : apiOrders.length === 0 ? (
+                        <tr>
+                          <td colSpan={7} className="py-8 text-center text-gray-400">
+                            No orders found
+                          </td>
+                        </tr>
+                      ) : (
+                        apiOrders.map((order) => (
+                          <tr 
+                            key={order.id} 
+                            className={`border-b border-gray-800/50 cursor-pointer transition-colors ${
+                              selectedOrder?.id === order.id 
+                                ? 'bg-blue-600/10 border-blue-600/30' 
+                                : 'hover:bg-gray-800/30'
+                            }`}
+                            onClick={() => handleOrderClick(order)}
+                          >
+                            <td className="py-3">
+                              <div>
+                                <p className="text-white font-medium text-sm">{order.user.email.split('@')[0]}</p>
+                                <p className="text-gray-400 text-xs">{order.user.email}</p>
+                              </div>
+                            </td>
+                            <td className="py-3 text-white font-medium">{order.token.name}</td>
+                            <td className="py-3">
+                              <Badge className={order.side === 'BUY' ? 'bg-green-600' : 'bg-red-600'}>
+                                {order.side}
+                              </Badge>
+                            </td>
+                            <td className="py-3 text-white">{order.qty}</td>
+                            <td className="py-3 text-white">${order.entryPrice.toLocaleString()}</td>
+                            <td className="py-3">
+                              <Badge className={`${getStatusColor(order.status)} text-white`}>
+                                {order.status}
+                              </Badge>
+                            </td>
+                            <td className="py-3">
+                              <span className={order.netProfit > 0 ? 'text-green-400' : order.netProfit < 0 ? 'text-red-400' : 'text-gray-400'}>
+                                {order.netProfit > 0 ? '+' : ''}${order.netProfit.toFixed(2)}
+                              </span>
+                            </td>
+                          </tr>
+                        ))
+                      )}
                     </tbody>
                   </table>
                 </div>
@@ -609,7 +890,10 @@ export function Admin() {
           <h1 className="text-2xl font-bold text-white">Strategy Management</h1>
           <p className="text-gray-400">Configure trading bot strategies and conditions</p>
         </div>
-        <Button className="bg-blue-600 hover:bg-blue-700">
+        <Button 
+          onClick={() => setShowNewStrategyForm(true)}
+          className="bg-blue-600 hover:bg-blue-700"
+        >
           <Settings className="w-4 h-4 mr-2" />
           New Strategy
         </Button>
@@ -679,11 +963,75 @@ export function Admin() {
   )
 
   const renderUsersContent = () => {
-    const handleUserClick = (user: typeof users[0]) => {
+    const handleUserClick = async (user: ApiUser) => {
       if (selectedUser?.id === user.id) {
         setSelectedUser(null)
+        setUserDetails(null)
       } else {
-        setSelectedUser(user)
+        // Convert API user to display format
+        const displayUser = {
+          id: user.id,
+          name: user.fullname,
+          email: user.email,
+          role: 'INVESTOR',
+          status: user.isActive ? 'ACTIVE' : 'SUSPENDED',
+          balance: user.tradeBalance,
+          returns: user.profit,
+          returnsPercent: user.tradeBalance > 0 ? (user.profit / user.tradeBalance) * 100 : 0,
+
+          // TODO: Need to add these fields to the API
+          joinDate: '2024-01-01'
+        }
+        setSelectedUser(displayUser as any)
+        
+        // Fetch detailed user information
+        setLoadingUserDetails(true)
+        try {
+          const details = await fetchUserDetails(user.id)
+          setUserDetails(details)
+        } catch (err) {
+          console.error('Failed to fetch user details:', err)
+          setUserDetails(null)
+        } finally {
+          setLoadingUserDetails(false)
+        }
+      }
+    }
+
+    // Admin can suspend or activate a user
+    const handleUserStatusUpdate = async () => {
+      if (!selectedUser || !userDetails) return
+      
+      setUpdatingUserStatus(true)
+      setError(null)
+      
+      try {
+        await updateUserStatus(selectedUser.id)
+        
+        // Toggle the user details status
+        setUserDetails((prev: any) => ({
+          ...prev,
+          isActive: !prev.isActive
+        }))
+        
+        // Update the users list
+        setApiUsers(prev => prev.map(user => 
+          user.id === selectedUser.id 
+            ? { ...user, isActive: !user.isActive }
+            : user
+        ))
+        
+        // Update selected user status
+        setSelectedUser(prev => prev ? {
+          ...prev,
+          status: prev.status === 'ACTIVE' ? 'SUSPENDED' : 'ACTIVE'
+        } : null)
+        
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to update user status')
+        console.error('Failed to update user status:', err)
+      } finally {
+        setUpdatingUserStatus(false)
       }
     }
 
@@ -697,7 +1045,7 @@ export function Admin() {
           </div>
           <div className="text-right">
             <p className="text-sm text-gray-400">Total Users</p>
-            <p className="text-2xl font-bold text-white">5</p>
+            <p className="text-2xl font-bold text-white">{apiUsers.length}</p>
           </div>
         </div>
 
@@ -722,43 +1070,58 @@ export function Admin() {
                       </tr>
                     </thead>
                     <tbody>
-                      {users.map((user) => (
-                        <tr
-                          key={user.id}
-                          className={`border-b border-gray-800/50 cursor-pointer transition-colors ${
-                            selectedUser?.id === user.id
-                              ? 'bg-blue-600/10 border-blue-600/30'
-                              : 'hover:bg-gray-800/30'
-                          }`}
-                          onClick={() => handleUserClick(user)}
-                        >
+                      {loading ? (
+                        <tr>
+                          <td colSpan={6} className="py-8 text-center text-gray-400">
+                            <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2" />
+                            Loading users...
+                          </td>
+                        </tr>
+                      ) : apiUsers.length === 0 ? (
+                        <tr>
+                          <td colSpan={6} className="py-8 text-center text-gray-400">
+                            No users found
+                          </td>
+                        </tr>
+                      ) : (
+                        apiUsers.map((user) => (
+                          <tr
+                            key={user.id}
+                            className={`border-b border-gray-800/50 cursor-pointer transition-colors ${
+                              selectedUser?.id === user.id
+                                ? 'bg-blue-600/10 border-blue-600/30'
+                                : 'hover:bg-gray-800/30'
+                            }`}
+                            onClick={() => handleUserClick(user)}
+                          >
                           <td className="py-3">
                             <div>
-                              <p className="text-white font-medium text-sm">{user.name}</p>
+                              <p className="text-white font-medium text-sm">{user.fullname}</p>
                               <p className="text-gray-400 text-xs">{user.email}</p>
                             </div>
                           </td>
                           <td className="py-3">
-                            <Badge className={`${getRoleColor(user.role)} text-white`}>
-                              {user.role}
+                            <Badge className="bg-blue-600 text-white">
+                              INVESTOR
                             </Badge>
                           </td>
                           <td className="py-3">
-                            <Badge className={`${getStatusColor(user.status)} text-white`}>
-                              {user.status}
+                            <Badge className={`${getStatusColor(user.isActive ? 'ACTIVE' : 'SUSPENDED')} text-white`}>
+                              {user.isActive ? 'ACTIVE' : 'SUSPENDED'}
                             </Badge>
                           </td>
                           <td className="py-3 text-white">
-                            {user.balance > 0 ? `$${user.balance.toLocaleString()}` : '$0'}
+                            ${user.tradeBalance.toLocaleString()}
                           </td>
                           <td className="py-3">
-                            <span className={`font-medium ${getReturnsColor(user.returns)}`}>
-                              {user.returns === 0 ? '+$0 (0%)' : 
-                               (user.returns > 0 ? '+' : '') + `$${user.returns.toLocaleString()} (${user.returnsPercent > 0 ? '+' : ''}${user.returnsPercent}%)`}
+                            <span className={`font-medium ${getReturnsColor(user.profit)}`}>
+                              {user.profit === 0 ? '+$0 (0%)' : 
+                               (user.profit > 0 ? '+' : '') + `$${user.profit.toLocaleString()} (${user.tradeBalance > 0 ? ((user.profit / user.tradeBalance) * 100).toFixed(1) : '0.0'}%)`}
                             </span>
                           </td>
                         </tr>
-                      ))}
+                        ))
+                      )}
                     </tbody>
                   </table>
                 </div>
@@ -778,79 +1141,406 @@ export function Admin() {
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => setSelectedUser(null)}
+                    onClick={() => {
+                      setSelectedUser(null)
+                      setUserDetails(null)
+                    }}
                     className="hover:bg-gray-800"
                   >
                     <X className="w-4 h-4" />
                   </Button>
                 </CardHeader>
                 <CardContent>
-                  <div className="space-y-4">
-                    <div className="flex items-center gap-4 p-4 bg-gray-800 rounded-lg">
-                      <div className="w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center">
-                        <Users className="w-8 h-8 text-white" />
-                      </div>
-                      <div>
-                        <h3 className="text-white font-semibold">{selectedUser.name}</h3>
-                        <p className="text-gray-400 text-sm">{selectedUser.email}</p>
-                        <Badge className={`${getRoleColor(selectedUser.role)} text-white mt-1`}>
-                          {selectedUser.role}
-                        </Badge>
-                      </div>
+                  {loadingUserDetails ? (
+                    <div className="flex items-center justify-center py-8">
+                      <RefreshCw className="w-6 h-6 animate-spin text-gray-400" />
+                      <span className="ml-2 text-gray-400">Loading user details...</span>
                     </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="p-3 bg-gray-800 rounded-lg">
-                        <p className="text-gray-400 text-sm">Status</p>
-                        <Badge className={`${getStatusColor(selectedUser.status)} text-white mt-1`}>
-                          {selectedUser.status}
-                        </Badge>
+                  ) : userDetails ? (
+                    <div className="space-y-4">
+                      {/* User Avatar and Basic Info */}
+                      <div className="flex items-center gap-4 p-4 bg-gray-800 rounded-lg">
+                        <div className="w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center">
+                          <Users className="w-8 h-8 text-white" />
+                        </div>
+                        <div>
+                          <h3 className="text-white font-semibold">{userDetails.fullname}</h3>
+                          <p className="text-gray-400 text-sm">{userDetails.email}</p>
+                          <p className="text-gray-400 text-xs">@{userDetails.username}</p>
+                          <Badge className="bg-blue-600 text-white mt-1">
+                            INVESTOR
+                          </Badge>
+                        </div>
                       </div>
+
+                      {/* Status and Avatar */}
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="p-3 bg-gray-800 rounded-lg">
+                          <p className="text-gray-400 text-sm">Status</p>
+                          <Badge className={`${getStatusColor(userDetails.isActive ? 'ACTIVE' : 'SUSPENDED')} text-white mt-1`}>
+                            {userDetails.isActive ? 'ACTIVE' : 'SUSPENDED'}
+                          </Badge>
+                        </div>
+                        <div className="p-3 bg-gray-800 rounded-lg">
+                          <p className="text-gray-400 text-sm">Avatar ID</p>
+                          <p className="text-white font-medium">{userDetails.avatar}</p>
+                        </div>
+                      </div>
+
+                      {/* Financial Information */}
+                      <div className="space-y-3">
+                        <div className="p-3 bg-gray-800 rounded-lg">
+                          <p className="text-gray-400 text-sm">Trade Balance</p>
+                          <p className="text-white font-semibold text-lg">
+                            ${userDetails.tradeBalance.toLocaleString()}
+                          </p>
+                        </div>
+                        <div className="p-3 bg-gray-800 rounded-lg">
+                          <p className="text-gray-400 text-sm">Total Profit</p>
+                          <p className={`font-semibold text-lg ${getReturnsColor(userDetails.profit)}`}>
+                            {userDetails.profit === 0 ? '$0' : 
+                             (userDetails.profit > 0 ? '+' : '') + `$${userDetails.profit.toLocaleString()}`}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Account Creation Date */}
                       <div className="p-3 bg-gray-800 rounded-lg">
                         <p className="text-gray-400 text-sm">Member Since</p>
-                        <p className="text-white font-medium">{selectedUser.joinDate}</p>
-                      </div>
-                    </div>
-
-                    <div className="space-y-3">
-                      <div className="p-3 bg-gray-800 rounded-lg">
-                        <p className="text-gray-400 text-sm">Account Balance</p>
-                        <p className="text-white font-semibold text-lg">
-                          ${selectedUser.balance.toLocaleString()}
-                        </p>
-                      </div>
-                      <div className="p-3 bg-gray-800 rounded-lg">
-                        <p className="text-gray-400 text-sm">Total Returns</p>
-                        <p className={`font-semibold text-lg ${getReturnsColor(selectedUser.returns)}`}>
-                          {selectedUser.returns === 0 ? '$0 (0%)' : 
-                           (selectedUser.returns > 0 ? '+' : '') + `$${selectedUser.returns.toLocaleString()} (${selectedUser.returnsPercent > 0 ? '+' : ''}${selectedUser.returnsPercent}%)`}
+                        <p className="text-white font-medium">
+                          {new Date(userDetails.createdAt).toLocaleDateString('en-US', {
+                            year: 'numeric',
+                            month: 'long',
+                            day: 'numeric'
+                          })}
                         </p>
                       </div>
                     </div>
+                  ) : (
+                    <div className="text-center py-8">
+                      <p className="text-gray-400">Failed to load user details</p>
+                    </div>
+                  )}
 
+                  {/* Action Buttons */}
+                  {userDetails && (
                     <div className="space-y-2 pt-4">
                       <Button className="w-full bg-blue-600 hover:bg-blue-700">
                         <Settings className="w-4 h-4 mr-2" />
                         Edit User
                       </Button>
-                      {selectedUser.status === 'ACTIVE' ? (
-                        <Button variant="outline" className="w-full border-red-600 text-red-400 hover:bg-red-600 hover:text-white">
-                          <X className="w-4 h-4 mr-2" />
-                          Suspend User
+                      {userDetails.isActive ? (
+                        <Button 
+                          onClick={handleUserStatusUpdate}
+                          disabled={updatingUserStatus}
+                          variant="outline" 
+                          className="w-full border-red-600 text-red-400 hover:bg-red-600 hover:text-white disabled:opacity-50"
+                        >
+                          {updatingUserStatus ? (
+                            <>
+                              <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                              Updating...
+                            </>
+                          ) : (
+                            <>
+                              <X className="w-4 h-4 mr-2" />
+                              Suspend User
+                            </>
+                          )}
                         </Button>
                       ) : (
-                        <Button variant="outline" className="w-full border-green-600 text-green-400 hover:bg-green-600 hover:text-white">
-                          <CheckCircle className="w-4 h-4 mr-2" />
-                          Activate User
+                        <Button 
+                          onClick={handleUserStatusUpdate}
+                          disabled={updatingUserStatus}
+                          variant="outline" 
+                          className="w-full border-green-600 text-green-400 hover:bg-green-600 hover:text-white disabled:opacity-50"
+                        >
+                          {updatingUserStatus ? (
+                            <>
+                              <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                              Updating...
+                            </>
+                          ) : (
+                            <>
+                              <CheckCircle className="w-4 h-4 mr-2" />
+                              Activate User
+                            </>
+                          )}
                         </Button>
                       )}
                     </div>
-                  </div>
+                  )}
                 </CardContent>
               </Card>
             </div>
           )}
         </div>
+      </div>
+    )
+  }
+
+  const renderNewStrategyForm = () => {
+    const handleSubmit = async (e: React.FormEvent) => {
+      e.preventDefault()
+      setLoading(true)
+      setError(null)
+      
+      try {
+        await createStrategy(newStrategyForm)
+        setShowNewStrategyForm(false)
+        setNewStrategyForm({
+          description: '',
+          contribution: 0,
+          direction: 'SAME',
+          isCloseBeforeNewCandle: false,
+          selectedTokens: [],
+          targets: [{ targetPercent: 0, stoplossPercent: 0 }]
+        })
+        // Refresh strategies data
+        const tokensData = await fetchTokens()
+        setAvailableTokens(tokensData)
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to create strategy')
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    const addTarget = () => {
+      setNewStrategyForm(prev => ({
+        ...prev,
+        targets: [...prev.targets, { targetPercent: 0, stoplossPercent: 0 }]
+      }))
+    }
+
+    const removeTarget = (index: number) => {
+      setNewStrategyForm(prev => ({
+        ...prev,
+        targets: prev.targets.filter((_, i) => i !== index)
+      }))
+    }
+
+    const updateTarget = (index: number, field: 'targetPercent' | 'stoplossPercent', value: number) => {
+      setNewStrategyForm(prev => ({
+        ...prev,
+        targets: prev.targets.map((target, i) => 
+          i === index ? { ...target, [field]: value } : target
+        )
+      }))
+    }
+
+    const toggleToken = (tokenId: number) => {
+      setNewStrategyForm(prev => ({
+        ...prev,
+        selectedTokens: prev.selectedTokens.includes(tokenId)
+          ? prev.selectedTokens.filter(id => id !== tokenId)
+          : [...prev.selectedTokens, tokenId]
+      }))
+    }
+
+    return (
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+        <Card className="bg-gray-900 border-gray-800 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+          <CardHeader className="flex flex-row items-center justify-between">
+            <div>
+              <CardTitle className="text-white">Create New Strategy</CardTitle>
+              <p className="text-gray-400 text-sm">Configure a new trading strategy</p>
+            </div>
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              onClick={() => setShowNewStrategyForm(false)}
+              className="hover:bg-gray-800"
+            >
+              <X className="w-4 h-4" />
+            </Button>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleSubmit} className="space-y-6">
+              {error && (
+                <div className="bg-red-900/20 border border-red-600 rounded-lg p-4">
+                  <p className="text-red-400">Error: {error}</p>
+                </div>
+              )}
+
+              {/* Basic Information */}
+              <div className="space-y-4">
+                <h3 className="text-lg font-semibold text-white">Basic Information</h3>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    Strategy Description *
+                  </label>
+                  <input
+                    type="text"
+                    value={newStrategyForm.description}
+                    onChange={(e) => setNewStrategyForm(prev => ({ ...prev, description: e.target.value }))}
+                    className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="e.g., Breakout Scalper"
+                    required
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                      Contribution
+                    </label>
+                    <input
+                      type="value"
+                      value={newStrategyForm.contribution}
+                      onChange={(e) => setNewStrategyForm(prev => ({ ...prev, contribution: Number(e.target.value) }))}
+                      className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="0"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                      Direction
+                    </label>
+                    <select
+                      value={newStrategyForm.direction}
+                      onChange={(e) => setNewStrategyForm(prev => ({ ...prev, direction: e.target.value as 'SAME' | 'OPPOSITE' }))}
+                      className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="SAME">Same Direction</option>
+                      <option value="OPPOSITE">Opposite Direction</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="flex items-center space-x-2">
+                  <input
+                    type="checkbox"
+                    id="closeBeforeNewCandle"
+                    checked={newStrategyForm.isCloseBeforeNewCandle}
+                    onChange={(e) => setNewStrategyForm(prev => ({ ...prev, isCloseBeforeNewCandle: e.target.checked }))}
+                    className="w-4 h-4 text-blue-600 bg-gray-800 border-gray-700 rounded focus:ring-blue-500"
+                  />
+                  <label htmlFor="closeBeforeNewCandle" className="text-sm text-gray-300">
+                    Close before new candle
+                  </label>
+                </div>
+              </div>
+
+              {/* Token Selection */}
+              <div className="space-y-4">
+                <h3 className="text-lg font-semibold text-white">Token Pairs</h3>
+                <div className="grid grid-cols-2 gap-2">
+                  {availableTokens.map((token) => (
+                    <div
+                      key={token.id}
+                      className={`p-3 rounded-lg border cursor-pointer transition-colors ${
+                        newStrategyForm.selectedTokens.includes(token.id)
+                          ? 'bg-blue-600/20 border-blue-600 text-blue-400'
+                          : 'bg-gray-800 border-gray-700 hover:bg-gray-700'
+                      }`}
+                      onClick={() => toggleToken(token.id)}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-white font-medium">{token.name}</span>
+                        {newStrategyForm.selectedTokens.includes(token.id) && (
+                          <CheckCircle className="w-4 h-4 text-blue-400" />
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Targets */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-lg font-semibold text-white">Targets</h3>
+                  <Button
+                    type="button"
+                    onClick={addTarget}
+                    variant="outline"
+                    size="sm"
+                    className="border-gray-700 hover:bg-gray-800"
+                  >
+                    Add Target
+                  </Button>
+                </div>
+
+                {newStrategyForm.targets.map((target, index) => (
+                  <div key={index} className="p-4 bg-gray-800 rounded-lg">
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="text-white font-medium">Target {index + 1}</span>
+                      {newStrategyForm.targets.length > 1 && (
+                        <Button
+                          type="button"
+                          onClick={() => removeTarget(index)}
+                          variant="ghost"
+                          size="sm"
+                          className="text-red-400 hover:text-red-300 hover:bg-red-900/20"
+                        >
+                          <X className="w-4 h-4" />
+                        </Button>
+                      )}
+                    </div>
+                    
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-1">
+                          Target Percent
+                        </label>
+                        <input
+                          type="number"
+                          step="0.5"
+                          value={target.targetPercent}
+                          onChange={(e) => updateTarget(index, 'targetPercent', Number(e.target.value))}
+                          className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          placeholder="0.1"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-1">
+                          Stop Loss Percent
+                        </label>
+                        <input
+                          type="number"
+                          step="0.5"
+                          value={target.stoplossPercent}
+                          onChange={(e) => updateTarget(index, 'stoplossPercent', Number(e.target.value))}
+                          className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          placeholder="0.1"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Submit Buttons */}
+              <div className="flex justify-end space-x-3 pt-4 border-t border-gray-800">
+                <Button
+                  type="button"
+                  onClick={() => setShowNewStrategyForm(false)}
+                  variant="outline"
+                  className="border-gray-700 hover:bg-gray-800"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={loading || !newStrategyForm.description || newStrategyForm.targets.length === 0}
+                  className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {loading ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                      Creating...
+                    </>
+                  ) : (
+                    'Create Strategy'
+                  )}
+                </Button>
+              </div>
+            </form>
+          </CardContent>
+        </Card>
       </div>
     )
   }
@@ -874,6 +1564,8 @@ export function Admin() {
 
   return (
     <div className="min-h-screen bg-gray-950 text-white">
+      {/* New Strategy Modal */}
+      {showNewStrategyForm && renderNewStrategyForm()}
       {/* Header */}
       <div className="p-6">
         <div>
