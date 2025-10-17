@@ -346,6 +346,7 @@ router.get('/orders', requireAuth, async (req, res) => {
         buyDate: true,
         token: { select: { name: true, isActive: true } },
         user: { select: { id: true, email: true, isActive: true } },
+        strategy: { select: { description: true } },
       },
     });
 

@@ -38,6 +38,9 @@ interface ApiOrder {
     id: number
     email: string
   }
+  strategy: {
+    description: string
+  }
 }
 
 interface ApiUser {
@@ -48,6 +51,7 @@ interface ApiUser {
   isActive: boolean
   tradeBalance: number
   profit: number
+  createdAt: string
 }
 
 interface ApiToken {
@@ -600,10 +604,10 @@ export function Admin() {
           userEmail: order.user.email,
           fillPrice: order.entryPrice,
           fees: order.fee,
-
+          strategy: order.strategy?.description || 'Unknown Strategy',
+          
           // TODO: Need to add these fields to the API
-          orderType: 'Market', 
-          strategy: 'API Strategy' 
+          orderType: 'Market',  
         }
         setSelectedOrder(displayOrder as any)
       }
@@ -1021,8 +1025,11 @@ export function Admin() {
           returns: user.profit,
           returnsPercent: user.tradeBalance > 0 ? (user.profit / user.tradeBalance) * 100 : 0,
 
-          // TODO: Need to add these fields to the API
-          joinDate: '2024-01-01'
+          joinDate: new Date(user.createdAt).toLocaleDateString('en-US', {
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric'
+          }),
         }
         setSelectedUser(displayUser as any)
         
@@ -1251,10 +1258,12 @@ export function Admin() {
                       <div className="p-3 bg-gray-800 rounded-lg">
                         <p className="text-gray-400 text-sm">Member Since</p>
                         <p className="text-white font-medium">
-                          {new Date(userDetails.createdAt).toLocaleDateString('en-US', {
+                          {new Date(userDetails.createdAt).toLocaleString('en-US', {
                             year: 'numeric',
                             month: 'long',
-                            day: 'numeric'
+                            day: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit'
                           })}
                         </p>
                       </div>
@@ -1477,7 +1486,7 @@ export function Admin() {
                       />
                     </div>
 
-                    {/* Tick marks (optional) */}
+                    {/* Tick marks */}
                     <datalist id="contribution-ticks">
                       <option value="1" />
                       <option value="10" />
