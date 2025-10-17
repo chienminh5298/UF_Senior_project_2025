@@ -21,6 +21,9 @@ export function History() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [orders, setOrders] = useState<any>(null)
+  const [pagination, setPagination] = useState<any>(null)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [pageSize, setPageSize] = useState(10)
 
   const filters = [
     { id: 'all', label: 'All Trades' },
@@ -48,10 +51,10 @@ export function History() {
     return data.data
   }
 
-  // Fetch orders from API
-  const fetchOrders = async () => {
+  // Fetch orders from API with pagination
+  const fetchOrders = async (page: number = currentPage, limit: number = pageSize) => {
     const token = localStorage.getItem('adminToken')
-    const response = await fetch(`${API_BASE}/api/admin/orders`, {
+    const response = await fetch(`${API_BASE}/api/admin/orders/all?page=${page}&limit=${limit}`, {
       headers: {
         'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json'
@@ -66,17 +69,18 @@ export function History() {
     return data.data
   }
 
-  // Load stats on component mount
+  // Load stats and orders on component mount
   useEffect(() => {
-    const loadStats = async () => {
+    const loadData = async () => {
       setLoading(true)
       setError(null)
       
       try {
         const statsData = await fetchStats()
-        const ordersData = await fetchOrders()
+        const ordersData = await fetchOrders(currentPage, pageSize)
         setStats(statsData)
-        setOrders(ordersData)
+        setOrders(ordersData.orders)
+        setPagination(ordersData.pagination)
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load stats or orders')
         console.error('Error loading stats or orders:', err)
@@ -85,13 +89,13 @@ export function History() {
       }
     }
 
-    loadStats()
-  }, [])
+    loadData()
+  }, [currentPage, pageSize])
 
   const filteredTrades = orders ? (
     filter === 'all' 
-      ? orders.orders 
-      : orders.orders.filter((order: any) => {
+      ? orders 
+      : orders.filter((order: any) => {
           const status = order.status.toLowerCase()
           if (filter === 'completed') return status === 'finished'
           if (filter === 'pending') return status === 'active'
@@ -319,6 +323,78 @@ export function History() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Pagination Controls */}
+      {pagination && (
+        <div className="flex items-center justify-between bg-gray-900 p-4 rounded-lg">
+          <div className="flex items-center space-x-4">
+            <div className="flex items-center space-x-2">
+              <label className="text-sm text-gray-400">Show:</label>
+              <select
+                value={pageSize}
+                onChange={(e) => {
+                  setPageSize(Number(e.target.value))
+                  setCurrentPage(1) // Reset to first page when changing page size
+                }}
+                className="bg-gray-800 border border-gray-600 rounded px-2 py-1 text-white text-sm"
+              >
+                <option value={5}>5</option>
+                <option value={10}>10</option>
+                <option value={25}>25</option>
+              </select>
+              <span className="text-sm text-gray-400">per page</span>
+            </div>
+            <div className="text-sm text-gray-400">
+              Showing {((pagination.currentPage - 1) * pagination.limit) + 1} to {Math.min(pagination.currentPage * pagination.limit, pagination.totalOrders)} of {pagination.totalOrders} orders
+            </div>
+          </div>
+          
+          <div className="flex items-center space-x-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCurrentPage(currentPage - 1)}
+              disabled={!pagination.hasPrevPage}
+              className="border-gray-600 text-gray-300 hover:bg-gray-700 disabled:opacity-50"
+            >
+              Previous
+            </Button>
+            
+            <div className="flex items-center space-x-1">
+              {Array.from({ length: Math.min(5, pagination.totalPages) }, (_, i) => {
+                const pageNum = Math.max(1, Math.min(pagination.totalPages - 4, pagination.currentPage - 2)) + i
+                if (pageNum > pagination.totalPages) return null
+                
+                return (
+                  <Button
+                    key={pageNum}
+                    variant={pageNum === pagination.currentPage ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setCurrentPage(pageNum)}
+                    className={
+                      pageNum === pagination.currentPage
+                        ? "bg-blue-600 text-white"
+                        : "border-gray-600 text-gray-300 hover:bg-gray-700"
+                    }
+                  >
+                    {pageNum}
+                  </Button>
+                )
+              })}
+            </div>
+            
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCurrentPage(currentPage + 1)}
+              disabled={!pagination.hasNextPage}
+              className="border-gray-600 text-gray-300 hover:bg-gray-700 disabled:opacity-50"
+            >
+              Next
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

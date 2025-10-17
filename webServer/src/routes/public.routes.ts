@@ -136,27 +136,25 @@ export default router;
  *       500: { description: Failed to fetch tokens }
  */
 router.get('/tokens', async (req, res) => {
-    try {
-      const tokens = await prisma.token.findMany({
-        where: { isActive: true },
-        select: {
-          id: true,
-          name: true,
-          isActive: true
-        }
-      });
-  
-  
-      return res.status(200).json({
-        success: true,
-        message: 'Tokens fetched successfully',
-        data: { tokens }
-      });
-    } catch (error) {
-      return res.status(500).json({
-        success: false,
-        message: 'Failed to fetch tokens'
-      });
-    }
-  });
-  
+  try {
+    const tokens = await prisma.token.findMany({
+      where: { isActive: true },
+      select: {
+        id: true,
+        name: true,
+        isActive: true,
+      },
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: 'Tokens fetched successfully',
+      data: { tokens },
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to fetch tokens',
+    });
+  }
+});

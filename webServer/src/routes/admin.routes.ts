@@ -231,13 +231,13 @@ router.patch('/users/:id', requireAuth, async (req, res) => {
     // First get the current user to toggle their status
     const currentUser = await prisma.user.findUnique({
       where: { id: userId },
-      select: { isActive: true }
+      select: { isActive: true },
     });
 
     if (!currentUser) {
       return res.status(404).json({
         success: false,
-        message: 'User not found'
+        message: 'User not found',
       });
     }
 
@@ -250,13 +250,13 @@ router.patch('/users/:id', requireAuth, async (req, res) => {
     return res.status(200).json({
       success: true,
       message: `User ${!currentUser.isActive ? 'activated' : 'deactivated'} successfully`,
-      data: { user: user_specific }
+      data: { user: user_specific },
     });
   } catch (error) {
     console.error('Error updating user status:', error);
     return res.status(500).json({
       success: false,
-      message: 'Failed to update user status'
+      message: 'Failed to update user status',
     });
   }
 });
@@ -330,8 +330,11 @@ router.get('/orders', requireAuth, async (req, res) => {
   }
 
   try {
+    // Default to ACTIVE orders if no status specified (for Admin orders page)
+    const filterStatus = status || Status.ACTIVE;
+
     const orders = await prisma.order.findMany({
-      where: { status: status as Status },
+      where: { status: filterStatus },
       orderBy: { buyDate: 'desc' },
       select: {
         id: true,
@@ -356,6 +359,156 @@ router.get('/orders', requireAuth, async (req, res) => {
       data: { orders },
     });
   } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to fetch orders',
+    });
+  }
+});
+
+// GET /api/admin/orders/all - Get all orders for History page
+/**
+ * @swagger
+ * /api/admin/orders/all:
+ *   get:
+ *     summary: Get all orders for History page (Admin History page)
+ *     tags: [Admin]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         description: Page number (default: 1)
+ *         required: false
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *       - in: query
+ *         name: limit
+ *         description: Number of orders per page (5, 10, or 25)
+ *         required: false
+ *         schema:
+ *           type: integer
+ *           enum: [5, 10, 25]
+ *           default: 10
+ *     responses:
+ *       200:
+ *         description: All orders fetched successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     orders:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           id: { type: integer }
+ *                           orderId: { type: string }
+ *                           status: { type: string }
+ *                           side: { type: string }
+ *                           entryPrice: { type: number }
+ *                           fee: { type: number }
+ *                           qty: { type: number }
+ *                           budget: { type: number }
+ *                           netProfit: { type: number }
+ *                           buyDate: { type: string, format: date-time }
+ *                           sellDate: { type: string, format: date-time, nullable: true }
+ *                           token:
+ *                             type: object
+ *                             properties:
+ *                               name: { type: string }
+ *                               isActive: { type: boolean }
+ *                           user:
+ *                             type: object
+ *                             properties:
+ *                               id: { type: integer }
+ *                               email: { type: string }
+ *                               isActive: { type: boolean }
+ *                           strategy:
+ *                             type: object
+ *                             properties:
+ *                               description: { type: string }
+ *                     pagination:
+ *                       type: object
+ *                       properties:
+ *                         currentPage: { type: integer }
+ *                         totalPages: { type: integer }
+ *                         totalOrders: { type: integer }
+ *                         limit: { type: integer }
+ *                         hasNextPage: { type: boolean }
+ *                         hasPrevPage: { type: boolean }
+ *       401: { description: Unauthorized }
+ *       500: { description: Failed to fetch orders }
+ */
+router.get('/orders/all', requireAuth, async (req, res) => {
+  const { user } = req;
+  const page = parseInt(req.query.page as string) || 1;
+  const limit = parseInt(req.query.limit as string) || 10;
+
+  if (!user) {
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
+  }
+
+  // Validate limit to only allow 5, 10, or 25
+  const validLimits = [5, 10, 25];
+  const validatedLimit = validLimits.includes(limit) ? limit : 10;
+
+  try {
+    const skip = (page - 1) * validatedLimit;
+
+    // Get total count for pagination info
+    const totalOrders = await prisma.order.count();
+
+    const orders = await prisma.order.findMany({
+      skip,
+      take: validatedLimit,
+      orderBy: { buyDate: 'desc' },
+      select: {
+        id: true,
+        orderId: true,
+        status: true,
+        side: true,
+        entryPrice: true,
+        fee: true,
+        qty: true,
+        budget: true,
+        netProfit: true,
+        buyDate: true,
+        sellDate: true,
+        token: { select: { name: true, isActive: true } },
+        user: { select: { id: true, email: true, isActive: true } },
+        strategy: { select: { description: true } },
+      },
+    });
+
+    const totalPages = Math.ceil(totalOrders / validatedLimit);
+
+    return res.status(200).json({
+      success: true,
+      message: 'All orders fetched successfully',
+      data: {
+        orders,
+        pagination: {
+          currentPage: page,
+          totalPages,
+          totalOrders,
+          limit: validatedLimit,
+          hasNextPage: page < totalPages,
+          hasPrevPage: page > 1,
+        },
+      },
+    });
+  } catch (error) {
+    console.error('Error fetching all orders:', error);
     return res.status(500).json({
       success: false,
       message: 'Failed to fetch orders',
@@ -835,19 +988,19 @@ router.get('/tokens', requireAuth, async (req, res) => {
       select: {
         id: true,
         name: true,
-        isActive: true
-      }
+        isActive: true,
+      },
     });
 
     return res.status(200).json({
       success: true,
       message: 'Tokens fetched successfully',
-      data: { tokens }
+      data: { tokens },
     });
   } catch (error) {
     return res.status(500).json({
       success: false,
-      message: 'Failed to fetch tokens'
+      message: 'Failed to fetch tokens',
     });
   }
 });
@@ -1096,7 +1249,6 @@ router.patch('/tokens/:id', requireAuth, async (req, res) => {
   }
 });
 
-
 // DELETE api/admin/strategies/{id}
 /**
  * @swagger
@@ -1129,18 +1281,25 @@ router.delete('/strategies/:id', requireAuth, async (req, res) => {
       return res.status(401).json({ success: false, message: 'Unauthorized' });
 
     if (!id)
-      return res.status(400).json({ success: false, message: 'Strategy ID not found' });
+      return res
+        .status(400)
+        .json({ success: false, message: 'Strategy ID not found' });
 
     const strategyId = parseInt(id);
 
     if (isNaN(strategyId))
-      return res.status(400).json({ success: false, message: 'Invalid strategy ID' });
+      return res
+        .status(400)
+        .json({ success: false, message: 'Invalid strategy ID' });
 
     await prisma.strategy.delete({ where: { id: strategyId } });
 
-    return res.status(200).json({ success: true, message: 'Strategy deleted successfully' });
-
+    return res
+      .status(200)
+      .json({ success: true, message: 'Strategy deleted successfully' });
   } catch (error) {
-    return res.status(500).json({ success: false, message: 'Failed to delete strategy' });
+    return res
+      .status(500)
+      .json({ success: false, message: 'Failed to delete strategy' });
   }
 });
