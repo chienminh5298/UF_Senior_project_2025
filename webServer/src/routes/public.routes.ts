@@ -104,3 +104,57 @@ router.get('/landing', async (req, res) => {
 });
 
 export default router;
+
+// GET /api/public/tokens
+/**
+ * @swagger
+ * /api/public/tokens:
+ *   get:
+ *     summary: Get all available tokens
+ *     tags: [Public]
+ *     responses:
+ *       200:
+ *         description: Tokens fetched successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success: { type: boolean }
+ *                 message: { type: string }
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     tokens:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           id: { type: integer }
+ *                           name: { type: string }
+ *                           isActive: { type: boolean }
+ *       500: { description: Failed to fetch tokens }
+ */
+router.get('/tokens', async (req, res) => {
+  try {
+    const tokens = await prisma.token.findMany({
+      where: { isActive: true },
+      select: {
+        id: true,
+        name: true,
+        isActive: true,
+      },
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: 'Tokens fetched successfully',
+      data: { tokens },
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to fetch tokens',
+    });
+  }
+});

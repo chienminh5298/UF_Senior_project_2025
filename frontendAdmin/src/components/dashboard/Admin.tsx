@@ -12,7 +12,8 @@ import {
   Settings,
   Calendar,
   BarChart3,
-  RefreshCw
+  RefreshCw,
+  Trash2
 } from 'lucide-react'
 
 // API Configuration
@@ -37,6 +38,9 @@ interface ApiOrder {
     id: number
     email: string
   }
+  strategy: {
+    description: string
+  }
 }
 
 interface ApiUser {
@@ -47,6 +51,7 @@ interface ApiUser {
   isActive: boolean
   tradeBalance: number
   profit: number
+  createdAt: string
 }
 
 interface ApiToken {
@@ -135,35 +140,6 @@ const transactions = [
   { id: 4, user: 'Michael Rodriguez', type: 'WITHDRAW', amount: 2000, status: 'REJECTED', timestamp: '2024-09-18 09:45:00' }
 ]
 
-const strategies = [
-  { 
-    id: 1, 
-    name: 'Momentum Scalper', 
-    status: 'ACTIVE', 
-    pairs: ['BTC/USDT', 'ETH/USDT'], 
-    takeProfit: 2.5, 
-    stopLoss: 1.5, 
-    performance: 15.2 
-  },
-  { 
-    id: 2, 
-    name: 'Arbitrage Hunter', 
-    status: 'PAUSED', 
-    pairs: ['BTC/USDT'], 
-    takeProfit: 1.0, 
-    stopLoss: 0.5, 
-    performance: 8.7 
-  },
-  { 
-    id: 3, 
-    name: 'Trend Follower', 
-    status: 'ACTIVE', 
-    pairs: ['ETH/USDT', 'BNB/USDT'], 
-    takeProfit: 3.0, 
-    stopLoss: 2.0, 
-    performance: 22.1 
-  }
-]
 
 const getStatusColor = (status: string) => {
   switch (status) {
@@ -198,7 +174,7 @@ const fetchOrders = async (status?: string): Promise<ApiOrder[]> => {
   }
   
   const data = await response.json()
-  return data.data.orders
+  return data.data.orders || []
 }
 
 const fetchUsers = async (): Promise<ApiUser[]> => {
@@ -254,6 +230,25 @@ const fetchTokens = async (): Promise<ApiToken[]> => {
   const data = await response.json()
   return data.data.tokens
 }
+
+  const fetchStrategies = async () => {
+    const token = localStorage.getItem('adminToken')
+    
+    const response = await fetch(`${API_BASE}/api/admin/strategies`, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
+    })
+    
+    if (!response.ok) {
+      throw new Error('Failed to fetch strategies')
+    }
+    
+    const data = await response.json()
+    return data.data.response
+  }
+
 
 const createStrategy = async (strategyData: NewStrategyForm) => {
   const token = localStorage.getItem('adminToken')
@@ -337,6 +332,7 @@ export function Admin() {
   // Strategy Form State
   const [showNewStrategyForm, setShowNewStrategyForm] = useState(false)
   const [availableTokens, setAvailableTokens] = useState<ApiToken[]>([])
+  const [strategies, setStrategies] = useState<any[]>([])
   const [newStrategyForm, setNewStrategyForm] = useState<NewStrategyForm>({
     description: '',
     contribution: 0,
@@ -350,6 +346,49 @@ export function Admin() {
   const [userDetails, setUserDetails] = useState<any>(null)
   const [loadingUserDetails, setLoadingUserDetails] = useState(false)
   const [updatingUserStatus, setUpdatingUserStatus] = useState(false)
+  
+  // Strategy delete functions
+  const deleteStrategy = async (strategyId: number) => {
+    const token = localStorage.getItem('adminToken')
+    
+    const response = await fetch(`${API_BASE}/api/admin/strategies/${strategyId}`, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
+    })
+    
+    if (!response.ok) {
+      const errorData = await response.json()
+      throw new Error(errorData.message || 'Failed to delete strategy')
+    }
+    
+    const data = await response.json()
+    return data
+  }
+
+  const handleDeleteStrategy = async (strategyId: number) => {
+    if (!confirm('Are you sure you want to delete this strategy? This action cannot be undone.')) {
+      return
+    }
+
+    setLoading(true)
+    setError(null)
+
+    try {
+      await deleteStrategy(strategyId)
+      
+      // Refresh strategies list
+      const strategiesData = await fetchStrategies()
+      setStrategies(strategiesData)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete strategy')
+      console.error('Failed to delete strategy:', err)
+    } finally {
+      setLoading(false)
+    }
+  }
   
   const tabs = ['Analyze', 'Orders', 'Transactions', 'Strategies', 'Users']
 
@@ -370,8 +409,12 @@ export function Admin() {
           const statsData = await fetchOrderStats()
           setOrderStats(statsData)
         } else if (activeTab === 'Strategies') {
-          const tokensData = await fetchTokens()
+          const [tokensData, strategiesData] = await Promise.all([
+            fetchTokens(),
+            fetchStrategies()
+          ])
           setAvailableTokens(tokensData)
+          setStrategies(strategiesData)
         }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'An error occurred')
@@ -561,10 +604,10 @@ export function Admin() {
           userEmail: order.user.email,
           fillPrice: order.entryPrice,
           fees: order.fee,
-
+          strategy: order.strategy?.description || 'Unknown Strategy',
+          
           // TODO: Need to add these fields to the API
-          orderType: 'Market', 
-          strategy: 'API Strategy' 
+          orderType: 'Market',  
         }
         setSelectedOrder(displayOrder as any)
       }
@@ -648,14 +691,14 @@ export function Admin() {
                             Loading orders...
                           </td>
                         </tr>
-                      ) : apiOrders.length === 0 ? (
+                      ) : !apiOrders || apiOrders.length === 0 ? (
                         <tr>
                           <td colSpan={7} className="py-8 text-center text-gray-400">
                             No orders found
                           </td>
                         </tr>
                       ) : (
-                        apiOrders.map((order) => (
+                        (apiOrders || []).map((order) => (
                           <tr 
                             key={order.id} 
                             className={`border-b border-gray-800/50 cursor-pointer transition-colors ${
@@ -667,11 +710,11 @@ export function Admin() {
                           >
                             <td className="py-3">
                               <div>
-                                <p className="text-white font-medium text-sm">{order.user.email.split('@')[0]}</p>
-                                <p className="text-gray-400 text-xs">{order.user.email}</p>
+                                <p className="text-white font-medium text-sm">{order.user?.email?.split('@')[0] || 'Unknown'}</p>
+                                <p className="text-gray-400 text-xs">{order.user?.email || 'No email'}</p>
                               </div>
                             </td>
-                            <td className="py-3 text-white font-medium">{order.token.name}</td>
+                            <td className="py-3 text-white font-medium">{order.token?.name || 'Unknown Token'}</td>
                             <td className="py-3">
                               <Badge className={order.side === 'BUY' ? 'bg-green-600' : 'bg-red-600'}>
                                 {order.side}
@@ -901,12 +944,12 @@ export function Admin() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {strategies.map((strategy) => (
-          <Card key={strategy.id} className="bg-gray-900 border-gray-800">
+          <Card key={strategy.description} className="bg-gray-900 border-gray-800">
             <CardHeader>
               <div className="flex items-center justify-between">
-                <CardTitle className="text-white">{strategy.name}</CardTitle>
-                <Badge className={`${getStatusColor(strategy.status)} text-white`}>
-                  {strategy.status}
+                <CardTitle className="text-white">{strategy.description}</CardTitle>
+                <Badge className={`${getStatusColor(strategy.isActive ? 'ACTIVE' : 'PAUSED')} text-white`}>
+                  {strategy.isActive ? 'ACTIVE' : 'INACTIVE'}
                 </Badge>
               </div>
             </CardHeader>
@@ -915,30 +958,25 @@ export function Admin() {
                 <div>
                   <p className="text-gray-400 text-sm mb-2">Trading Pairs</p>
                   <div className="flex flex-wrap gap-2">
-                    {strategy.pairs.map((pair, index) => (
+                    {strategy.tokenStrategies?.map((tokenStrategy: any, index: number) => (
                       <Badge key={index} variant="outline" className="border-gray-600 text-gray-300">
-                        {pair}
+                        {tokenStrategy.token?.name || 'Unknown Token'}
                       </Badge>
-                    ))}
+                    )) || <span className="text-gray-500 text-sm">No tokens assigned</span>}
                   </div>
                 </div>
                 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <p className="text-gray-400 text-sm">Take Profit</p>
-                    <p className="text-green-400 font-medium">{strategy.takeProfit}%</p>
+                    <p className="text-gray-400 text-sm">ID</p>
+                    <p className="text-white font-medium">#{strategy.id}</p>
                   </div>
                   <div>
-                    <p className="text-gray-400 text-sm">Stop Loss</p>
-                    <p className="text-red-400 font-medium">{strategy.stopLoss}%</p>
+                    <p className="text-gray-400 text-sm">Status</p>
+                    <p className={`font-medium ${strategy.isActive ? 'text-green-400' : 'text-red-400'}`}>
+                      {strategy.isActive ? 'Active' : 'Inactive'}
+                    </p>
                   </div>
-                </div>
-
-                <div>
-                  <p className="text-gray-400 text-sm">Performance</p>
-                  <p className={`font-medium ${strategy.performance > 0 ? 'text-green-400' : 'text-red-400'}`}>
-                    +{strategy.performance}%
-                  </p>
                 </div>
 
                 <div className="flex gap-2 pt-2">
@@ -949,9 +987,17 @@ export function Admin() {
                   <Button 
                     size="sm" 
                     variant="outline" 
-                    className={strategy.status === 'ACTIVE' ? 'border-red-600 text-red-400' : 'border-green-600 text-green-400'}
+                    className={strategy.isActive ? 'border-red-600 text-red-400' : 'border-green-600 text-green-400'}
                   >
-                    {strategy.status === 'ACTIVE' ? 'Pause' : 'Activate'}
+                    {strategy.isActive ? 'Deactivate' : 'Activate'}
+                  </Button>
+                  <Button 
+                    size="sm" 
+                    variant="outline" 
+                    onClick={() => handleDeleteStrategy(strategy.id)}
+                    className="border-red-600 text-red-400 hover:bg-red-600 hover:text-white"
+                  >
+                    <Trash2 className="w-4 h-4" />
                   </Button>
                 </div>
               </div>
@@ -979,8 +1025,11 @@ export function Admin() {
           returns: user.profit,
           returnsPercent: user.tradeBalance > 0 ? (user.profit / user.tradeBalance) * 100 : 0,
 
-          // TODO: Need to add these fields to the API
-          joinDate: '2024-01-01'
+          joinDate: new Date(user.createdAt).toLocaleDateString('en-US', {
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric'
+          }),
         }
         setSelectedUser(displayUser as any)
         
@@ -999,41 +1048,42 @@ export function Admin() {
     }
 
     // Admin can suspend or activate a user
-    const handleUserStatusUpdate = async () => {
-      if (!selectedUser || !userDetails) return
-      
-      setUpdatingUserStatus(true)
-      setError(null)
-      
-      try {
-        await updateUserStatus(selectedUser.id)
-        
-        // Toggle the user details status
-        setUserDetails((prev: any) => ({
-          ...prev,
-          isActive: !prev.isActive
-        }))
-        
-        // Update the users list
-        setApiUsers(prev => prev.map(user => 
-          user.id === selectedUser.id 
-            ? { ...user, isActive: !user.isActive }
-            : user
-        ))
-        
-        // Update selected user status
-        setSelectedUser(prev => prev ? {
-          ...prev,
-          status: prev.status === 'ACTIVE' ? 'SUSPENDED' : 'ACTIVE'
-        } : null)
-        
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to update user status')
-        console.error('Failed to update user status:', err)
-      } finally {
-        setUpdatingUserStatus(false)
-      }
+  const handleUserStatusUpdate = async () => {
+    if (!selectedUser || !userDetails) return
+
+    setUpdatingUserStatus(true)
+    setError(null)
+
+    try {
+      await updateUserStatus(selectedUser.id)
+
+      // Toggle the user details status
+      setUserDetails((prev: any) => ({
+        ...prev,
+        isActive: !prev.isActive
+      }))
+
+      // Update the users list
+      setApiUsers(prev => prev.map(user =>
+        user.id === selectedUser.id
+          ? { ...user, isActive: !user.isActive }
+          : user
+      ))
+
+      // Update selected user status
+      setSelectedUser(prev => prev ? {
+        ...prev,
+        status: prev.status === 'ACTIVE' ? 'SUSPENDED' : 'ACTIVE'
+      } : null)
+
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update user status')
+      console.error('Failed to update user status:', err)
+    } finally {
+      setUpdatingUserStatus(false)
     }
+  }
+
 
     return (
       <div className="space-y-6">
@@ -1208,10 +1258,12 @@ export function Admin() {
                       <div className="p-3 bg-gray-800 rounded-lg">
                         <p className="text-gray-400 text-sm">Member Since</p>
                         <p className="text-white font-medium">
-                          {new Date(userDetails.createdAt).toLocaleDateString('en-US', {
+                          {new Date(userDetails.createdAt).toLocaleString('en-US', {
                             year: 'numeric',
                             month: 'long',
-                            day: 'numeric'
+                            day: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit'
                           })}
                         </p>
                       </div>
@@ -1297,8 +1349,12 @@ export function Admin() {
           targets: [{ targetPercent: 0, stoplossPercent: 0 }]
         })
         // Refresh strategies data
-        const tokensData = await fetchTokens()
+        const [tokensData, strategiesData] = await Promise.all([
+          fetchTokens(),
+          fetchStrategies()
+        ])
         setAvailableTokens(tokensData)
+        setStrategies(strategiesData)
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to create strategy')
       } finally {
@@ -1383,16 +1439,69 @@ export function Admin() {
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
+                    {/* Contribution field */}
                     <label className="block text-sm font-medium text-gray-300 mb-2">
-                      Contribution
+                      Contribution <span className="ml-2 text-blue-400">{newStrategyForm.contribution}</span>
                     </label>
-                    <input
-                      type="value"
-                      value={newStrategyForm.contribution}
-                      onChange={(e) => setNewStrategyForm(prev => ({ ...prev, contribution: Number(e.target.value) }))}
-                      className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="0"
-                    />
+
+                    <div className="flex items-center gap-3">
+                      {/* Slider */}
+                      <input
+                        type="range"
+                        min={1}
+                        max={100}
+                        step={1}
+                        value={newStrategyForm.contribution}
+                        onChange={(e) => {
+                          const v = Number(e.target.value);
+                          const clamped = Math.max(1, Math.min(100, v));
+                          setNewStrategyForm(p => ({ ...p, contribution: clamped }));
+                        }}
+                        aria-label="Strategy contribution"
+                        className="w-full accent-blue-500"
+                        list="contribution-ticks"
+                      />
+                      
+                      {/* Numeric box for contribution edits */}
+                      <input
+                        type="number"
+                        min={1}
+                        max={100}
+                        step={1}
+                        value={newStrategyForm.contribution}
+                        onChange={(e) => {
+                          const v = Number(e.target.value);
+                          if (Number.isNaN(v)) return;
+                          const clamped = Math.max(1, Math.min(100, v));
+                          setNewStrategyForm(p => ({ ...p, contribution: clamped }));
+                        }}
+                        onBlur={(e) => {
+                          const v = Number(e.target.value);
+                          const clamped = Math.max(1, Math.min(100, v || 1));
+                          if (v !== clamped) {
+                            setNewStrategyForm(p => ({ ...p, contribution: clamped }));
+                          }
+                        }}
+                        className="w-20 px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm"
+                      />
+                    </div>
+
+                    {/* Tick marks */}
+                    <datalist id="contribution-ticks">
+                      <option value="1" />
+                      <option value="10" />
+                      <option value="20" />
+                      <option value="30" />
+                      <option value="40" />
+                      <option value="50" />
+                      <option value="60" />
+                      <option value="70" />
+                      <option value="80" />
+                      <option value="90" />
+                      <option value="100" />
+                    </datalist>
+
+
                   </div>
 
                   <div>
@@ -1600,3 +1709,4 @@ export function Admin() {
     </div>
   )
 }
+

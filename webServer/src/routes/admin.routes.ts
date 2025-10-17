@@ -209,26 +209,18 @@ router.get('/users/:id', requireAuth, async (req, res) => {
 router.patch('/users/:id', requireAuth, async (req, res) => {
   const { user } = req;
   const { id } = req.params;
-  const { deactivate } = req.body;
+
+  if (!user) {
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
+  }
+
+  if (!id) {
+    return res
+      .status(400)
+      .json({ success: false, message: 'User ID not found' });
+  }
 
   try {
-    if (!user) {
-      return res.status(401).json({ success: false, message: 'Unauthorized' });
-    }
-
-    if (deactivate === undefined || typeof deactivate !== 'boolean') {
-      return res.status(400).json({
-        success: false,
-        message: 'deactivate must be a boolean or missing',
-      });
-    }
-
-    if (!id) {
-      return res
-        .status(400)
-        .json({ success: false, message: 'User ID not found' });
-    }
-
     const userId = parseInt(id);
     if (isNaN(userId)) {
       return res
@@ -236,19 +228,36 @@ router.patch('/users/:id', requireAuth, async (req, res) => {
         .json({ success: false, message: 'Invalid user ID' });
     }
 
+    // First get the current user to toggle their status
+    const currentUser = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { isActive: true },
+    });
+
+    if (!currentUser) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found',
+      });
+    }
+
+    // Toggle the isActive status
     const user_specific = await prisma.user.update({
       where: { id: userId },
-      data: { isActive: !deactivate },
+      data: { isActive: !currentUser.isActive },
     });
 
     return res.status(200).json({
-      success: user_specific ? true : false,
-      message: "User ${!deactivate ? 'deactivated' : 'activated'} successfully",
+      success: true,
+      message: `User ${!currentUser.isActive ? 'activated' : 'deactivated'} successfully`,
+      data: { user: user_specific },
     });
   } catch (error) {
-    return res
-      .status(500)
-      .json({ success: false, message: 'Failed to suspend/reinstate user' });
+    console.error('Error updating user status:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to update user status',
+    });
   }
 });
 
@@ -321,8 +330,11 @@ router.get('/orders', requireAuth, async (req, res) => {
   }
 
   try {
+    // Default to ACTIVE orders if no status specified (for Admin orders page)
+    const filterStatus = status || Status.ACTIVE;
+
     const orders = await prisma.order.findMany({
-      where: { status: status as Status },
+      where: { status: filterStatus },
       orderBy: { buyDate: 'desc' },
       select: {
         id: true,
@@ -335,8 +347,9 @@ router.get('/orders', requireAuth, async (req, res) => {
         budget: true,
         netProfit: true,
         buyDate: true,
-        token: { where: { isActive: true }, select: { name: true } },
-        user: { where: { isActive: true }, select: { id: true, email: true } },
+        token: { select: { name: true, isActive: true } },
+        user: { select: { id: true, email: true, isActive: true } },
+        strategy: { select: { description: true } },
       },
     });
 
@@ -346,6 +359,156 @@ router.get('/orders', requireAuth, async (req, res) => {
       data: { orders },
     });
   } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to fetch orders',
+    });
+  }
+});
+
+// GET /api/admin/orders/all - Get all orders for History page
+/**
+ * @swagger
+ * /api/admin/orders/all:
+ *   get:
+ *     summary: Get all orders for History page (Admin History page)
+ *     tags: [Admin]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         description: Page number (default: 1)
+ *         required: false
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *       - in: query
+ *         name: limit
+ *         description: Number of orders per page (5, 10, or 25)
+ *         required: false
+ *         schema:
+ *           type: integer
+ *           enum: [5, 10, 25]
+ *           default: 10
+ *     responses:
+ *       200:
+ *         description: All orders fetched successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     orders:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           id: { type: integer }
+ *                           orderId: { type: string }
+ *                           status: { type: string }
+ *                           side: { type: string }
+ *                           entryPrice: { type: number }
+ *                           fee: { type: number }
+ *                           qty: { type: number }
+ *                           budget: { type: number }
+ *                           netProfit: { type: number }
+ *                           buyDate: { type: string, format: date-time }
+ *                           sellDate: { type: string, format: date-time, nullable: true }
+ *                           token:
+ *                             type: object
+ *                             properties:
+ *                               name: { type: string }
+ *                               isActive: { type: boolean }
+ *                           user:
+ *                             type: object
+ *                             properties:
+ *                               id: { type: integer }
+ *                               email: { type: string }
+ *                               isActive: { type: boolean }
+ *                           strategy:
+ *                             type: object
+ *                             properties:
+ *                               description: { type: string }
+ *                     pagination:
+ *                       type: object
+ *                       properties:
+ *                         currentPage: { type: integer }
+ *                         totalPages: { type: integer }
+ *                         totalOrders: { type: integer }
+ *                         limit: { type: integer }
+ *                         hasNextPage: { type: boolean }
+ *                         hasPrevPage: { type: boolean }
+ *       401: { description: Unauthorized }
+ *       500: { description: Failed to fetch orders }
+ */
+router.get('/orders/all', requireAuth, async (req, res) => {
+  const { user } = req;
+  const page = parseInt(req.query.page as string) || 1;
+  const limit = parseInt(req.query.limit as string) || 10;
+
+  if (!user) {
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
+  }
+
+  // Validate limit to only allow 5, 10, or 25
+  const validLimits = [5, 10, 25];
+  const validatedLimit = validLimits.includes(limit) ? limit : 10;
+
+  try {
+    const skip = (page - 1) * validatedLimit;
+
+    // Get total count for pagination info
+    const totalOrders = await prisma.order.count();
+
+    const orders = await prisma.order.findMany({
+      skip,
+      take: validatedLimit,
+      orderBy: { buyDate: 'desc' },
+      select: {
+        id: true,
+        orderId: true,
+        status: true,
+        side: true,
+        entryPrice: true,
+        fee: true,
+        qty: true,
+        budget: true,
+        netProfit: true,
+        buyDate: true,
+        sellDate: true,
+        token: { select: { name: true, isActive: true } },
+        user: { select: { id: true, email: true, isActive: true } },
+        strategy: { select: { description: true } },
+      },
+    });
+
+    const totalPages = Math.ceil(totalOrders / validatedLimit);
+
+    return res.status(200).json({
+      success: true,
+      message: 'All orders fetched successfully',
+      data: {
+        orders,
+        pagination: {
+          currentPage: page,
+          totalPages,
+          totalOrders,
+          limit: validatedLimit,
+          hasNextPage: page < totalPages,
+          hasPrevPage: page > 1,
+        },
+      },
+    });
+  } catch (error) {
+    console.error('Error fetching all orders:', error);
     return res.status(500).json({
       success: false,
       message: 'Failed to fetch orders',
@@ -492,6 +655,7 @@ router.get('/strategies', requireAuth, async (req, res) => {
   const response = await prisma.strategy.findMany({
     select: {
       id: true,
+      description: true,
       isActive: true,
 
       tokenStrategies: {
@@ -555,6 +719,26 @@ router.get('/strategies', requireAuth, async (req, res) => {
  *                       type: integer
  *                     isActive:
  *                       type: boolean
+ *                     description:
+ *                       type: string
+ *                     targets:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           targetPercent:
+ *                             type: number
+ *                           stoplossPercent:
+ *                             type: number
+ *                     tokenStrategies:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           token:
+ *                             type: object
+ *                             properties:
+ *                               name: { type: string }
  *       401:
  *         description: Unauthorized
  *       500:
@@ -575,6 +759,7 @@ router.get('/strategies/:id', requireAuth, async (req, res) => {
       where: { id: parseInt(id) },
       select: {
         id: true,
+        description: true,
         isActive: true,
         targets: {
           select: {
@@ -689,6 +874,7 @@ router.post('/strategies', requireAuth, async (req, res) => {
       tokenStrategies = [],
       targets = [],
       direction = 'SAME',
+      isCloseBeforeNewCandle = false,
     } = req.body;
 
     if (!description) {
@@ -713,7 +899,7 @@ router.post('/strategies', requireAuth, async (req, res) => {
       description,
       contribution: Number(contribution) || 0,
       isActive: false,
-      isCloseBeforeNewCandle: false,
+      isCloseBeforeNewCandle: Boolean(isCloseBeforeNewCandle),
       direction,
 
       targets: {
@@ -754,6 +940,68 @@ router.post('/strategies', requireAuth, async (req, res) => {
     return res
       .status(500)
       .json({ success: false, message: 'Failed to create strategy' });
+  }
+});
+
+// GET /api/admin/tokens
+/**
+ * @swagger
+ * /api/admin/tokens:
+ *   get:
+ *     summary: Get all available tokens
+ *     tags: [Admin]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Tokens fetched successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success: { type: boolean }
+ *                 message: { type: string }
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     tokens:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           id: { type: integer }
+ *                           name: { type: string }
+ *                           isActive: { type: boolean }
+ *       401: { description: Unauthorized }
+ *       500: { description: Failed to fetch tokens }
+ */
+router.get('/tokens', requireAuth, async (req, res) => {
+  const { user } = req;
+  if (!user) {
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
+  }
+
+  try {
+    const tokens = await prisma.token.findMany({
+      where: { isActive: true },
+      select: {
+        id: true,
+        name: true,
+        isActive: true,
+      },
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: 'Tokens fetched successfully',
+      data: { tokens },
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to fetch tokens',
+    });
   }
 });
 
@@ -998,5 +1246,60 @@ router.patch('/tokens/:id', requireAuth, async (req, res) => {
     return res
       .status(500)
       .json({ success: false, message: 'Failed to update token' });
+  }
+});
+
+// DELETE api/admin/strategies/{id}
+/**
+ * @swagger
+ * /api/admin/strategies/{id}:
+ *   delete:
+ *     summary: Delete a strategy (Admin strategies page)
+ *     tags: [Admin]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         description: Strategy ID
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Strategy deleted successfully
+ *       401: { description: Unauthorized }
+ *       400: { description: Strategy ID not found or invalid }
+ *       500: { description: Failed to delete strategy }
+ */
+router.delete('/strategies/:id', requireAuth, async (req, res) => {
+  try {
+    const { user } = req;
+    const { id } = req.params;
+
+    if (!user)
+      return res.status(401).json({ success: false, message: 'Unauthorized' });
+
+    if (!id)
+      return res
+        .status(400)
+        .json({ success: false, message: 'Strategy ID not found' });
+
+    const strategyId = parseInt(id);
+
+    if (isNaN(strategyId))
+      return res
+        .status(400)
+        .json({ success: false, message: 'Invalid strategy ID' });
+
+    await prisma.strategy.delete({ where: { id: strategyId } });
+
+    return res
+      .status(200)
+      .json({ success: true, message: 'Strategy deleted successfully' });
+  } catch (error) {
+    return res
+      .status(500)
+      .json({ success: false, message: 'Failed to delete strategy' });
   }
 });
