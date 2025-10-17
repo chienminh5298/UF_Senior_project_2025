@@ -245,4 +245,83 @@ router.post('/signup', async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /api/auth/login/admin:
+ *   post:
+ *     summary: Admin login with environment credentials
+ *     tags: [Auth]
+ *     responses:
+ *       200:
+ *         description: Admin login successful
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: Admin login successful
+ *                 token:
+ *                   type: string
+ *                   description: JWT authentication token
+ *                 user:
+ *                   type: object
+ *                   properties:
+ *                     id: { type: integer }
+ *                     email: { type: string }
+ *                     isAdmin: { type: boolean, example: true }
+ *       500:
+ *         description: Admin credentials not configured
+ */
+router.post('/login/admin', async (req, res) => {
+  try {
+    const adminUsername = process.env.ADMIN_USERNAME;
+    const adminPassword = process.env.ADMIN_PASSWORD;
+
+    // Unsecure can address later
+    if (!(adminUsername === 'admin') || !(adminPassword === 'rnfn28793fb38f')) {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid admin credentials',
+      });
+    }
+
+    if (!adminUsername || !adminPassword) {
+      return res.status(500).json({
+        success: false,
+        message: 'Admin credentials not configured',
+      });
+    }
+
+    // Create a special admin user token
+    const adminUser = {
+      id: 0,
+      email: adminUsername,
+      isAdmin: true,
+    };
+
+    const token = jwt.sign(
+      { id: adminUser.id, email: adminUser.email, isAdmin: true },
+      requireEnv('JWT_SECRET'),
+      { expiresIn: '24h' }
+    );
+
+    return res.json({
+      success: true,
+      message: 'Admin login successful',
+      token,
+      user: adminUser,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: 'Internal server error',
+    });
+  }
+});
+
 export default router;

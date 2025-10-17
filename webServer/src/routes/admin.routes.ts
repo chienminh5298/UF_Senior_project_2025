@@ -176,7 +176,7 @@ router.get('/users/:id', requireAuth, async (req, res) => {
  * @swagger
  * /api/admin/users/{id}:
  *   patch:
- *     summary: Suspend user (admin user page)
+ *     summary: Suspend/reinstate user (admin user page)
  *     tags: [Admin]
  *     security:
  *       - bearerAuth: []
@@ -187,15 +187,24 @@ router.get('/users/:id', requireAuth, async (req, res) => {
  *         required: true
  *         schema:
  *           type: integer
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               deactivate:
+ *                 type: boolean
  *     responses:
  *       200:
- *         description: User suspended successfully
+ *         description: User suspended/reinstated successfully
  *       401:
  *         description: Unauthorized
  *       400:
- *         description: User ID not found
+ *         description: User ID not found or deactivate must be a boolean or missing
  *       500:
- *         description: Failed to suspend user
+ *         description: Failed to suspend/reinstate user
  */
 router.patch('/users/:id', requireAuth, async (req, res) => {
   const { user } = req;
@@ -211,17 +220,46 @@ router.patch('/users/:id', requireAuth, async (req, res) => {
       .json({ success: false, message: 'User ID not found' });
   }
 
-  const user_specific = await prisma.user.update({
-    where: { id: parseInt(id) },
-    data: { isActive: false },
-  });
+  try {
+    const userId = parseInt(id);
+    if (isNaN(userId)) {
+      return res
+        .status(400)
+        .json({ success: false, message: 'Invalid user ID' });
+    }
 
-  return res.status(200).json({
-    success: user_specific ? true : false,
-    message: 'User suspended successfully',
-  });
+    // First get the current user to toggle their status
+    const currentUser = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { isActive: true },
+    });
+
+    if (!currentUser) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found',
+      });
+    }
+
+    // Toggle the isActive status
+    const user_specific = await prisma.user.update({
+      where: { id: userId },
+      data: { isActive: !currentUser.isActive },
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: `User ${!currentUser.isActive ? 'activated' : 'deactivated'} successfully`,
+      data: { user: user_specific },
+    });
+  } catch (error) {
+    console.error('Error updating user status:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to update user status',
+    });
+  }
 });
-// GET  /api/admin/landing   # Landing page data
 
 // GET  /api/admin/orders    # List orders (History)
 /**
@@ -292,8 +330,11 @@ router.get('/orders', requireAuth, async (req, res) => {
   }
 
   try {
+    // Default to ACTIVE orders if no status specified (for Admin orders page)
+    const filterStatus = status || Status.ACTIVE;
+
     const orders = await prisma.order.findMany({
-      where: { status: status as Status },
+      where: { status: filterStatus },
       orderBy: { buyDate: 'desc' },
       select: {
         id: true,
@@ -306,8 +347,9 @@ router.get('/orders', requireAuth, async (req, res) => {
         budget: true,
         netProfit: true,
         buyDate: true,
-        token: { select: { name: true } },
-        user: { select: { id: true, email: true } },
+        token: { select: { name: true, isActive: true } },
+        user: { select: { id: true, email: true, isActive: true } },
+        strategy: { select: { description: true } },
       },
     });
 
@@ -317,6 +359,156 @@ router.get('/orders', requireAuth, async (req, res) => {
       data: { orders },
     });
   } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to fetch orders',
+    });
+  }
+});
+
+// GET /api/admin/orders/all - Get all orders for History page
+/**
+ * @swagger
+ * /api/admin/orders/all:
+ *   get:
+ *     summary: Get all orders for History page (Admin History page)
+ *     tags: [Admin]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         description: Page number (default: 1)
+ *         required: false
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *       - in: query
+ *         name: limit
+ *         description: Number of orders per page (5, 10, or 25)
+ *         required: false
+ *         schema:
+ *           type: integer
+ *           enum: [5, 10, 25]
+ *           default: 10
+ *     responses:
+ *       200:
+ *         description: All orders fetched successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     orders:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           id: { type: integer }
+ *                           orderId: { type: string }
+ *                           status: { type: string }
+ *                           side: { type: string }
+ *                           entryPrice: { type: number }
+ *                           fee: { type: number }
+ *                           qty: { type: number }
+ *                           budget: { type: number }
+ *                           netProfit: { type: number }
+ *                           buyDate: { type: string, format: date-time }
+ *                           sellDate: { type: string, format: date-time, nullable: true }
+ *                           token:
+ *                             type: object
+ *                             properties:
+ *                               name: { type: string }
+ *                               isActive: { type: boolean }
+ *                           user:
+ *                             type: object
+ *                             properties:
+ *                               id: { type: integer }
+ *                               email: { type: string }
+ *                               isActive: { type: boolean }
+ *                           strategy:
+ *                             type: object
+ *                             properties:
+ *                               description: { type: string }
+ *                     pagination:
+ *                       type: object
+ *                       properties:
+ *                         currentPage: { type: integer }
+ *                         totalPages: { type: integer }
+ *                         totalOrders: { type: integer }
+ *                         limit: { type: integer }
+ *                         hasNextPage: { type: boolean }
+ *                         hasPrevPage: { type: boolean }
+ *       401: { description: Unauthorized }
+ *       500: { description: Failed to fetch orders }
+ */
+router.get('/orders/all', requireAuth, async (req, res) => {
+  const { user } = req;
+  const page = parseInt(req.query.page as string) || 1;
+  const limit = parseInt(req.query.limit as string) || 10;
+
+  if (!user) {
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
+  }
+
+  // Validate limit to only allow 5, 10, or 25
+  const validLimits = [5, 10, 25];
+  const validatedLimit = validLimits.includes(limit) ? limit : 10;
+
+  try {
+    const skip = (page - 1) * validatedLimit;
+
+    // Get total count for pagination info
+    const totalOrders = await prisma.order.count();
+
+    const orders = await prisma.order.findMany({
+      skip,
+      take: validatedLimit,
+      orderBy: { buyDate: 'desc' },
+      select: {
+        id: true,
+        orderId: true,
+        status: true,
+        side: true,
+        entryPrice: true,
+        fee: true,
+        qty: true,
+        budget: true,
+        netProfit: true,
+        buyDate: true,
+        sellDate: true,
+        token: { select: { name: true, isActive: true } },
+        user: { select: { id: true, email: true, isActive: true } },
+        strategy: { select: { description: true } },
+      },
+    });
+
+    const totalPages = Math.ceil(totalOrders / validatedLimit);
+
+    return res.status(200).json({
+      success: true,
+      message: 'All orders fetched successfully',
+      data: {
+        orders,
+        pagination: {
+          currentPage: page,
+          totalPages,
+          totalOrders,
+          limit: validatedLimit,
+          hasNextPage: page < totalPages,
+          hasPrevPage: page > 1,
+        },
+      },
+    });
+  } catch (error) {
+    console.error('Error fetching all orders:', error);
     return res.status(500).json({
       success: false,
       message: 'Failed to fetch orders',
@@ -463,6 +655,7 @@ router.get('/strategies', requireAuth, async (req, res) => {
   const response = await prisma.strategy.findMany({
     select: {
       id: true,
+      description: true,
       isActive: true,
 
       tokenStrategies: {
@@ -526,12 +719,33 @@ router.get('/strategies', requireAuth, async (req, res) => {
  *                       type: integer
  *                     isActive:
  *                       type: boolean
+ *                     description:
+ *                       type: string
+ *                     targets:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           targetPercent:
+ *                             type: number
+ *                           stoplossPercent:
+ *                             type: number
+ *                     tokenStrategies:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           token:
+ *                             type: object
+ *                             properties:
+ *                               name: { type: string }
  *       401:
  *         description: Unauthorized
  *       500:
  *         description: Failed to fetch strategy
  */
 
+// Get /api/admin/strategies/{id}
 router.get('/strategies/:id', requireAuth, async (req, res) => {
   const { user } = req;
   const { id } = req.params;
@@ -545,7 +759,22 @@ router.get('/strategies/:id', requireAuth, async (req, res) => {
       where: { id: parseInt(id) },
       select: {
         id: true,
+        description: true,
         isActive: true,
+        targets: {
+          select: {
+            targetPercent: true,
+            stoplossPercent: true,
+          },
+        },
+        tokenStrategies: {
+          select: {
+            token: {
+              where: { isActive: true },
+              select: { name: true },
+            },
+          },
+        },
       },
     });
 
@@ -645,6 +874,7 @@ router.post('/strategies', requireAuth, async (req, res) => {
       tokenStrategies = [],
       targets = [],
       direction = 'SAME',
+      isCloseBeforeNewCandle = false,
     } = req.body;
 
     if (!description) {
@@ -669,7 +899,7 @@ router.post('/strategies', requireAuth, async (req, res) => {
       description,
       contribution: Number(contribution) || 0,
       isActive: false,
-      isCloseBeforeNewCandle: false,
+      isCloseBeforeNewCandle: Boolean(isCloseBeforeNewCandle),
       direction,
 
       targets: {
@@ -713,4 +943,363 @@ router.post('/strategies', requireAuth, async (req, res) => {
   }
 });
 
+// GET /api/admin/tokens
+/**
+ * @swagger
+ * /api/admin/tokens:
+ *   get:
+ *     summary: Get all available tokens
+ *     tags: [Admin]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Tokens fetched successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success: { type: boolean }
+ *                 message: { type: string }
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     tokens:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           id: { type: integer }
+ *                           name: { type: string }
+ *                           isActive: { type: boolean }
+ *       401: { description: Unauthorized }
+ *       500: { description: Failed to fetch tokens }
+ */
+router.get('/tokens', requireAuth, async (req, res) => {
+  const { user } = req;
+  if (!user) {
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
+  }
+
+  try {
+    const tokens = await prisma.token.findMany({
+      where: { isActive: true },
+      select: {
+        id: true,
+        name: true,
+        isActive: true,
+      },
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: 'Tokens fetched successfully',
+      data: { tokens },
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to fetch tokens',
+    });
+  }
+});
+
 export default router;
+
+// GET  /api/admin/bills     # List bills
+/**
+ * @swagger
+ * /api/admin/bills:
+ *   get:
+ *     summary: Get all bills (Admin bills page)
+ *     tags: [Admin]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Bills fetched successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success: { type: boolean }
+ *                 message: { type: string }
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     bills:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           id: { type: integer }
+ *                           status: { type: string, enum: [NEW, PROCESSING, COMPLETED] }
+ *                           netProfit: { type: number }
+ *                           from: { type: string, format: date-time }
+ *                           to: { type: string, format: date-time }
+ *                           user:
+ *                             type: object
+ *                             properties:
+ *                               id: { type: integer }
+ *                               username: { type: string }
+ *       401: { description: Unauthorized }
+ *       500: { description: Failed to fetch bills }
+ */
+
+router.get('/bills', requireAuth, async (req, res) => {
+  const { user } = req;
+  if (!user)
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
+  try {
+    const bills = await prisma.bill.findMany({
+      select: {
+        id: true,
+        status: true,
+        netProfit: true,
+        from: true,
+        to: true,
+        user: { select: { id: true, username: true } },
+      },
+    });
+    return res.status(200).json({
+      success: true,
+      message: 'Bills fetched successfully',
+      data: { bills },
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to fetch bills',
+    });
+  }
+});
+
+// GET /api/admin/bills/{id}
+/**
+ * @swagger
+ * /api/admin/bills/{id}:
+ *   get:
+ *     summary: Get a specific bill (Admin bills page)
+ *     tags: [Admin]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         description: Bill ID
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Bill fetched successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success: { type: boolean }
+ *                 message: { type: string }
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     id: { type: integer }
+ *                     status: { type: string, enum: [NEW, PROCESSING, COMPLETED] }
+ *                     netProfit: { type: number }
+ *                     from: { type: string, format: date-time }
+ *                     to: { type: string, format: date-time }
+ *                     note: { type: string }
+ *                     claimId: { type: integer }
+ *                     orders: { type: array }
+ *                     user: { type: object }
+ *                     properties:
+ *                       id: { type: integer }
+ *                       username: { type: string }
+ *       401: { description: Unauthorized }
+ *       500: { description: Failed to fetch bill }
+ */
+
+// GET /api/admin/bills/{id}
+router.get('/bills/:id', requireAuth, async (req, res) => {
+  const { user } = req;
+  if (!user)
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
+
+  try {
+    const bill = await prisma.bill.findUnique({
+      where: { id: parseInt(req.params.id) },
+      select: {
+        id: true,
+        status: true,
+        netProfit: true,
+        from: true,
+        to: true,
+        note: true,
+        claimId: true,
+        orders: {
+          select: {
+            id: true,
+            orderId: true,
+            side: true,
+            entryPrice: true,
+            qty: true,
+            budget: true,
+            netProfit: true,
+            token: { where: { isActive: true }, select: { name: true } },
+          },
+        },
+        user: {
+          where: { isActive: true },
+          select: { id: true, username: true },
+        },
+      },
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: 'Bill fetched successfully',
+      data: { bill },
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to fetch bill',
+    });
+  }
+});
+
+// PATCH api/admin/tokens/{id}
+/**
+ * @swagger
+ * /api/admin/tokens/{id}:
+ *   patch:
+ *     summary: Update a token (Admin tokens page)
+ *     tags: [Admin]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         description: Token ID
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               deactivate:
+ *                 type: boolean
+ *     responses:
+ *       200:
+ *         description: Token updated successfully
+ *       401: { description: Unauthorized }
+ *       400: { description: Token ID not found or deactivate must be a boolean or missing }
+ *       500: { description: Failed to update token }
+ */
+router.patch('/tokens/:id', requireAuth, async (req, res) => {
+  try {
+    const { user } = req;
+    const { id } = req.params;
+    const { deactivate } = req.body;
+
+    if (deactivate === undefined || typeof deactivate !== 'boolean') {
+      return res.status(400).json({
+        success: false,
+        message: 'deactivate must be a boolean or missing',
+      });
+    }
+
+    if (!user) {
+      return res.status(401).json({ success: false, message: 'Unauthorized' });
+    }
+
+    if (!id) {
+      return res
+        .status(400)
+        .json({ success: false, message: 'Token ID not found' });
+    }
+
+    const tokenId = parseInt(id);
+    if (isNaN(tokenId)) {
+      return res
+        .status(400)
+        .json({ success: false, message: 'Invalid token ID' });
+    }
+
+    await prisma.token.update({
+      where: { id: tokenId },
+      data: { isActive: !deactivate },
+    });
+
+    return res.status(200).json({
+      success: true,
+      message:
+        "Token ${!deactivate ? 'deactivated' : 'activated'} successfully",
+    });
+  } catch (error) {
+    return res
+      .status(500)
+      .json({ success: false, message: 'Failed to update token' });
+  }
+});
+
+// DELETE api/admin/strategies/{id}
+/**
+ * @swagger
+ * /api/admin/strategies/{id}:
+ *   delete:
+ *     summary: Delete a strategy (Admin strategies page)
+ *     tags: [Admin]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         description: Strategy ID
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Strategy deleted successfully
+ *       401: { description: Unauthorized }
+ *       400: { description: Strategy ID not found or invalid }
+ *       500: { description: Failed to delete strategy }
+ */
+router.delete('/strategies/:id', requireAuth, async (req, res) => {
+  try {
+    const { user } = req;
+    const { id } = req.params;
+
+    if (!user)
+      return res.status(401).json({ success: false, message: 'Unauthorized' });
+
+    if (!id)
+      return res
+        .status(400)
+        .json({ success: false, message: 'Strategy ID not found' });
+
+    const strategyId = parseInt(id);
+
+    if (isNaN(strategyId))
+      return res
+        .status(400)
+        .json({ success: false, message: 'Invalid strategy ID' });
+
+    await prisma.strategy.delete({ where: { id: strategyId } });
+
+    return res
+      .status(200)
+      .json({ success: true, message: 'Strategy deleted successfully' });
+  } catch (error) {
+    return res
+      .status(500)
+      .json({ success: false, message: 'Failed to delete strategy' });
+  }
+});

@@ -329,6 +329,161 @@ await prisma.user.deleteMany();
         userId: users[3].id,
       },
     }),
+    // Additional completed and cancelled orders for History page
+    prisma.order.create({
+      data: {
+        orderId: 'ORD-005-BTC-SELL',
+        side: Side.SELL,
+        timestamp: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(), // 2 days ago
+        entryPrice: 43000,
+        qty: 0.05,
+        budget: 2150,
+        status: Status.FINISHED,
+        netProfit: 125,
+        markPrice: 43250,
+        strategyId: strategies[0].id,
+        currentTargetId: targets[0].id,
+        tokenId: tokens[0].id,
+        fee: 2.15,
+        leverage: 3,
+        userId: users[0].id,
+        sellDate: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000), // 1 day ago
+      },
+    }),
+    prisma.order.create({
+      data: {
+        orderId: 'ORD-006-ETH-BUY',
+        side: Side.BUY,
+        timestamp: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(), // 3 days ago
+        entryPrice: 3100,
+        qty: 1.5,
+        budget: 4650,
+        status: Status.FINISHED,
+        netProfit: 180,
+        markPrice: 3220,
+        strategyId: strategies[1].id,
+        currentTargetId: targets[1].id,
+        tokenId: tokens[1].id,
+        fee: 4.65,
+        leverage: 2,
+        userId: users[1].id,
+        sellDate: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000), // 2 days ago
+      },
+    }),
+    prisma.order.create({
+      data: {
+        orderId: 'ORD-007-ADA-SELL',
+        side: Side.SELL,
+        timestamp: new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString(), // 4 days ago
+        entryPrice: 0.48,
+        qty: 500,
+        budget: 240,
+        status: Status.EXPIRED,
+        netProfit: -12,
+        markPrice: 0.456,
+        strategyId: strategies[2].id,
+        tokenId: tokens[2].id,
+        fee: 0.24,
+        leverage: 1,
+        userId: users[2].id,
+      },
+    }),
+    prisma.order.create({
+      data: {
+        orderId: 'ORD-008-SOL-BUY',
+        side: Side.BUY,
+        timestamp: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(), // 5 days ago
+        entryPrice: 88,
+        qty: 15,
+        budget: 1320,
+        status: Status.FINISHED,
+        netProfit: 75,
+        markPrice: 93,
+        strategyId: strategies[0].id,
+        currentTargetId: targets[0].id,
+        tokenId: tokens[3].id,
+        fee: 1.32,
+        leverage: 5,
+        userId: users[3].id,
+        sellDate: new Date(Date.now() - 4 * 24 * 60 * 60 * 1000), // 4 days ago
+      },
+    }),
+    prisma.order.create({
+      data: {
+        orderId: 'ORD-009-MATIC-SELL',
+        side: Side.SELL,
+        timestamp: new Date(Date.now() - 6 * 24 * 60 * 60 * 1000).toISOString(), // 6 days ago
+        entryPrice: 0.85,
+        qty: 200,
+        budget: 170,
+        status: Status.EXPIRED,
+        netProfit: -8.5,
+        markPrice: 0.89,
+        strategyId: strategies[1].id,
+        tokenId: tokens[4].id,
+        fee: 0.17,
+        leverage: 2,
+        userId: users[0].id,
+      },
+    }),
+    prisma.order.create({
+      data: {
+        orderId: 'ORD-010-BTC-BUY',
+        side: Side.BUY,
+        timestamp: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(), // 7 days ago
+        entryPrice: 42000,
+        qty: 0.08,
+        budget: 3360,
+        status: Status.FINISHED,
+        netProfit: 168,
+        markPrice: 44100,
+        strategyId: strategies[2].id,
+        currentTargetId: targets[2].id,
+        tokenId: tokens[0].id,
+        fee: 3.36,
+        leverage: 3,
+        userId: users[1].id,
+        sellDate: new Date(Date.now() - 6 * 24 * 60 * 60 * 1000), // 6 days ago
+      },
+    }),
+    prisma.order.create({
+      data: {
+        orderId: 'ORD-011-ETH-SELL',
+        side: Side.SELL,
+        timestamp: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString(), // 8 days ago
+        entryPrice: 3000,
+        qty: 2.5,
+        budget: 7500,
+        status: Status.EXPIRED,
+        netProfit: -150,
+        markPrice: 3060,
+        strategyId: strategies[0].id,
+        tokenId: tokens[1].id,
+        fee: 7.5,
+        leverage: 2,
+        userId: users[2].id,
+      },
+    }),
+    prisma.order.create({
+      data: {
+        orderId: 'ORD-012-ADA-BUY',
+        side: Side.BUY,
+        timestamp: new Date(Date.now() - 9 * 24 * 60 * 60 * 1000).toISOString(), // 9 days ago
+        entryPrice: 0.42,
+        qty: 800,
+        budget: 336,
+        status: Status.FINISHED,
+        netProfit: 33.6,
+        markPrice: 0.462,
+        strategyId: strategies[1].id,
+        currentTargetId: targets[1].id,
+        tokenId: tokens[2].id,
+        fee: 0.336,
+        leverage: 1,
+        userId: users[3].id,
+        sellDate: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000), // 8 days ago
+      },
+    }),
   ]);
   console.log('Created orders:', orders.length);
 
