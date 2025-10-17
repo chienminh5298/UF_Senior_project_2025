@@ -209,26 +209,18 @@ router.get('/users/:id', requireAuth, async (req, res) => {
 router.patch('/users/:id', requireAuth, async (req, res) => {
   const { user } = req;
   const { id } = req.params;
-  const { deactivate } = req.body;
+
+  if (!user) {
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
+  }
+
+  if (!id) {
+    return res
+      .status(400)
+      .json({ success: false, message: 'User ID not found' });
+  }
 
   try {
-    if (!user) {
-      return res.status(401).json({ success: false, message: 'Unauthorized' });
-    }
-
-    if (deactivate === undefined || typeof deactivate !== 'boolean') {
-      return res.status(400).json({
-        success: false,
-        message: 'deactivate must be a boolean or missing',
-      });
-    }
-
-    if (!id) {
-      return res
-        .status(400)
-        .json({ success: false, message: 'User ID not found' });
-    }
-
     const userId = parseInt(id);
     if (isNaN(userId)) {
       return res
@@ -236,19 +228,36 @@ router.patch('/users/:id', requireAuth, async (req, res) => {
         .json({ success: false, message: 'Invalid user ID' });
     }
 
+    // First get the current user to toggle their status
+    const currentUser = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { isActive: true }
+    });
+
+    if (!currentUser) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    // Toggle the isActive status
     const user_specific = await prisma.user.update({
       where: { id: userId },
-      data: { isActive: !deactivate },
+      data: { isActive: !currentUser.isActive },
     });
 
     return res.status(200).json({
-      success: user_specific ? true : false,
-      message: "User ${!deactivate ? 'deactivated' : 'activated'} successfully",
+      success: true,
+      message: `User ${!currentUser.isActive ? 'activated' : 'deactivated'} successfully`,
+      data: { user: user_specific }
     });
   } catch (error) {
-    return res
-      .status(500)
-      .json({ success: false, message: 'Failed to suspend/reinstate user' });
+    console.error('Error updating user status:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to update user status'
+    });
   }
 });
 
@@ -754,6 +763,68 @@ router.post('/strategies', requireAuth, async (req, res) => {
     return res
       .status(500)
       .json({ success: false, message: 'Failed to create strategy' });
+  }
+});
+
+// GET /api/admin/tokens
+/**
+ * @swagger
+ * /api/admin/tokens:
+ *   get:
+ *     summary: Get all available tokens
+ *     tags: [Admin]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Tokens fetched successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success: { type: boolean }
+ *                 message: { type: string }
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     tokens:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           id: { type: integer }
+ *                           name: { type: string }
+ *                           isActive: { type: boolean }
+ *       401: { description: Unauthorized }
+ *       500: { description: Failed to fetch tokens }
+ */
+router.get('/tokens', requireAuth, async (req, res) => {
+  const { user } = req;
+  if (!user) {
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
+  }
+
+  try {
+    const tokens = await prisma.token.findMany({
+      where: { isActive: true },
+      select: {
+        id: true,
+        name: true,
+        isActive: true
+      }
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: 'Tokens fetched successfully',
+      data: { tokens }
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to fetch tokens'
+    });
   }
 });
 

@@ -198,7 +198,7 @@ const fetchOrders = async (status?: string): Promise<ApiOrder[]> => {
   }
   
   const data = await response.json()
-  return data.data.orders
+  return data.data.orders || []
 }
 
 const fetchUsers = async (): Promise<ApiUser[]> => {
@@ -648,14 +648,14 @@ export function Admin() {
                             Loading orders...
                           </td>
                         </tr>
-                      ) : apiOrders.length === 0 ? (
+                      ) : !apiOrders || apiOrders.length === 0 ? (
                         <tr>
                           <td colSpan={7} className="py-8 text-center text-gray-400">
                             No orders found
                           </td>
                         </tr>
                       ) : (
-                        apiOrders.map((order) => (
+                        (apiOrders || []).map((order) => (
                           <tr 
                             key={order.id} 
                             className={`border-b border-gray-800/50 cursor-pointer transition-colors ${
@@ -667,11 +667,11 @@ export function Admin() {
                           >
                             <td className="py-3">
                               <div>
-                                <p className="text-white font-medium text-sm">{order.user.email.split('@')[0]}</p>
-                                <p className="text-gray-400 text-xs">{order.user.email}</p>
+                                <p className="text-white font-medium text-sm">{order.user?.email?.split('@')[0] || 'Unknown'}</p>
+                                <p className="text-gray-400 text-xs">{order.user?.email || 'No email'}</p>
                               </div>
                             </td>
-                            <td className="py-3 text-white font-medium">{order.token.name}</td>
+                            <td className="py-3 text-white font-medium">{order.token?.name || 'Unknown Token'}</td>
                             <td className="py-3">
                               <Badge className={order.side === 'BUY' ? 'bg-green-600' : 'bg-red-600'}>
                                 {order.side}
