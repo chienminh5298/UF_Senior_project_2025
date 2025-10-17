@@ -1,25 +1,19 @@
-import { useState } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { Button } from '../ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card'
 import { Badge } from '../ui/badge'
 import { 
-  TrendingUp, 
   Shield, 
   Zap,
-  Users,
-  Target,
-  DollarSign,
   ArrowRight,
-  Check,
-  Activity,
   Lock,
-  Bot,
-  LineChart,
   Play,
   RefreshCw,
-  TrendingDown,
-  BarChart3
+  Activity
 } from 'lucide-react'
+import { useBacktestingEngine } from '../shared/BacktestingEngine'
+import { DailyTradeSummary } from '../shared/DailyTradeSummary'
+import { PerformanceMetrics } from '../shared/PerformanceMetrics'
 
 interface TestAlgorithmProps {
   onNavigateToLogin: () => void
@@ -27,59 +21,179 @@ interface TestAlgorithmProps {
 }
 
 export function TestAlgorithm({ onNavigateToLogin, onLogin }: TestAlgorithmProps) {
-    const [isRunningBacktest, setIsRunningBacktest] = useState(false)
-    const [selectedStrategy, setSelectedStrategy] = useState('BTC Momentum Pro')
-    const [selectedTimeframe, setSelectedTimeframe] = useState('1M')
-    const [backtestResults, setBacktestResults] = useState<{
-        totalReturn: string;
-        sharpeRatio: string;
-        maxDrawdown: string;
-        winRate: string;
-        totalTrades: number;
-        profitFactor: string;
-        avgTrade: string;
-        bestTrade: string;
-        worstTrade: string;
-    } | null>(null)
+  const [selectedToken, setSelectedToken] = useState('BTC')
+  const [selectedStrategy, setSelectedStrategy] = useState('')
+  const [selectedYear, setSelectedYear] = useState(2024)
+  const [initialCapital, setInitialCapital] = useState(10000)
+  const [renderSpeed, setRenderSpeed] = useState(1)
+  const [availableStrategies, setAvailableStrategies] = useState<any[]>([])
+  const [currentPage, setCurrentPage] = useState(1)
+  const [selectedDate, setSelectedDate] = useState<string | null>(null)
+  const [backtestResults, setBacktestResults] = useState<any>(null)
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  
+  const tradesPerPage = 10
 
-    const strategies = [
-        'BTC Momentum Pro',
-        'ETH Scalping Bot',
-        'SOL Swing Trader',
-        'Multi-Pair Arbitrage'
-    ]
+  const {
+    chartContainerRef,
+    runBacktest: runBacktestEngine,
+    stopAnimation,
+    isAnimating,
+    currentAnimationTime
+  } = useBacktestingEngine({
+    token: selectedToken,
+    year: selectedYear,
+    showChart: true
+  })
 
-    const timeframes = ['1W', '1M', '3M', '6M', '1Y']
+  // Calculate trades with capital and group by day
+  const { tradesWithCapital, dailySummaries } = useMemo(() => {
+    if (!backtestResults?.trades) return { tradesWithCapital: [], dailySummaries: [] }
+    
+    // Filter trades based on animation progress (if animating)
+    let relevantTrades = backtestResults.trades
+    if (isAnimating && currentAnimationTime !== null) {
+      relevantTrades = backtestResults.trades.filter((trade: any) => trade.timestamp <= currentAnimationTime)
+    }
+    
+    let runningCapital = initialCapital
+    const trades = relevantTrades.map((trade: any) => {
+      const tradeWithCapital = { ...trade, capitalBefore: runningCapital }
+      if (trade.pnl !== undefined) {
+        runningCapital += trade.pnl
+      }
+      return { ...tradeWithCapital, capitalAfter: runningCapital }
+    })
 
-    const handleDemoLogin = () => {
-        // Automatically login to dashboard (demo login)
-        onLogin()
+    // Group trades by day (newest first)
+    const tradesByDay = new Map<string, any[]>()
+    trades.forEach((trade: any) => {
+      const date = new Date(trade.timestamp).toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric'
+      })
+      if (!tradesByDay.has(date)) {
+        tradesByDay.set(date, [])
+      }
+      tradesByDay.get(date)!.push(trade)
+    })
+
+    // Create daily summaries (newest first)
+    const summaries = Array.from(tradesByDay.entries()).map(([date, dayTrades]) => {
+      const totalPnL = dayTrades.reduce((sum, trade) => sum + (trade.pnl || 0), 0)
+      const buyOrders = dayTrades.filter(t => t.side === 'BUY').length
+      const sellOrders = dayTrades.filter(t => t.side === 'SELL').length
+      const openingCapital = dayTrades[0]?.capitalBefore || initialCapital
+      const closingCapital = dayTrades[dayTrades.length - 1]?.capitalAfter || initialCapital
+      
+      return {
+        date,
+        timestamp: dayTrades[0].timestamp,
+        totalOrders: dayTrades.length,
+        buyOrders,
+        sellOrders,
+        totalPnL,
+        openingCapital,
+        closingCapital,
+        trades: dayTrades
+      }
+    }).sort((a, b) => b.timestamp - a.timestamp) // Newest first
+
+    return { tradesWithCapital: trades, dailySummaries: summaries }
+  }, [backtestResults?.trades, initialCapital, isAnimating, currentAnimationTime])
+
+  const finalCapital = tradesWithCapital.length > 0 
+    ? tradesWithCapital[tradesWithCapital.length - 1].capitalAfter 
+    : initialCapital
+
+  // Fetch available strategies when token changes
+  useEffect(() => {
+    const fetchStrategies = async () => {
+      try {
+        const response = await fetch(`/api/backtest/strategies?token=${selectedToken}`)
+        const data = await response.json()
+        if (data.success && data.data) {
+          setAvailableStrategies(data.data)
+          // Auto-select first strategy if current selection is invalid
+          if (data.data.length > 0) {
+            const strategyIds = data.data.map((s: any) => s.id)
+            if (!strategyIds.includes(selectedStrategy)) {
+              setSelectedStrategy(data.data[0].id)
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Failed to fetch strategies:', error)
+      }
+    }
+    fetchStrategies()
+  }, [selectedToken])
+
+  // Get strategy description and name
+  const getStrategyInfo = (strategyId: string) => {
+    const strategy = availableStrategies.find((s: any) => s.id === strategyId)
+    return strategy || null
     }
 
-    const handleRunBacktest = () => {
-        setIsRunningBacktest(true)
+    const handleRunBacktest = async () => {
+    if (!selectedStrategy) return
+    
+    setCurrentPage(1) // Reset to first page when new backtest runs
+    setSelectedDate(null) // Clear selected date
+    setIsLoading(true)
+    setError(null)
         setBacktestResults(null)
         
-        // Simulate backtest running
-        setTimeout(() => {
-            setBacktestResults({
-                totalReturn: '+34.7%',
-                sharpeRatio: '2.18',
-                maxDrawdown: '-8.4%',
-                winRate: '73.2%',
-                totalTrades: 156,
-                profitFactor: '2.47',
-                avgTrade: '+0.89%',
-                bestTrade: '+4.2%',
-                worstTrade: '-2.1%'
+        try {
+      // Run the backtest animation
+      await runBacktestEngine({
+        token: selectedToken,
+        strategy: selectedStrategy,
+        year: selectedYear,
+        initialCapital,
+        renderSpeed
+      })
+      
+      // Fetch the backtest results
+            const response = await fetch('/api/backtest/execute', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+          token: selectedToken,
+                    strategy: selectedStrategy,
+          year: selectedYear,
+          initialCapital,
+          renderSpeed
+                })
             })
-            setIsRunningBacktest(false)
-        }, 3000)
+
+            const data = await response.json()
+            
+            if (data.success && data.data?.results) {
+        setBacktestResults(data.data.results)
+            } else {
+        setError(data.message || 'Backtest failed')
+      }
+    } catch (err) {
+      setError('Failed to run backtest')
+      console.error('Backtest error:', err)
+        } finally {
+      setIsLoading(false)
+        }
+  }
+
+  const handleDemoLogin = () => {
+    // Automatically login to dashboard (demo login)
+    onLogin()
     }
 
     return (
         <div className="min-h-screen bg-gray-950 text-white py-20 px-4 sm:px-6 lg:px-8">
-            <div className="max-w-6xl mx-auto">
+      <div className="max-w-[1600px] mx-auto">
                 {/* Header */}
                 <div className="text-center mb-16">
                     <h1 className="text-5xl md:text-6xl font-bold text-white mb-8">
@@ -93,170 +207,203 @@ export function TestAlgorithm({ onNavigateToLogin, onLogin }: TestAlgorithmProps
                 </div>
 
                 {/* Algorithm Testing Interface */}
-                <Card className="bg-gray-900/50 border-gray-800 max-w-5xl mx-auto mb-16">
+        <Card className="bg-gray-900/50 border-gray-800 mb-16">
                     <CardHeader>
-                        <CardTitle className="text-white text-center text-2xl">Live Algorithm Backtesting</CardTitle>
-                        <p className="text-sm text-gray-400 text-center">Test our strategies with historical data - Results in under 30 seconds</p>
+                        <CardTitle className="text-white text-center text-3xl">Backtesting Tool</CardTitle>
+                        <p className="text-sm text-gray-400 text-center">Test our strategies with historical data</p>
                     </CardHeader>
                     <CardContent>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
+            {/* Main Layout: Left Config + Right Chart */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              {/* Left: Configuration Panel */}
+              <Card className="bg-gray-800/50 border-gray-700">
+                <CardHeader>
+                  <CardTitle className="text-white">Configuration</CardTitle>
+                  <p className="text-sm text-gray-400">Setup test parameters</p>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  {/* Token Selection */}
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-gray-300">Token</label>
+                    <select 
+                      value={selectedToken}
+                      onChange={(e) => {
+                        setSelectedToken(e.target.value)
+                        setSelectedStrategy('')
+                      }}
+                      className="w-full p-3 bg-gray-900 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-blue-500"
+                      disabled={isLoading || isAnimating}
+                    >
+                      <option value="BTC">BTC</option>
+                      <option value="ETH">ETH</option>
+                      <option value="SOL">SOL</option>
+                    </select>
+                  </div>
+
                             {/* Strategy Selection */}
-                            <div className="space-y-4">
-                                <label className="text-sm font-medium text-gray-300">Select Trading Strategy</label>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-gray-300">Strategy</label>
                                 <select 
                                     value={selectedStrategy}
                                     onChange={(e) => setSelectedStrategy(e.target.value)}
-                                    className="w-full p-4 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-blue-500 text-lg"
-                                >
-                                    {strategies.map((strategy) => (
-                                        <option key={strategy} value={strategy}>{strategy}</option>
-                                    ))}
+                      className="w-full p-3 bg-gray-900 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-blue-500"
+                      disabled={isLoading || isAnimating || availableStrategies.length === 0}
+                    >
+                      {availableStrategies.length === 0 ? (
+                        <option value="">Loading strategies...</option>
+                      ) : (
+                        availableStrategies.map((strategy: any) => (
+                          <option key={strategy.id} value={strategy.id}>
+                            {strategy.name}
+                          </option>
+                        ))
+                      )}
                                 </select>
-                                <div className="p-3 bg-gray-800/50 rounded-lg">
-                                    <p className="text-sm text-gray-400 mb-2">Strategy Details:</p>
-                                    <div className="flex items-center gap-2 text-sm">
-                                        <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30">
-                                            <Bot className="w-3 h-3 mr-1" />
-                                            AI-Powered
-                                        </Badge>
-                                        <Badge className="bg-green-500/20 text-green-400 border-green-500/30">
-                                            Professional Grade
-                                        </Badge>
-                                    </div>
+                    <div className="min-h-[2.5rem]">
+                      {selectedStrategy && getStrategyInfo(selectedStrategy) && (
+                        <p className="text-xs text-gray-400 mt-1">
+                          {getStrategyInfo(selectedStrategy).description}
+                        </p>
+                      )}
                                 </div>
                             </div>
 
-                            {/* Timeframe Selection */}
-                            <div className="space-y-4">
-                                <label className="text-sm font-medium text-gray-300">Select Test Period</label>
-                                <div className="grid grid-cols-5 gap-2">
-                                    {timeframes.map((timeframe) => (
+                  {/* Year Selection */}
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-gray-300">Year</label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {[2023, 2024, 2025].map((year) => (
                                         <button
-                                            key={timeframe}
-                                            onClick={() => setSelectedTimeframe(timeframe)}
-                                            className={`p-3 rounded-lg text-sm font-medium transition-colors ${
-                                                selectedTimeframe === timeframe
-                                                    ? 'bg-blue-600 text-white shadow-lg'
-                                                    : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
-                                            }`}
-                                        >
-                                            {timeframe}
+                          key={year}
+                          onClick={() => setSelectedYear(year)}
+                          disabled={isLoading || isAnimating}
+                          className={`p-2 rounded text-sm font-medium transition-colors ${
+                            selectedYear === year
+                              ? 'bg-blue-600 text-white'
+                              : 'bg-gray-900 text-gray-300 hover:bg-gray-800'
+                          } disabled:opacity-50 disabled:cursor-not-allowed`}
+                        >
+                          {year}
                                         </button>
                                     ))}
                                 </div>
-                                <div className="p-3 bg-gray-800/50 rounded-lg">
-                                    <p className="text-xs text-gray-400">
-                                        Testing with real historical market data from the past {selectedTimeframe.toLowerCase()}
-                                    </p>
+                  </div>
+
+                  {/* Initial Capital */}
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-gray-300">Initial Capital ($)</label>
+                    <input
+                      type="number"
+                      value={initialCapital}
+                      onChange={(e) => setInitialCapital(Number(e.target.value))}
+                      className="w-full p-3 bg-gray-900 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-blue-500"
+                      min="100"
+                      max="1000000"
+                      disabled={isLoading || isAnimating}
+                    />
                                 </div>
+
+                  {/* Render Speed */}
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-gray-300">Chart Render Speed</label>
+                    <div className="grid grid-cols-5 gap-1">
+                      {[0.5, 1, 2, 5, 10].map((speed) => (
+                        <button
+                          key={speed}
+                          onClick={() => setRenderSpeed(speed)}
+                          disabled={isLoading || isAnimating}
+                          className={`p-2 rounded text-xs font-medium transition-colors ${
+                            renderSpeed === speed
+                              ? 'bg-blue-600 text-white'
+                              : 'bg-gray-900 text-gray-300 hover:bg-gray-800'
+                          } disabled:opacity-50 disabled:cursor-not-allowed`}
+                        >
+                          {speed}x
+                        </button>
+                      ))}
                             </div>
                         </div>
 
-                        {/* Run Backtest Button */}
-                        <div className="flex items-center justify-center gap-6 mb-8">
+                  {/* Run Button */}
                             <Button 
                                 onClick={handleRunBacktest}
-                                disabled={isRunningBacktest}
-                                className="bg-blue-600 hover:bg-blue-700 px-12 py-4 text-lg font-semibold"
+                    disabled={isLoading || !selectedStrategy}
+                    className="w-full bg-blue-600 hover:bg-blue-700 py-3 text-base font-semibold disabled:opacity-50"
                             >
-                                {isRunningBacktest ? (
+                    {isLoading ? (
                                     <>
-                                        <RefreshCw className="w-5 h-5 mr-3 animate-spin" />
-                                        Running Backtest...
+                        <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                        Running...
                                     </>
                                 ) : (
                                     <>
-                                        <Play className="w-5 h-5 mr-3" />
-                                        Run Algorithm Test
+                        <Play className="w-4 h-4 mr-2" />
+                        Run Test
                                     </>
                                 )}
                             </Button>
-                            {!isRunningBacktest && (
-                                <div className="text-center">
-                                    <div className="text-sm text-gray-400">Lightning fast results</div>
-                                    <div className="text-xs text-gray-500">No signup required</div>
+
+                  {isAnimating && (
+                    <Button
+                      onClick={stopAnimation}
+                      variant="outline"
+                      className="w-full border-gray-600 text-gray-300 hover:bg-gray-800"
+                    >
+                      Stop Animation
+                    </Button>
+                  )}
+
+                  {error && (
+                    <div className="p-3 bg-red-900/20 border border-red-800 rounded-lg text-red-400 text-sm">
+                      {error}
                                 </div>
                             )}
-                        </div>
-
-                        {/* Results Display */}
-                        {backtestResults && (
-                            <div className="space-y-6">
-                                {/* Main Results Grid */}
-                                <div className="grid grid-cols-2 md:grid-cols-4 gap-6 p-6 bg-gray-800/50 rounded-lg border border-gray-700">
-                                    <div className="text-center">
-                                        <div className="text-sm text-gray-400 mb-2">Total Return</div>
-                                        <div className="text-3xl font-bold text-green-400 flex items-center justify-center gap-2">
-                                            {backtestResults.totalReturn}
-                                            <TrendingUp className="w-6 h-6" />
-                                        </div>
-                                    </div>
-                                    <div className="text-center">
-                                        <div className="text-sm text-gray-400 mb-2">Win Rate</div>
-                                        <div className="text-3xl font-bold text-white flex items-center justify-center gap-2">
-                                            {backtestResults.winRate}
-                                            <Target className="w-6 h-6 text-green-400" />
-                                        </div>
-                                    </div>
-                                    <div className="text-center">
-                                        <div className="text-sm text-gray-400 mb-2">Sharpe Ratio</div>
-                                        <div className="text-3xl font-bold text-white flex items-center justify-center gap-2">
-                                            {backtestResults.sharpeRatio}
-                                            <BarChart3 className="w-6 h-6 text-blue-400" />
-                                        </div>
-                                    </div>
-                                    <div className="text-center">
-                                        <div className="text-sm text-gray-400 mb-2">Max Drawdown</div>
-                                        <div className="text-3xl font-bold text-red-400 flex items-center justify-center gap-2">
-                                            {backtestResults.maxDrawdown}
-                                            <TrendingDown className="w-6 h-6" />
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {/* Detailed Results */}
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                    <Card className="bg-gray-800/30 border-gray-700">
-                                        <CardHeader>
-                                            <CardTitle className="text-white text-lg">Performance Metrics</CardTitle>
-                                        </CardHeader>
-                                        <CardContent className="space-y-3">
-                                            <div className="flex justify-between">
-                                                <span className="text-gray-400">Total Trades</span>
-                                                <span className="text-white font-semibold">{backtestResults.totalTrades}</span>
-                                            </div>
-                                            <div className="flex justify-between">
-                                                <span className="text-gray-400">Profit Factor</span>
-                                                <span className="text-green-400 font-semibold">{backtestResults.profitFactor}</span>
-                                            </div>
-                                            <div className="flex justify-between">
-                                                <span className="text-gray-400">Average Trade</span>
-                                                <span className="text-green-400 font-semibold">{backtestResults.avgTrade}</span>
-                                            </div>
                                         </CardContent>
                                     </Card>
 
-                                    <Card className="bg-gray-800/30 border-gray-700">
+              {/* Right: Chart Display */}
+              <Card className="bg-gray-800/50 border-gray-700 lg:col-span-2">
                                         <CardHeader>
-                                            <CardTitle className="text-white text-lg">Trade Analysis</CardTitle>
-                                        </CardHeader>
-                                        <CardContent className="space-y-3">
-                                            <div className="flex justify-between">
-                                                <span className="text-gray-400">Best Trade</span>
-                                                <span className="text-green-400 font-semibold">{backtestResults.bestTrade}</span>
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <CardTitle className="text-white">{selectedToken} Price Chart</CardTitle>
+                      <p className="text-sm text-gray-400">{selectedYear} - {getStrategyInfo(selectedStrategy)?.name || 'Select a strategy'}</p>
                                             </div>
-                                            <div className="flex justify-between">
-                                                <span className="text-gray-400">Worst Trade</span>
-                                                <span className="text-red-400 font-semibold">{backtestResults.worstTrade}</span>
                                             </div>
-                                            <div className="flex justify-between">
-                                                <span className="text-gray-400">Strategy</span>
-                                                <span className="text-blue-400 font-semibold">{selectedStrategy}</span>
-                                            </div>
+                </CardHeader>
+                <CardContent>
+                  <div ref={chartContainerRef} className="w-full h-[500px]" />
                                         </CardContent>
                                     </Card>
                                 </div>
 
+            {/* Results Section */}
+            {backtestResults && backtestResults.totalReturn !== undefined && (
+              <div className="space-y-6 mt-6">
+                {/* Daily Trade Summary - Show during and after animation */}
+                {backtestResults.trades && backtestResults.trades.length > 0 && (
+                  <DailyTradeSummary
+                    dailySummaries={dailySummaries}
+                    totalTrades={tradesWithCapital.length}
+                    currentPage={currentPage}
+                    tradesPerPage={tradesPerPage}
+                    selectedDate={selectedDate}
+                    onSelectDate={setSelectedDate}
+                    onPageChange={setCurrentPage}
+                  />
+                )}
+
+                {/* Performance Metrics - Only show after animation completes */}
+                {!isAnimating && (
+                  <PerformanceMetrics
+                    results={backtestResults}
+                    token={selectedToken}
+                    strategy={getStrategyInfo(selectedStrategy)?.name || selectedStrategy}
+                    year={selectedYear}
+                    initialCapital={initialCapital}
+                    finalCapital={finalCapital}
+                  />
+                )}
                             </div>
                         )}
 
@@ -297,7 +444,7 @@ export function TestAlgorithm({ onNavigateToLogin, onLogin }: TestAlgorithmProps
                             <h3 className="text-xl font-semibold text-white">Lightning Fast</h3>
                         </div>
                         <p className="text-gray-400">
-                            Get backtest results in under 30 seconds with our optimized testing engine.
+              Get backtest results with animated visualizations showing each trade in real-time.
                         </p>
                     </Card>
 

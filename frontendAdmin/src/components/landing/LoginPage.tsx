@@ -19,15 +19,40 @@ export function LoginPage({ onLogin }: LoginPageProps) {
   const [showPassword, setShowPassword] = useState(false)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    // Simulate login - just navigate to dashboard
-    onLogin()
+    if (isLoading) return
+    setError(null)
+    setIsLoading(true)
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
+      })
+      let data: any = null
+      try {
+        data = await res.json()
+      } catch (_) {
+        // Non-JSON error (e.g., 404 HTML). Leave data as null.
+      }
+      if (!res.ok || !data?.success) {
+        throw new Error(data?.message || 'Login failed')
+      }
+      const authPayload = { token: data.token, user: data.user }
+      localStorage.setItem('auth', JSON.stringify(authPayload))
+      onLogin()
+    } catch (err: any) {
+      setError(err?.message || 'Unable to login')
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   const handleDemoLogin = () => {
-    // Simulate demo login
     onLogin()
   }
 
@@ -50,6 +75,11 @@ export function LoginPage({ onLogin }: LoginPageProps) {
             </CardHeader>
 
             <CardContent>
+              {error && (
+                <div className="mb-4 text-sm text-red-400" role="alert">
+                  {error}
+                </div>
+              )}
               <form onSubmit={handleSubmit} className="space-y-4">
 
                 <div>
@@ -101,8 +131,9 @@ export function LoginPage({ onLogin }: LoginPageProps) {
                 <Button
                   type="submit"
                   className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2"
+                  disabled={isLoading}
                 >
-                  Sign In
+                  {isLoading ? 'Signing In...' : 'Sign In'}
                 </Button>
               </form>
 

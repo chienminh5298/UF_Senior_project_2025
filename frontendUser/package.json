@@ -18,6 +18,7 @@
     "@radix-ui/react-slot": "^1.0.2",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.0",
+    "lightweight-charts": "^5.0.9",
     "lucide-react": "^0.344.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
@@ -39,14 +40,5 @@
     "typescript": "^5.2.2",
     "vite": "^5.1.4"
   },
-  "keywords": [
-    "crypto",
-    "trading",
-    "bot",
-    "react",
-    "typescript",
-    "dashboard"
-  ],
-  "author": "Buy-nance Bandits Team",
-  "license": "MIT"
+  "author": "Buy-nance Bandits Team"
 }
