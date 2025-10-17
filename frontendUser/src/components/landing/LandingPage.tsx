@@ -1,8 +1,8 @@
-import React, { useState } from 'react'
-import { Button } from './ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
-import { Badge } from './ui/badge'
+import { useState } from 'react'
+import { Button } from '../ui/button'
+import { Card, CardContent, CardHeader, CardTitle } from '../ui/card'
 import { About } from './About'
+import { TestAlgorithm } from './TestAlgorithm'
 import { 
   TrendingUp, 
   Shield, 
@@ -27,6 +27,7 @@ interface LandingPageProps {
 
 export function LandingPage({ onNavigateToLogin, onLogin }: LandingPageProps) {
     const [showAbout, setShowAbout] = useState(false)
+    const [showTestAlgorithm, setShowTestAlgorithm] = useState(false)
 
     const handleDemoLogin = () => {
         // Automatically login to dashboard (demo login)
@@ -34,14 +35,33 @@ export function LandingPage({ onNavigateToLogin, onLogin }: LandingPageProps) {
     }
 
     const toggleAbout = () => {
-        setShowAbout(!showAbout)
+        if (showAbout || showTestAlgorithm) {
+            // If either About or Test Algorithm is active, clicking this button goes to Home
+            setShowAbout(false)
+            setShowTestAlgorithm(false)
+        } else {
+            // If on home page, clicking this button goes to About
+            setShowAbout(true)
+            setShowTestAlgorithm(false)
+        }
+        // Scroll to top when navigating between content
+        window.scrollTo({ top: 0, behavior: 'smooth' })
+    }
+
+    const toggleTestAlgorithm = () => {
+        if (!showTestAlgorithm) {
+            // If not already showing Test Algorithm, show it
+            setShowTestAlgorithm(true)
+            setShowAbout(false)
+        }
+        // If already showing Test Algorithm, don't hide it (user can click Home/About instead)
         // Scroll to top when navigating between content
         window.scrollTo({ top: 0, behavior: 'smooth' })
     }
     return (
-        <div className="min-h-screen bg-black text-white">
+        <div className="min-h-screen bg-gray-950 text-white">
         {/* Navigation */}
-        <nav className="sticky top-0 z-50 bg-black border-b border-gray-800">
+        <nav className="sticky top-0 z-50 bg-gray-950 border-b border-gray-800">
             <div className="flex justify-between items-center h-20 px-4 mx-6">
                 <div className="flex items-center gap-3">
                 <div className="w-6 h-6 rounded bg-white flex items-center justify-center">
@@ -53,9 +73,16 @@ export function LandingPage({ onNavigateToLogin, onLogin }: LandingPageProps) {
                 <Button 
                     onClick={toggleAbout}
                     variant="ghost" 
-                    className="text-white hover:text-gray-300 text-lg"
+                    className={`text-lg ${showAbout ? 'text-blue-400 hover:text-blue-300' : 'text-white hover:text-gray-300'}`}
                 >
-                    {showAbout ? 'Home' : 'About'}
+                    {showAbout || showTestAlgorithm ? 'Home' : 'About'}
+                </Button>
+                <Button 
+                    onClick={toggleTestAlgorithm}
+                    variant="ghost" 
+                    className={`text-lg ${showTestAlgorithm ? 'text-blue-400 hover:text-blue-300' : 'text-white hover:text-gray-300'}`}
+                >
+                    Test Algorithm
                 </Button>
                 <Button 
                     onClick={onNavigateToLogin}
@@ -69,7 +96,7 @@ export function LandingPage({ onNavigateToLogin, onLogin }: LandingPageProps) {
         </nav>
 
         {/* Main Content */}
-        {!showAbout ? (
+        {!showAbout && !showTestAlgorithm ? (
           <>
             {/* Hero Section */}
         <section className="py-20 px-4 sm:px-6 lg:px-8">
@@ -240,6 +267,7 @@ export function LandingPage({ onNavigateToLogin, onLogin }: LandingPageProps) {
             </div>
         </section>
 
+
         {/* Trade Smarter Section */}
         <section className="py-20 px-4 sm:px-6 lg:px-8">
             <div className="max-w-6xl mx-auto">
@@ -359,9 +387,12 @@ export function LandingPage({ onNavigateToLogin, onLogin }: LandingPageProps) {
             </div>
         </section>
           </>
-        ) : (
+        ) : showAbout ? (
           /* About Content */
           <About />
+        ) : (
+          /* Test Algorithm Content */
+          <TestAlgorithm onNavigateToLogin={onNavigateToLogin} onLogin={onLogin} />
         )}
 
         {/* Footer */}
@@ -383,7 +414,7 @@ export function LandingPage({ onNavigateToLogin, onLogin }: LandingPageProps) {
             </div>
             
             <div className="text-center text-sm text-gray-500 space-y-2">
-                <p>© 2024 Buy-nance Bandits. All rights reserved.</p>
+                <p>© 2025 Buy-nance Bandits. All rights reserved.</p>
                 <p className="max-w-4xl mx-auto">
                 <strong>Disclaimer:</strong> Cryptocurrency trading involves substantial risk of loss. Trade responsibly and never invest more than you can afford to lose.
                 </p>

@@ -1,5 +1,5 @@
 import React from 'react'
-import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '../ui/card'
 import { 
   Users,
   Target,
@@ -13,7 +13,7 @@ import {
 
 export function About() {
   return (
-    <div id="about" className="bg-black text-white">
+    <div id="about" className="bg-gray-950 text-white">
 
       {/* Hero Section */}
       <section className="py-20 px-4 sm:px-6 lg:px-8">

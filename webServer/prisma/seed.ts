@@ -1,210 +1,79 @@
-import { PrismaClient } from '@prisma/client';
+
+import {
+  PrismaClient,
+  Side,
+  Status,
+  DirectionType,
+  VoucherStatus,
+  BillStatus,
+  Network,
+  ClaimStatus,
+} from '@prisma/client';
+import bcrypt from 'bcrypt';
 
 const prisma = new PrismaClient();
 
-async function main() {
-  console.log('Starting comprehensive database seeding...');
+// Helper function to hash passwords
+async function hashPassword(password: string): Promise<string> {
+  return await bcrypt.hash(password, 12);
+}
 
-  // Clean existing data in correct order (respecting foreign key constraints)
-  await prisma.userOrder.deleteMany();
-  await prisma.userToken.deleteMany();
-  await prisma.order.deleteMany();
-  await prisma.target.deleteMany();
-  await prisma.tokenStrategy.deleteMany();
-  await prisma.strategy.deleteMany();
-  await prisma.invoice.deleteMany();
-  await prisma.transaction.deleteMany();
-  await prisma.asset.deleteMany();
-  await prisma.notification.deleteMany();
-  await prisma.activity.deleteMany();
-  await prisma.voucher.deleteMany();
-  await prisma.user.deleteMany();
-  await prisma.token.deleteMany();
+async function main() {
+  console.log('Starting database seeding aligned to UPDATED schema...');
+
+await prisma.order.deleteMany();
+await prisma.bill.deleteMany();
+await prisma.userToken.deleteMany();
+await prisma.voucher.deleteMany();
+await prisma.claim.deleteMany();
+await prisma.strategy.deleteMany();
+await prisma.token.deleteMany();
+await prisma.user.deleteMany();
+
 
   console.log('Cleaned existing data');
 
-  // Create comprehensive tokens
   const tokens = await Promise.all([
-    prisma.token.create({
-      data: {
-        name: 'Bitcoin',
-        stable: 'USDT',
-        minQty: 0.001,
-        isActive: true,
-      },
-    }),
-    prisma.token.create({
-      data: {
-        name: 'Ethereum',
-        stable: 'USDT',
-        minQty: 0.01,
-        isActive: true,
-      },
-    }),
-    prisma.token.create({
-      data: {
-        name: 'Cardano',
-        stable: 'USDT',
-        minQty: 1,
-        isActive: true,
-      },
-    }),
-    prisma.token.create({
-      data: {
-        name: 'Solana',
-        stable: 'USDT',
-        minQty: 0.1,
-        isActive: true,
-      },
-    }),
-    prisma.token.create({
-      data: {
-        name: 'Polygon',
-        stable: 'USDT',
-        minQty: 10,
-        isActive: true,
-      },
-    }),
-    prisma.token.create({
-      data: {
-        name: 'Chainlink',
-        stable: 'USDT',
-        minQty: 1,
-        isActive: false, 
-      },
-    }),
+    prisma.token.create({ data: { name: 'Bitcoin',  stable: 'USDT', minQty: 0.001, isActive: true,  leverage: 3 } }),
+    prisma.token.create({ data: { name: 'Ethereum', stable: 'USDT', minQty: 0.01,  isActive: true,  leverage: 3 } }),
+    prisma.token.create({ data: { name: 'Cardano',  stable: 'USDT', minQty: 1,     isActive: true,  leverage: 2 } }),
+    prisma.token.create({ data: { name: 'Solana',   stable: 'USDT', minQty: 0.1,   isActive: true,  leverage: 5 } }),
+    prisma.token.create({ data: { name: 'Polygon',  stable: 'USDT', minQty: 10,    isActive: true,  leverage: 2 } }),
+    prisma.token.create({ data: { name: 'Chainlink',stable: 'USDT', minQty: 1,     isActive: false, leverage: 1 } }),
   ]);
+  console.log('Created tokens:', tokens.length);
 
-  console.log('Created 6 tokens');
-
-  // Create comprehensive users
-  const users = await Promise.all([
-    prisma.user.create({
-      data: {
-        fullname: 'John Doe',
-        username: 'johndoe',
-        email: 'john@example.com',
-        password: 'password123',
-        availableBalance: 25000,
-        tradeBalance: 15000,
-        profit: 3500,
-        commission: 750,
-        commissionPercent: 30,
-        insurance: 500,
-        isActive: true,
-        isVerified: true,
-        avatar: 1,
-      },
-    }),
-    prisma.user.create({
-      data: {
-        fullname: 'Jane Smith',
-        username: 'janesmith',
-        email: 'jane@example.com',
-        password: 'password123',
-        availableBalance: 18000,
-        tradeBalance: 8000,
-        profit: -800,
-        commission: 400,
-        commissionPercent: 25,
-        insurance: 300,
-        isActive: true,
-        isVerified: true,
-        avatar: 2,
-      },
-    }),
-    prisma.user.create({
-      data: {
-        fullname: 'Bob Johnson',
-        username: 'bobjohnson',
-        email: 'bob@example.com',
-        password: 'password123',
-        availableBalance: 12000,
-        tradeBalance: 6000,
-        profit: 1200,
-        commission: 300,
-        commissionPercent: 35,
-        insurance: 200,
-        isActive: false,
-        isVerified: false,
-        avatar: 3,
-      },
-    }),
-    prisma.user.create({
-      data: {
-        fullname: 'Alice Williams',
-        username: 'alicewilliams',
-        email: 'alice@example.com',
-        password: 'password123',
-        availableBalance: 35000,
-        tradeBalance: 20000,
-        profit: 5200,
-        commission: 1200,
-        commissionPercent: 28,
-        insurance: 800,
-        isActive: true,
-        isVerified: true,
-        avatar: 4,
-      },
-    }),
-    prisma.user.create({
-      data: {
-        fullname: 'Charlie Brown',
-        username: 'charliebrown',
-        email: 'charlie@example.com',
-        password: 'password123',
-        availableBalance: 8000,
-        tradeBalance: 3000,
-        profit: -1200,
-        commission: 150,
-        commissionPercent: 32,
-        insurance: 100,
-        isActive: true,
-        isVerified: true,
-        avatar: 5,
-      },
-    }),
-  ]);
-
-  console.log('Created 5 users');
-
-  // Create comprehensive strategies
   const strategies = await Promise.all([
     prisma.strategy.create({
       data: {
-        description: 'Scalping Strategy - Quick profits on small price movements',
+        description: 'Scalping Strategy - quick moves',
         contribution: 1000,
         isActive: true,
         isCloseBeforeNewCandle: false,
-        triggerBy: 1,
-        direction: 'SAME',
+        direction: DirectionType.SAME,
       },
     }),
     prisma.strategy.create({
       data: {
-        description: 'Swing Trading - Medium-term position holding',
+        description: 'Swing Trading - medium term',
         contribution: 2500,
         isActive: true,
         isCloseBeforeNewCandle: true,
-        triggerBy: 2,
-        direction: 'OPPOSITE',
+        direction: DirectionType.OPPOSITE,
       },
     }),
     prisma.strategy.create({
       data: {
-        description: 'Trend Following - Long-term trend analysis',
+        description: 'Trend Following - long term',
         contribution: 5000,
         isActive: false,
         isCloseBeforeNewCandle: false,
-        triggerBy: 3,
-        direction: 'SAME',
+        direction: DirectionType.SAME,
       },
     }),
   ]);
+  console.log('Created strategies:', strategies.length);
 
-  console.log('Created 3 strategies');
-
-  // Create targets for strategies
   const targets = await Promise.all([
     prisma.target.create({
       data: {
@@ -231,50 +100,166 @@ async function main() {
       },
     }),
   ]);
+  console.log('Created targets:', targets.length);
 
-  console.log('Created 3 targets');
-
-  // Create token strategies
   await Promise.all([
-    prisma.tokenStrategy.create({
+    prisma.tokenStrategy.create({ data: { tokenId: tokens[0].id, strategyId: strategies[0].id } }),
+    prisma.tokenStrategy.create({ data: { tokenId: tokens[1].id, strategyId: strategies[1].id } }),
+    prisma.tokenStrategy.create({ data: { tokenId: tokens[2].id, strategyId: strategies[2].id } }),
+    prisma.tokenStrategy.create({ data: { tokenId: tokens[3].id, strategyId: strategies[0].id } }),
+  ]);
+  console.log('Created tokenStrategies: 4');
+
+  const users = await Promise.all([
+    prisma.user.create({
       data: {
-        tokenId: tokens[0].id,
-        strategyId: strategies[0].id,
+        fullname: 'John Doe',
+        username: 'johndoe',
+        email: 'john@example.com',
+        password: await hashPassword('password123'),
+        adminCommissionPercent: 0.3,
+        referralCommissionPercent: 0,
+        adminInsurance: 0,
+        referralInsurance: 0,
+        insurancePercent: 0,
+        profit: 3500,
+        isActive: true,
+        isVerified: true,
+        avatar: 1,
+        apiKey: 'api_key_john',
+        apiSecret: 'api_secret_john',
+        apiPassphrase: null,
+        referralUserId: null,
+        referralCode: 'REF-JOHN',
+        tradeBalance: 15000,
+        telegramChatId: null,
       },
     }),
-    prisma.tokenStrategy.create({
+    prisma.user.create({
       data: {
-        tokenId: tokens[1].id,
-        strategyId: strategies[1].id,
+        fullname: 'Jane Smith',
+        username: 'janesmith',
+        email: 'jane@example.com',
+        password: await hashPassword('password123'),
+        adminCommissionPercent: 0.3,
+        referralCommissionPercent: 0,
+        adminInsurance: 0,
+        referralInsurance: 0,
+        insurancePercent: 0,
+        profit: -800,
+        isActive: true,
+        isVerified: true,
+        avatar: 2,
+        apiKey: 'api_key_jane',
+        apiSecret: 'api_secret_jane',
+        apiPassphrase: null,
+        referralUserId: null,
+        referralCode: 'REF-JANE',
+        tradeBalance: 8000,
+        telegramChatId: null,
       },
     }),
-    prisma.tokenStrategy.create({
+    prisma.user.create({
       data: {
-        tokenId: tokens[2].id,
-        strategyId: strategies[2].id,
+        fullname: 'Bob Johnson',
+        username: 'bobjohnson',
+        email: 'bob@example.com',
+        password: await hashPassword('password123'),
+        adminCommissionPercent: 0.3,
+        referralCommissionPercent: 0,
+        adminInsurance: 0,
+        referralInsurance: 0,
+        insurancePercent: 0,
+        profit: 1200,
+        isActive: false,
+        isVerified: false,
+        avatar: 3,
+        apiKey: 'api_key_bob',
+        apiSecret: 'api_secret_bob',
+        apiPassphrase: null,
+        referralUserId: null,
+        referralCode: 'REF-BOB',
+        tradeBalance: 6000,
+        telegramChatId: null,
       },
     }),
-    prisma.tokenStrategy.create({
+    prisma.user.create({
       data: {
-        tokenId: tokens[3].id,
-        strategyId: strategies[0].id,
+        fullname: 'Alice Williams',
+        username: 'alicewilliams',
+        email: 'alice@example.com',
+        password: await hashPassword('password123'),
+        adminCommissionPercent: 0.3,
+        referralCommissionPercent: 0,
+        adminInsurance: 0,
+        referralInsurance: 0,
+        insurancePercent: 0,
+        profit: 5200,
+        isActive: true,
+        isVerified: true,
+        avatar: 4,
+        apiKey: 'api_key_alice',
+        apiSecret: 'api_secret_alice',
+        apiPassphrase: null,
+        referralUserId: null,
+        referralCode: 'REF-ALICE',
+        tradeBalance: 20000,
+        telegramChatId: null,
+      },
+    }),
+    prisma.user.create({
+      data: {
+        fullname: 'Charlie Brown',
+        username: 'charliebrown',
+        email: 'charlie@example.com',
+        password: await hashPassword('password123'),
+        adminCommissionPercent: 0.3,
+        referralCommissionPercent: 0,
+        adminInsurance: 0,
+        referralInsurance: 0,
+        insurancePercent: 0,
+        profit: -1200,
+        isActive: true,
+        isVerified: true,
+        avatar: 5,
+        apiKey: 'api_key_charlie',
+        apiSecret: 'api_secret_charlie',
+        apiPassphrase: null,
+        referralUserId: null,
+        referralCode: 'REF-CHARLIE',
+        tradeBalance: 3000,
+        telegramChatId: null,
       },
     }),
   ]);
+  console.log('Created users:', users.length);
 
-  console.log('Created 4 token strategies');
+  await Promise.all([
+    prisma.userToken.create({ data: { userId: users[0].id, tokenId: tokens[0].id } }),
+    prisma.userToken.create({ data: { userId: users[0].id, tokenId: tokens[1].id } }),
+    prisma.userToken.create({ data: { userId: users[0].id, tokenId: tokens[3].id } }),
+    prisma.userToken.create({ data: { userId: users[1].id, tokenId: tokens[0].id } }),
+    prisma.userToken.create({ data: { userId: users[1].id, tokenId: tokens[2].id } }),
+    prisma.userToken.create({ data: { userId: users[2].id, tokenId: tokens[1].id } }),
+    prisma.userToken.create({ data: { userId: users[2].id, tokenId: tokens[4].id } }),
+    prisma.userToken.create({ data: { userId: users[3].id, tokenId: tokens[0].id } }),
+    prisma.userToken.create({ data: { userId: users[3].id, tokenId: tokens[1].id } }),
+    prisma.userToken.create({ data: { userId: users[3].id, tokenId: tokens[2].id } }),
+    prisma.userToken.create({ data: { userId: users[3].id, tokenId: tokens[3].id } }),
+    prisma.userToken.create({ data: { userId: users[4].id, tokenId: tokens[4].id } }),
+  ]);
+  console.log('Created userTokens: 12');
 
-  // Create comprehensive orders
   const orders = await Promise.all([
     prisma.order.create({
       data: {
-        orderId: 'ORD-001-BTC-LONG',
-        side: 'long',
+        orderId: 'ORD-001-BTC-BUY',
+        side: Side.BUY,
         timestamp: new Date().toISOString(),
         entryPrice: 45000,
         qty: 0.1,
         budget: 4500,
-        status: 'ACTIVE',
+        status: Status.ACTIVE,
         netProfit: 150,
         markPrice: 45150,
         strategyId: strategies[0].id,
@@ -282,18 +267,19 @@ async function main() {
         tokenId: tokens[0].id,
         fee: 4.5,
         stoplossOrderId: 'STOP-001-BTC',
-        last5HeikinAshi: 'GREEN',
+        leverage: 3,
+        userId: users[0].id,
       },
     }),
     prisma.order.create({
       data: {
-        orderId: 'ORD-002-ETH-SHORT',
-        side: 'short',
+        orderId: 'ORD-002-ETH-SELL',
+        side: Side.SELL,
         timestamp: new Date().toISOString(),
         entryPrice: 3200,
         qty: 2.0,
         budget: 6400,
-        status: 'ACTIVE',
+        status: Status.ACTIVE,
         netProfit: -80,
         markPrice: 3240,
         strategyId: strategies[1].id,
@@ -301,331 +287,248 @@ async function main() {
         tokenId: tokens[1].id,
         fee: 6.4,
         stoplossOrderId: 'STOP-002-ETH',
-        last5HeikinAshi: 'RED',
+        leverage: 2,
+        userId: users[1].id,
       },
     }),
     prisma.order.create({
       data: {
-        orderId: 'ORD-003-ADA-LONG',
-        side: 'long',
+        orderId: 'ORD-003-ADA-BUY',
+        side: Side.BUY,
         timestamp: new Date().toISOString(),
         entryPrice: 0.45,
         qty: 1000,
         budget: 450,
-        status: 'FINISHED',
+        status: Status.FINISHED,
         netProfit: 45,
         markPrice: 0.495,
         strategyId: strategies[2].id,
         currentTargetId: targets[2].id,
         tokenId: tokens[2].id,
         fee: 0.45,
-        last5HeikinAshi: 'MIXED',
+        leverage: 1,
+        userId: users[2].id,
+        sellDate: new Date(),
       },
     }),
     prisma.order.create({
       data: {
-        orderId: 'ORD-004-SOL-SHORT',
-        side: 'short',
+        orderId: 'ORD-004-SOL-SELL',
+        side: Side.SELL,
         timestamp: new Date().toISOString(),
         entryPrice: 95,
         qty: 10,
         budget: 950,
-        status: 'EXPIRED',
+        status: Status.EXPIRED,
         netProfit: -25,
         markPrice: 97.5,
         strategyId: strategies[0].id,
         tokenId: tokens[3].id,
         fee: 0.95,
-        last5HeikinAshi: 'RED',
+        leverage: 5,
+        userId: users[3].id,
       },
     }),
-  ]);
-
-  console.log('Created 4 orders');
-
-  // Create user orders
-  await Promise.all([
-    prisma.userOrder.create({
+    // Additional completed and cancelled orders for History page
+    prisma.order.create({
       data: {
-        contributionPercent: 30,
-        commission: 135,
-        commissionPercent: 30,
-        orderId: orders[0].orderId,
+        orderId: 'ORD-005-BTC-SELL',
+        side: Side.SELL,
+        timestamp: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(), // 2 days ago
+        entryPrice: 43000,
+        qty: 0.05,
+        budget: 2150,
+        status: Status.FINISHED,
+        netProfit: 125,
+        markPrice: 43250,
+        strategyId: strategies[0].id,
+        currentTargetId: targets[0].id,
+        tokenId: tokens[0].id,
+        fee: 2.15,
+        leverage: 3,
         userId: users[0].id,
+        sellDate: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000), // 1 day ago
       },
     }),
-    prisma.userOrder.create({
+    prisma.order.create({
       data: {
-        contributionPercent: 25,
-        commission: 160,
-        commissionPercent: 25,
-        orderId: orders[1].orderId,
+        orderId: 'ORD-006-ETH-BUY',
+        side: Side.BUY,
+        timestamp: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(), // 3 days ago
+        entryPrice: 3100,
+        qty: 1.5,
+        budget: 4650,
+        status: Status.FINISHED,
+        netProfit: 180,
+        markPrice: 3220,
+        strategyId: strategies[1].id,
+        currentTargetId: targets[1].id,
+        tokenId: tokens[1].id,
+        fee: 4.65,
+        leverage: 2,
         userId: users[1].id,
+        sellDate: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000), // 2 days ago
       },
     }),
-    prisma.userOrder.create({
+    prisma.order.create({
       data: {
-        contributionPercent: 20,
-        commission: 9,
-        commissionPercent: 20,
-        orderId: orders[2].orderId,
+        orderId: 'ORD-007-ADA-SELL',
+        side: Side.SELL,
+        timestamp: new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString(), // 4 days ago
+        entryPrice: 0.48,
+        qty: 500,
+        budget: 240,
+        status: Status.EXPIRED,
+        netProfit: -12,
+        markPrice: 0.456,
+        strategyId: strategies[2].id,
+        tokenId: tokens[2].id,
+        fee: 0.24,
+        leverage: 1,
         userId: users[2].id,
       },
     }),
-    prisma.userOrder.create({
+    prisma.order.create({
       data: {
-        contributionPercent: 35,
-        commission: 33.25,
-        commissionPercent: 35,
-        orderId: orders[3].orderId,
+        orderId: 'ORD-008-SOL-BUY',
+        side: Side.BUY,
+        timestamp: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(), // 5 days ago
+        entryPrice: 88,
+        qty: 15,
+        budget: 1320,
+        status: Status.FINISHED,
+        netProfit: 75,
+        markPrice: 93,
+        strategyId: strategies[0].id,
+        currentTargetId: targets[0].id,
+        tokenId: tokens[3].id,
+        fee: 1.32,
+        leverage: 5,
         userId: users[3].id,
+        sellDate: new Date(Date.now() - 4 * 24 * 60 * 60 * 1000), // 4 days ago
       },
     }),
-  ]);
-
-  console.log('Created 4 user orders');
-
-  // Create comprehensive user tokens
-  await Promise.all([
-    // John Doe's tokens
-    prisma.userToken.create({ data: { userId: users[0].id, tokenId: tokens[0].id } }),
-    prisma.userToken.create({ data: { userId: users[0].id, tokenId: tokens[1].id } }),
-    prisma.userToken.create({ data: { userId: users[0].id, tokenId: tokens[3].id } }),
-    
-    // Jane Smith's tokens
-    prisma.userToken.create({ data: { userId: users[1].id, tokenId: tokens[0].id } }),
-    prisma.userToken.create({ data: { userId: users[1].id, tokenId: tokens[2].id } }),
-    
-    // Bob Johnson's tokens
-    prisma.userToken.create({ data: { userId: users[2].id, tokenId: tokens[1].id } }),
-    prisma.userToken.create({ data: { userId: users[2].id, tokenId: tokens[4].id } }),
-    
-    // Alice Williams' tokens
-    prisma.userToken.create({ data: { userId: users[3].id, tokenId: tokens[0].id } }),
-    prisma.userToken.create({ data: { userId: users[3].id, tokenId: tokens[1].id } }),
-    prisma.userToken.create({ data: { userId: users[3].id, tokenId: tokens[2].id } }),
-    prisma.userToken.create({ data: { userId: users[3].id, tokenId: tokens[3].id } }),
-    
-    // Charlie Brown's tokens
-    prisma.userToken.create({ data: { userId: users[4].id, tokenId: tokens[4].id } }),
-  ]);
-
-  console.log('Created 13 user tokens');
-
-  // Create comprehensive transactions
-  await Promise.all([
-    prisma.transaction.create({
+    prisma.order.create({
       data: {
-        amount: 5000,
-        type: 'DEPOSIT',
-        status: 'FINISHED',
-        info: 'Initial deposit via bank transfer',
+        orderId: 'ORD-009-MATIC-SELL',
+        side: Side.SELL,
+        timestamp: new Date(Date.now() - 6 * 24 * 60 * 60 * 1000).toISOString(), // 6 days ago
+        entryPrice: 0.85,
+        qty: 200,
+        budget: 170,
+        status: Status.EXPIRED,
+        netProfit: -8.5,
+        markPrice: 0.89,
+        strategyId: strategies[1].id,
+        tokenId: tokens[4].id,
+        fee: 0.17,
+        leverage: 2,
         userId: users[0].id,
       },
     }),
-    prisma.transaction.create({
+    prisma.order.create({
       data: {
-        amount: 2000,
-        type: 'WITHDRAW',
-        status: 'PENDING',
-        info: 'Withdrawal to bank account',
-        userId: users[0].id,
-      },
-    }),
-    prisma.transaction.create({
-      data: {
-        amount: 3000,
-        type: 'DEPOSIT',
-        status: 'FINISHED',
-        info: 'Crypto deposit - Bitcoin',
+        orderId: 'ORD-010-BTC-BUY',
+        side: Side.BUY,
+        timestamp: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(), // 7 days ago
+        entryPrice: 42000,
+        qty: 0.08,
+        budget: 3360,
+        status: Status.FINISHED,
+        netProfit: 168,
+        markPrice: 44100,
+        strategyId: strategies[2].id,
+        currentTargetId: targets[2].id,
+        tokenId: tokens[0].id,
+        fee: 3.36,
+        leverage: 3,
         userId: users[1].id,
+        sellDate: new Date(Date.now() - 6 * 24 * 60 * 60 * 1000), // 6 days ago
       },
     }),
-    prisma.transaction.create({
+    prisma.order.create({
       data: {
-        amount: 1000,
-        type: 'WITHDRAW',
-        status: 'CANCELLED',
-        info: 'Cancelled withdrawal request',
-        userId: users[1].id,
-      },
-    }),
-    prisma.transaction.create({
-      data: {
-        amount: 8000,
-        type: 'DEPOSIT',
-        status: 'FINISHED',
-        info: 'Large deposit for trading',
-        userId: users[3].id,
-      },
-    }),
-  ]);
-
-  console.log('Created 5 transactions');
-
-  // Create invoices for transactions
-  await Promise.all([
-    prisma.invoice.create({
-      data: {
-        link: 'https://invoice.example.com/inv-001',
-        transactionId: 1,
-      },
-    }),
-    prisma.invoice.create({
-      data: {
-        link: 'https://invoice.example.com/inv-002',
-        transactionId: 2,
-      },
-    }),
-    prisma.invoice.create({
-      data: {
-        link: 'https://invoice.example.com/inv-003',
-        transactionId: 5,
-      },
-    }),
-  ]);
-
-        console.log('Created 3 invoices');
-
-  // Create comprehensive assets
-  await Promise.all([
-    prisma.asset.create({
-      data: {
-        asset: 25000,
-        userId: users[0].id,
-      },
-    }),
-    prisma.asset.create({
-      data: {
-        asset: 18000,
-        userId: users[1].id,
-      },
-    }),
-    prisma.asset.create({
-      data: {
-        asset: 35000,
-        userId: users[3].id,
-      },
-    }),
-  ]);
-
-  console.log('Created 3 assets');
-
-  // Create comprehensive notifications
-  await Promise.all([
-    prisma.notification.create({
-      data: {
-        type: 'PROFIT',
-        message: 'Your Bitcoin trade generated a profit of $150!',
-        status: false,
-        userId: users[0].id,
-      },
-    }),
-    prisma.notification.create({
-      data: {
-        type: 'LOSS',
-        message: 'Your Ethereum trade resulted in a loss of $80',
-        status: true,
-        userId: users[1].id,
-      },
-    }),
-    prisma.notification.create({
-      data: {
-        type: 'INFO',
-        message: 'Welcome to the trading platform! Start your journey now.',
-        status: false,
-        userId: users[0].id,
-      },
-    }),
-    prisma.notification.create({
-      data: {
-        type: 'PROFIT',
-        message: 'Congratulations! You made $45 profit on Cardano',
-        status: true,
+        orderId: 'ORD-011-ETH-SELL',
+        side: Side.SELL,
+        timestamp: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString(), // 8 days ago
+        entryPrice: 3000,
+        qty: 2.5,
+        budget: 7500,
+        status: Status.EXPIRED,
+        netProfit: -150,
+        markPrice: 3060,
+        strategyId: strategies[0].id,
+        tokenId: tokens[1].id,
+        fee: 7.5,
+        leverage: 2,
         userId: users[2].id,
       },
     }),
-    prisma.notification.create({
+    prisma.order.create({
       data: {
-        type: 'INFO',
-        message: 'New trading strategy available: Trend Following',
-        status: false,
+        orderId: 'ORD-012-ADA-BUY',
+        side: Side.BUY,
+        timestamp: new Date(Date.now() - 9 * 24 * 60 * 60 * 1000).toISOString(), // 9 days ago
+        entryPrice: 0.42,
+        qty: 800,
+        budget: 336,
+        status: Status.FINISHED,
+        netProfit: 33.6,
+        markPrice: 0.462,
+        strategyId: strategies[1].id,
+        currentTargetId: targets[1].id,
+        tokenId: tokens[2].id,
+        fee: 0.336,
+        leverage: 1,
         userId: users[3].id,
-      },
-    }),
-    prisma.notification.create({
-      data: {
-        type: 'LOSS',
-        message: 'Your Solana trade hit stop loss. Loss: $25',
-        status: true,
-        userId: users[4].id,
+        sellDate: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000), // 8 days ago
       },
     }),
   ]);
+  console.log('Created orders:', orders.length);
 
-  console.log('Created 6 notifications');
+  const claim = await prisma.claim.create({
+    data: {
+      status: 'NEW',
+      amount: 0,
+      userId: users[0].id,
+      hashId: 'CLM-001',
+      network: Network.ERC20,
+      address: '0xabc123...deadbeef',
+    },
+  });
+  console.log('Created claim:', claim.id);
 
-  // Create comprehensive activities
-  await Promise.all([
-    prisma.activity.create({
-      data: {
-        type: 1,
-        userId: users[0].id,
-        availableBalance: 25000,
-        tradeBalance: 15000,
-        value: 5000,
-      },
-    }),
-    prisma.activity.create({
-      data: {
-        type: 2,
-        userId: users[0].id,
-        availableBalance: 24000,
-        tradeBalance: 16000,
-        value: 1000,
-      },
-    }),
-    prisma.activity.create({
-      data: {
-        type: 3,
-        userId: users[0].id,
-        availableBalance: 22000,
-        tradeBalance: 15000,
-        value: 2000,
-      },
-    }),
-    prisma.activity.create({
-      data: {
-        type: 1,
-        userId: users[1].id,
-        availableBalance: 18000,
-        tradeBalance: 8000,
-        value: 3000,
-      },
-    }),
-    prisma.activity.create({
-      data: {
-        type: 2,
-        userId: users[1].id,
-        availableBalance: 17500,
-        tradeBalance: 8500,
-        value: 500,
-      },
-    }),
-    prisma.activity.create({
-      data: {
-        type: 1,
-        userId: users[3].id,
-        availableBalance: 35000,
-        tradeBalance: 20000,
-        value: 8000,
-      },
-    }),
-  ]);
+  const bill1 = await prisma.bill.create({
+    data: {
+      adminCommissionPercent: 30,
+      referralCommissionPercent: 0,
+      status: BillStatus.NEW,
+      userId: users[0].id,
+      from: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
+      to: new Date(),
+      note: 'Weekly bill',
+      netProfit: 150,
+      claimId: claim.id,
+      orders: { connect: [{ id: orders[0].id }] },
+    },
+  });
 
-  console.log('Created 6 activities');
+  const bill2 = await prisma.bill.create({
+    data: {
+      adminCommissionPercent: 30,
+      referralCommissionPercent: 0,
+      status: BillStatus.PROCESSING,
+      userId: users[1].id,
+      from: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
+      to: new Date(),
+      netProfit: -80,
+      orders: { connect: [{ id: orders[1].id }] },
+    },
+  });
 
-  // Create comprehensive vouchers
+  console.log('Created bills:', bill1.id, bill2.id);
+
   await Promise.all([
     prisma.voucher.create({
       data: {
@@ -636,7 +539,7 @@ async function main() {
         activeDate: new Date(),
         effectDate: new Date(),
         expireDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-        status: 'unused',
+        status: VoucherStatus.unused,
         userId: users[0].id,
       },
     }),
@@ -649,7 +552,7 @@ async function main() {
         activeDate: new Date(),
         effectDate: new Date(),
         expireDate: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000),
-        status: 'inuse',
+        status: VoucherStatus.inuse,
         userId: users[1].id,
       },
     }),
@@ -662,24 +565,12 @@ async function main() {
         activeDate: new Date(Date.now() - 60 * 24 * 60 * 60 * 1000),
         effectDate: new Date(Date.now() - 60 * 24 * 60 * 60 * 1000),
         expireDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
-        status: 'expired',
+        status: VoucherStatus.expired,
         userId: users[2].id,
       },
     }),
-    prisma.voucher.create({
-      data: {
-        code: 'PREMIUM200',
-        description: 'Premium user bonus',
-        type: 'PREMIUM',
-        value: 200,
-        activeDate: new Date(),
-        effectDate: new Date(),
-        expireDate: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000),
-        status: 'unused',
-        userId: users[3].id,
-      },
-    }),
   ]);
+  console.log('Created vouchers: 3');
 
   console.log('Seeding completed successfully!');
 }

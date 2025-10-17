@@ -1,9 +1,8 @@
 import React, { useState } from 'react'
-import { Button } from './ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from './ui/card'
-import { Badge } from './ui/badge'
-import { 
-  MessageCircle,
+import { Button } from '../ui/button'
+import { Card, CardContent, CardHeader, CardTitle } from '../ui/card'
+import { Badge } from '../ui/badge'
+import {
   ArrowLeft,
   Mail,
   Lock,
@@ -28,19 +27,59 @@ export function LoginPage({ onNavigateToLanding, onLogin }: LoginPageProps) {
   const [firstName, setFirstName] = useState('')
   const [lastName, setLastName] = useState('')
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const API_BASE = 'http://localhost:3001'
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (isSignUp) {
-      // Simulate sign up - validate passwords match, then navigate to dashboard
       if (password !== confirmPassword) {
         alert('Passwords do not match!')
         return
       }
-      // Simulate successful sign up
-      onLogin()
+      
+      try {
+        const response = await fetch(`${API_BASE}/api/auth/signup`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            fullname: `${firstName} ${lastName}`,
+            username: email.split('@')[0],
+            email,
+            password
+          })
+        })
+        const data = await response.json()
+        if (data.success) {
+          // Store jwt token for future requests
+          localStorage.setItem('userToken', data.token)
+          onLogin()
+        } else {
+          alert(data.message)
+        }
+      } catch (error) {
+        alert('Sign up failed. Please try again.')
+      }
     } else {
-      // Simulate login - just navigate to dashboard
-      onLogin()
+      // Handle login
+      try {
+        const response = await fetch(`${API_BASE}/api/auth/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ email, password })
+        })
+        const data = await response.json()
+        if (data.success) {
+          // Store the token for future requests
+          localStorage.setItem('userToken', data.token)
+          onLogin()
+        } else {
+          alert(data.message)
+        }
+      } catch (error) {
+        alert('Login failed. Please try again.')
+      }
     }
   }
 
@@ -58,7 +97,7 @@ export function LoginPage({ onNavigateToLanding, onLogin }: LoginPageProps) {
           <div>
             <div className="flex items-center gap-3 mb-6">
               <div className="w-12 h-12 rounded-lg bg-blue-500 flex items-center justify-center">
-                <MessageCircle className="w-7 h-7 text-white" />
+                <TrendingUp className="w-7 h-7 text-white" />
               </div>
               <span className="text-3xl font-bold text-white">Buy-nance Bandits</span>
             </div>
@@ -130,7 +169,7 @@ export function LoginPage({ onNavigateToLanding, onLogin }: LoginPageProps) {
               <div className="text-center lg:hidden">
                 <div className="flex items-center justify-center gap-2 mb-4">
                   <div className="w-8 h-8 rounded-lg bg-blue-500 flex items-center justify-center">
-                    <MessageCircle className="w-5 h-5 text-white" />
+                    <TrendingUp className="w-5 h-5 text-white" />
                   </div>
                   <span className="text-xl font-bold text-white">Buy-nance Bandits</span>
                 </div>
@@ -348,7 +387,7 @@ export function LoginPage({ onNavigateToLanding, onLogin }: LoginPageProps) {
 
           <div className="mt-6 text-center text-xs text-gray-400">
             <p>Protected by enterprise-grade security</p>
-            <p>© 2024 Buy-nance Bandits. All rights reserved.</p>
+            <p>© 2025 Buy-nance Bandits. All rights reserved.</p>
           </div>
         </div>
       </div>
