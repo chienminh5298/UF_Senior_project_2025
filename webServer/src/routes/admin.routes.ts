@@ -344,8 +344,8 @@ router.get('/orders', requireAuth, async (req, res) => {
         budget: true,
         netProfit: true,
         buyDate: true,
-        token: { where: { isActive: true }, select: { name: true } },
-        user: { where: { isActive: true }, select: { id: true, email: true } },
+        token: { select: { name: true, isActive: true } },
+        user: { select: { id: true, email: true, isActive: true } },
       },
     });
 
@@ -501,6 +501,7 @@ router.get('/strategies', requireAuth, async (req, res) => {
   const response = await prisma.strategy.findMany({
     select: {
       id: true,
+      description: true,
       isActive: true,
 
       tokenStrategies: {
@@ -564,6 +565,26 @@ router.get('/strategies', requireAuth, async (req, res) => {
  *                       type: integer
  *                     isActive:
  *                       type: boolean
+ *                     description:
+ *                       type: string
+ *                     targets:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           targetPercent:
+ *                             type: number
+ *                           stoplossPercent:
+ *                             type: number
+ *                     tokenStrategies:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           token:
+ *                             type: object
+ *                             properties:
+ *                               name: { type: string }
  *       401:
  *         description: Unauthorized
  *       500:
@@ -584,6 +605,7 @@ router.get('/strategies/:id', requireAuth, async (req, res) => {
       where: { id: parseInt(id) },
       select: {
         id: true,
+        description: true,
         isActive: true,
         targets: {
           select: {
@@ -698,6 +720,7 @@ router.post('/strategies', requireAuth, async (req, res) => {
       tokenStrategies = [],
       targets = [],
       direction = 'SAME',
+      isCloseBeforeNewCandle = false,
     } = req.body;
 
     if (!description) {
@@ -722,7 +745,7 @@ router.post('/strategies', requireAuth, async (req, res) => {
       description,
       contribution: Number(contribution) || 0,
       isActive: false,
-      isCloseBeforeNewCandle: false,
+      isCloseBeforeNewCandle: Boolean(isCloseBeforeNewCandle),
       direction,
 
       targets: {
@@ -1069,5 +1092,54 @@ router.patch('/tokens/:id', requireAuth, async (req, res) => {
     return res
       .status(500)
       .json({ success: false, message: 'Failed to update token' });
+  }
+});
+
+
+// DELETE api/admin/strategies/{id}
+/**
+ * @swagger
+ * /api/admin/strategies/{id}:
+ *   delete:
+ *     summary: Delete a strategy (Admin strategies page)
+ *     tags: [Admin]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         description: Strategy ID
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Strategy deleted successfully
+ *       401: { description: Unauthorized }
+ *       400: { description: Strategy ID not found or invalid }
+ *       500: { description: Failed to delete strategy }
+ */
+router.delete('/strategies/:id', requireAuth, async (req, res) => {
+  try {
+    const { user } = req;
+    const { id } = req.params;
+
+    if (!user)
+      return res.status(401).json({ success: false, message: 'Unauthorized' });
+
+    if (!id)
+      return res.status(400).json({ success: false, message: 'Strategy ID not found' });
+
+    const strategyId = parseInt(id);
+
+    if (isNaN(strategyId))
+      return res.status(400).json({ success: false, message: 'Invalid strategy ID' });
+
+    await prisma.strategy.delete({ where: { id: strategyId } });
+
+    return res.status(200).json({ success: true, message: 'Strategy deleted successfully' });
+
+  } catch (error) {
+    return res.status(500).json({ success: false, message: 'Failed to delete strategy' });
   }
 });
