@@ -652,6 +652,101 @@ router.get('/strategies', requireAuth, async (req, res) => {
   });
 });
 
+/**
+ * @swagger
+ * /api/admin/strategies/{id}/targets:
+ *   patch:
+ *     summary: Update targets (targetPercent and stoplossPercent) for a strategy
+ *     tags: [Admin]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         description: Strategy ID
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [targets]
+ *             properties:
+ *               targets:
+ *                 type: array
+ *                 description: Array of existing Target rows to update
+ *                 items:
+ *                   type: object
+ *                   required: [id, targetPercent, stoplossPercent]
+ *                   properties:
+ *                     id:
+ *                       type: integer
+ *                       example: 12
+ *                     targetPercent:
+ *                       type: number
+ *                       example: 0.75
+ *                     stoplossPercent:
+ *                       type: number
+ *                       example: 0.15
+ *     responses:
+ *       200:
+ *         description: Targets updated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success: { type: boolean, example: true }
+ *                 message: { type: string, example: Targets updated successfully }
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Failed to update targets
+ */
+
+// PATCH /api/admin/strategies/:id/targets
+router.patch('/strategies/:id/targets', requireAuth, async (req, res) => {
+  const { user } = req;
+  const { id } = req.params;
+  const { targets } = req.body;
+
+  if (!user) {
+    // return res.status(401).json({ success: false, message: 'Unauthorized' });
+  }
+
+  try {
+    const strategyId = Number(id);
+
+    // Use transaction to replace all targets
+    await prisma.$transaction(async (tx) => {
+      // Delete all existing targets for this strategy
+      await tx.target.deleteMany({
+        where: { strategyId },
+      });
+
+      // Create new targets
+      if (targets && targets.length > 0) {
+        await tx.target.createMany({
+          data: targets.map((t: { targetPercent: number; stoplossPercent: number }) => ({
+            strategyId,
+            targetPercent: t.targetPercent,
+            stoplossPercent: t.stoplossPercent,
+          })),
+        });
+      }
+    });
+
+    return res.status(200).json({ success: true, message: 'Targets updated successfully' });
+  } catch (error) {
+    console.error('Error updating targets:', error);
+    return res.status(500).json({ success: false, message: 'Failed to update targets' });
+  }
+});
+
+
 // GET /api/admin/strategies/{id}
 /**
  * @swagger
@@ -676,42 +771,40 @@ router.get('/strategies', requireAuth, async (req, res) => {
  *             schema:
  *               type: object
  *               properties:
- *                 success:
- *                   type: boolean
- *                 message:
- *                   type: string
+ *                 success: { type: boolean }
+ *                 message: { type: string }
  *                 data:
  *                   type: object
  *                   properties:
- *                     id:
- *                       type: integer
- *                     isActive:
- *                       type: boolean
- *                     description:
- *                       type: string
- *                     targets:
- *                       type: array
- *                       items:
- *                         type: object
- *                         properties:
- *                           targetPercent:
- *                             type: number
- *                           stoplossPercent:
- *                             type: number
- *                     tokenStrategies:
- *                       type: array
- *                       items:
- *                         type: object
- *                         properties:
- *                           token:
+ *                     response:
+ *                       type: object
+ *                       properties:
+ *                         id: { type: integer }
+ *                         isActive: { type: boolean }
+ *                         description: { type: string }
+ *                         targets:
+ *                           type: array
+ *                           items:
  *                             type: object
  *                             properties:
- *                               name: { type: string }
+ *                               id: { type: integer, example: 3 }                
+ *                               targetPercent: { type: number, example: 2.5 }
+ *                               stoplossPercent: { type: number, example: 1.0 }
+ *                         tokenStrategies:
+ *                           type: array
+ *                           items:
+ *                             type: object
+ *                             properties:
+ *                               token:
+ *                                 type: object
+ *                                 properties:
+ *                                   name: { type: string }
  *       401:
  *         description: Unauthorized
  *       500:
  *         description: Failed to fetch strategy
  */
+
 
 // Get /api/admin/strategies/{id}
 router.get('/strategies/:id', requireAuth, async (req, res) => {
@@ -731,6 +824,7 @@ router.get('/strategies/:id', requireAuth, async (req, res) => {
         isActive: true,
         targets: {
           select: {
+            id: true,      
             targetPercent: true,
             stoplossPercent: true,
           },
@@ -758,6 +852,7 @@ router.get('/strategies/:id', requireAuth, async (req, res) => {
     });
   }
 });
+
 
 // POST /api/admin/strategies
 /**
@@ -832,8 +927,10 @@ router.get('/strategies/:id', requireAuth, async (req, res) => {
 
 router.post('/strategies', requireAuth, async (req, res) => {
   const { user } = req;
-  if (!user)
+  if (!user){
     // return res.status(401).json({ success: false, message: 'Unauthorized' });
+  }
+
 
   try {
     const {
@@ -972,6 +1069,103 @@ router.get('/tokens', requireAuth, async (req, res) => {
     });
   }
 });
+
+// PATCH /api/admin/strategies/{id}
+/**
+ * @swagger
+ * /api/admin/strategies/{id}:
+ *   patch:
+ *     summary: Update strategy basic information (Admin strategies page)
+ *     tags: [Admin]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         description: Strategy ID
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               description:
+ *                 type: string
+ *                 example: "Updated strategy description"
+ *               contribution:
+ *                 type: number
+ *                 example: 200
+ *               isActive:
+ *                 type: boolean
+ *                 example: true
+ *               isCloseBeforeNewCandle:
+ *                 type: boolean
+ *                 example: false
+ *               direction:
+ *                 type: string
+ *                 enum: [SAME, OPPOSITE]
+ *                 example: SAME
+ *     responses:
+ *       200:
+ *         description: Strategy updated successfully
+ *       401: { description: Unauthorized }
+ *       400: { description: Invalid input or missing fields }
+ *       500: { description: Failed to update strategy }
+ */
+router.patch('/strategies/:id', requireAuth, async (req, res) => {
+  const { user } = req;
+  const { id } = req.params;
+  const { description, contribution, isActive, isCloseBeforeNewCandle, direction } = req.body;
+
+  if (!user) {
+    // return res.status(401).json({ success: false, message: 'Unauthorized' });
+  }
+
+  try {
+    const strategyId = parseInt(id);
+    if (isNaN(strategyId)) {
+      return res.status(400).json({ success: false, message: 'Invalid strategy ID' });
+    }
+
+    // Validate direction if provided
+    if (direction && !['SAME', 'OPPOSITE'].includes(direction)) {
+      return res.status(400).json({ success: false, message: 'Invalid direction' });
+    }
+
+    const updateData: any = {};
+    if (description !== undefined) updateData.description = description;
+    if (contribution !== undefined) updateData.contribution = Number(contribution);
+    if (isActive !== undefined) updateData.isActive = Boolean(isActive);
+    if (isCloseBeforeNewCandle !== undefined) updateData.isCloseBeforeNewCandle = Boolean(isCloseBeforeNewCandle);
+    if (direction !== undefined) updateData.direction = direction;
+
+    const strategy = await prisma.strategy.update({
+      where: { id: strategyId },
+      data: updateData,
+      include: {
+        targets: true,
+        tokenStrategies: { include: { token: true } },
+      },
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: 'Strategy updated successfully',
+      data: { strategy },
+    });
+  } catch (error) {
+    console.error('Error updating strategy:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to update strategy',
+    });
+  }
+});
+
 
 export default router;
 
