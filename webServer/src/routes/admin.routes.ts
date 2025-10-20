@@ -65,7 +65,7 @@ router.get('/users', requireAuth, async (req, res) => {
   const { user } = req;
 
   if (!user) {
-    // return res.status(401).json({ success: false, message: 'Unauthorized' });
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
   }
 
   try {
@@ -137,7 +137,7 @@ router.get('/users/:id', requireAuth, async (req, res) => {
   const { id } = req.params;
 
   if (!user) {
-    // return res.status(401).json({ success: false, message: 'Unauthorized' });
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
   }
 
   if (!id) {
@@ -211,7 +211,7 @@ router.patch('/users/:id', requireAuth, async (req, res) => {
   const { id } = req.params;
 
   if (!user) {
-    // return res.status(401).json({ success: false, message: 'Unauthorized' });
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
   }
 
   if (!id) {
@@ -326,7 +326,7 @@ router.get('/orders', requireAuth, async (req, res) => {
   const status = req.query.status as Status | undefined;
 
   if (!user) {
-    // return res.status(401).json({ success: false, message: 'Unauthorized' });
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
   }
 
   try {
@@ -617,7 +617,7 @@ router.get('/strategies', requireAuth, async (req, res) => {
   const { user } = req;
 
   if (!user) {
-    // return res.status(401).json({ success: false, message: 'Unauthorized' });
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
   }
 
   const response = await prisma.strategy.findMany({
@@ -714,7 +714,7 @@ router.patch('/strategies/:id/targets', requireAuth, async (req, res) => {
   const { targets } = req.body;
 
   if (!user) {
-    // return res.status(401).json({ success: false, message: 'Unauthorized' });
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
   }
 
   try {
@@ -931,7 +931,7 @@ router.get('/strategies/:id', requireAuth, async (req, res) => {
 router.post('/strategies', requireAuth, async (req, res) => {
   const { user } = req;
   if (!user) {
-    // return res.status(401).json({ success: false, message: 'Unauthorized' });
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
   }
 
   try {
@@ -1046,7 +1046,7 @@ router.post('/strategies', requireAuth, async (req, res) => {
 router.get('/tokens', requireAuth, async (req, res) => {
   const { user } = req;
   if (!user) {
-    // return res.status(401).json({ success: false, message: 'Unauthorized' });
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
   }
 
   try {
@@ -1130,7 +1130,7 @@ router.patch('/strategies/:id', requireAuth, async (req, res) => {
   } = req.body;
 
   if (!user) {
-    // return res.status(401).json({ success: false, message: 'Unauthorized' });
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
   }
 
   try {
@@ -1222,30 +1222,32 @@ router.patch('/strategies/:id', requireAuth, async (req, res) => {
 
 router.get('/bills', requireAuth, async (req, res) => {
   const { user } = req;
-  if (!user)
-    // return res.status(401).json({ success: false, message: 'Unauthorized' });
-    try {
-      const bills = await prisma.bill.findMany({
-        select: {
-          id: true,
-          status: true,
-          netProfit: true,
-          from: true,
-          to: true,
-          user: { select: { id: true, username: true } },
-        },
-      });
-      return res.status(200).json({
-        success: true,
-        message: 'Bills fetched successfully',
-        data: { bills },
-      });
-    } catch (error) {
-      return res.status(500).json({
-        success: false,
-        message: 'Failed to fetch bills',
-      });
-    }
+  if (!user) {
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
+  }
+
+  try {
+    const bills = await prisma.bill.findMany({
+      select: {
+        id: true,
+        status: true,
+        netProfit: true,
+        from: true,
+        to: true,
+        user: { select: { id: true, username: true } },
+      },
+    });
+    return res.status(200).json({
+      success: true,
+      message: 'Bills fetched successfully',
+      data: { bills },
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to fetch bills',
+    });
+  }
 });
 
 // GET /api/admin/bills/{id}
@@ -1296,50 +1298,51 @@ router.get('/bills', requireAuth, async (req, res) => {
 // GET /api/admin/bills/{id}
 router.get('/bills/:id', requireAuth, async (req, res) => {
   const { user } = req;
-  if (!user)
-    // return res.status(401).json({ success: false, message: 'Unauthorized' });
+  if (!user) {
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
+  }
 
-    try {
-      const bill = await prisma.bill.findUnique({
-        where: { id: parseInt(req.params.id) },
-        select: {
-          id: true,
-          status: true,
-          netProfit: true,
-          from: true,
-          to: true,
-          note: true,
-          claimId: true,
-          orders: {
-            select: {
-              id: true,
-              orderId: true,
-              side: true,
-              entryPrice: true,
-              qty: true,
-              budget: true,
-              netProfit: true,
-              token: { where: { isActive: true }, select: { name: true } },
-            },
-          },
-          user: {
-            where: { isActive: true },
-            select: { id: true, username: true },
+  try {
+    const bill = await prisma.bill.findUnique({
+      where: { id: parseInt(req.params.id) },
+      select: {
+        id: true,
+        status: true,
+        netProfit: true,
+        from: true,
+        to: true,
+        note: true,
+        claimId: true,
+        orders: {
+          select: {
+            id: true,
+            orderId: true,
+            side: true,
+            entryPrice: true,
+            qty: true,
+            budget: true,
+            netProfit: true,
+            token: { where: { isActive: true }, select: { name: true } },
           },
         },
-      });
+        user: {
+          where: { isActive: true },
+          select: { id: true, username: true },
+        },
+      },
+    });
 
-      return res.status(200).json({
-        success: true,
-        message: 'Bill fetched successfully',
-        data: { bill },
-      });
-    } catch (error) {
-      return res.status(500).json({
-        success: false,
-        message: 'Failed to fetch bill',
-      });
-    }
+    return res.status(200).json({
+      success: true,
+      message: 'Bill fetched successfully',
+      data: { bill },
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to fetch bill',
+    });
+  }
 });
 
 // PATCH api/admin/tokens/{id}
@@ -1388,7 +1391,7 @@ router.patch('/tokens/:id', requireAuth, async (req, res) => {
     }
 
     if (!user) {
-      // return res.status(401).json({ success: false, message: 'Unauthorized' });
+      return res.status(401).json({ success: false, message: 'Unauthorized' });
     }
 
     if (!id) {
@@ -1411,8 +1414,7 @@ router.patch('/tokens/:id', requireAuth, async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message:
-        "Token ${!deactivate ? 'deactivated' : 'activated'} successfully",
+      message: `Token ${!deactivate ? 'deactivated' : 'activated'} successfully`,
     });
   } catch (error) {
     return res
@@ -1449,20 +1451,23 @@ router.delete('/strategies/:id', requireAuth, async (req, res) => {
     const { user } = req;
     const { id } = req.params;
 
-    if (!user)
-      if (!id)
-        // return res.status(401).json({ success: false, message: 'Unauthorized' });
+    if (!user) {
+      return res.status(401).json({ success: false, message: 'Unauthorized' });
+    }
 
-        return res
-          .status(400)
-          .json({ success: false, message: 'Strategy ID not found' });
+    if (!id) {
+      return res
+        .status(400)
+        .json({ success: false, message: 'Strategy ID not found' });
+    }
 
     const strategyId = parseInt(id);
 
-    if (isNaN(strategyId))
+    if (isNaN(strategyId)) {
       return res
         .status(400)
         .json({ success: false, message: 'Invalid strategy ID' });
+    }
 
     await prisma.strategy.delete({ where: { id: strategyId } });
 
@@ -1519,7 +1524,7 @@ router.patch('/strategies/:id/tokens', requireAuth, async (req, res) => {
   const { tokenIds } = req.body;
 
   if (!user) {
-    // return res.status(401).json({ success: false, message: 'Unauthorized' });
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
   }
 
   try {
@@ -1536,7 +1541,6 @@ router.patch('/strategies/:id/tokens', requireAuth, async (req, res) => {
         .json({ success: false, message: 'tokenIds must be an array' });
     }
 
-    // Validate all token IDs are numbers
     const validTokenIds = tokenIds.filter(
       (id) => typeof id === 'number' && !isNaN(id)
     );
@@ -1547,14 +1551,11 @@ router.patch('/strategies/:id/tokens', requireAuth, async (req, res) => {
       });
     }
 
-    // Use transaction to ensure atomicity
     await prisma.$transaction(async (tx) => {
-      // Delete existing token associations
       await tx.tokenStrategy.deleteMany({
         where: { strategyId },
       });
 
-      // Create new token associations
       if (validTokenIds.length > 0) {
         await tx.tokenStrategy.createMany({
           data: validTokenIds.map((tokenId) => ({
