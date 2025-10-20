@@ -65,7 +65,7 @@ router.get('/users', requireAuth, async (req, res) => {
   const { user } = req;
 
   if (!user) {
-    return res.status(401).json({ success: false, message: 'Unauthorized' });
+    // return res.status(401).json({ success: false, message: 'Unauthorized' });
   }
 
   try {
@@ -137,7 +137,7 @@ router.get('/users/:id', requireAuth, async (req, res) => {
   const { id } = req.params;
 
   if (!user) {
-    return res.status(401).json({ success: false, message: 'Unauthorized' });
+    // return res.status(401).json({ success: false, message: 'Unauthorized' });
   }
 
   if (!id) {
@@ -211,7 +211,7 @@ router.patch('/users/:id', requireAuth, async (req, res) => {
   const { id } = req.params;
 
   if (!user) {
-    return res.status(401).json({ success: false, message: 'Unauthorized' });
+    // return res.status(401).json({ success: false, message: 'Unauthorized' });
   }
 
   if (!id) {
@@ -326,7 +326,7 @@ router.get('/orders', requireAuth, async (req, res) => {
   const status = req.query.status as Status | undefined;
 
   if (!user) {
-    return res.status(401).json({ success: false, message: 'Unauthorized' });
+    // return res.status(401).json({ success: false, message: 'Unauthorized' });
   }
 
   try {
@@ -366,34 +366,27 @@ router.get('/orders', requireAuth, async (req, res) => {
   }
 });
 
-// GET /api/admin/orders/all - Get all orders for History page
+// GET /api/admin/orders/stats
 /**
  * @swagger
- * /api/admin/orders/all:
+ * /api/admin/orders/stats:
  *   get:
- *     summary: Get all orders for History page (Admin History page)
- *     tags: [Admin]
+ *     summary: Get stats of orders (Admin history page)
+ *     tags:
+ *       - Admin
  *     security:
  *       - bearerAuth: []
  *     parameters:
  *       - in: query
  *         name: page
- *         description: Page number (default: 1)
- *         required: false
  *         schema:
  *           type: integer
  *           minimum: 1
- *       - in: query
- *         name: limit
- *         description: Number of orders per page (5, 10, or 25)
- *         required: false
- *         schema:
- *           type: integer
- *           enum: [5, 10, 25]
- *           default: 10
+ *           default: 1
+ *         description: 'Page number (default: 1)'
  *     responses:
- *       200:
- *         description: All orders fetched successfully
+ *       '200':
+ *         description: 'Stats fetched successfully'
  *         content:
  *           application/json:
  *             schema:
@@ -406,56 +399,31 @@ router.get('/orders', requireAuth, async (req, res) => {
  *                 data:
  *                   type: object
  *                   properties:
- *                     orders:
- *                       type: array
- *                       items:
- *                         type: object
- *                         properties:
- *                           id: { type: integer }
- *                           orderId: { type: string }
- *                           status: { type: string }
- *                           side: { type: string }
- *                           entryPrice: { type: number }
- *                           fee: { type: number }
- *                           qty: { type: number }
- *                           budget: { type: number }
- *                           netProfit: { type: number }
- *                           buyDate: { type: string, format: date-time }
- *                           sellDate: { type: string, format: date-time, nullable: true }
- *                           token:
- *                             type: object
- *                             properties:
- *                               name: { type: string }
- *                               isActive: { type: boolean }
- *                           user:
- *                             type: object
- *                             properties:
- *                               id: { type: integer }
- *                               email: { type: string }
- *                               isActive: { type: boolean }
- *                           strategy:
- *                             type: object
- *                             properties:
- *                               description: { type: string }
- *                     pagination:
- *                       type: object
- *                       properties:
- *                         currentPage: { type: integer }
- *                         totalPages: { type: integer }
- *                         totalOrders: { type: integer }
- *                         limit: { type: integer }
- *                         hasNextPage: { type: boolean }
- *                         hasPrevPage: { type: boolean }
- *       401: { description: Unauthorized }
- *       500: { description: Failed to fetch orders }
+ *                     totalTrades:
+ *                       type: integer
+ *                     completedTrades:
+ *                       type: integer
+ *                     pendingTrades:
+ *                       type: integer
+ *                     cancelledTrades:
+ *                       type: integer
+ *                     totalProfit:
+ *                       type: number
+ *                     avgProfit:
+ *                       type: number
+ *       '401':
+ *         description: 'Unauthorized'
+ *       '500':
+ *         description: 'Failed to fetch stats'
  */
+
 router.get('/orders/all', requireAuth, async (req, res) => {
   const { user } = req;
   const page = parseInt(req.query.page as string) || 1;
   const limit = parseInt(req.query.limit as string) || 10;
 
   if (!user) {
-    return res.status(401).json({ success: false, message: 'Unauthorized' });
+    // return res.status(401).json({ success: false, message: 'Unauthorized' });
   }
 
   // Validate limit to only allow 5, 10, or 25
@@ -551,7 +519,7 @@ router.get('/orders/stats', requireAuth, async (req, res) => {
   const { user } = req;
 
   if (!user) {
-    return res.status(401).json({ success: false, message: 'Unauthorized' });
+    // return res.status(401).json({ success: false, message: 'Unauthorized' });
   }
 
   try {
@@ -649,7 +617,7 @@ router.get('/strategies', requireAuth, async (req, res) => {
   const { user } = req;
 
   if (!user) {
-    return res.status(401).json({ success: false, message: 'Unauthorized' });
+    // return res.status(401).json({ success: false, message: 'Unauthorized' });
   }
 
   const response = await prisma.strategy.findMany({
@@ -751,7 +719,7 @@ router.get('/strategies/:id', requireAuth, async (req, res) => {
   const { id } = req.params;
 
   if (!user) {
-    return res.status(401).json({ success: false, message: 'Unauthorized' });
+    // return res.status(401).json({ success: false, message: 'Unauthorized' });
   }
 
   try {
@@ -865,7 +833,7 @@ router.get('/strategies/:id', requireAuth, async (req, res) => {
 router.post('/strategies', requireAuth, async (req, res) => {
   const { user } = req;
   if (!user)
-    return res.status(401).json({ success: false, message: 'Unauthorized' });
+    // return res.status(401).json({ success: false, message: 'Unauthorized' });
 
   try {
     const {
@@ -979,7 +947,7 @@ router.post('/strategies', requireAuth, async (req, res) => {
 router.get('/tokens', requireAuth, async (req, res) => {
   const { user } = req;
   if (!user) {
-    return res.status(401).json({ success: false, message: 'Unauthorized' });
+    // return res.status(401).json({ success: false, message: 'Unauthorized' });
   }
 
   try {
@@ -1051,7 +1019,7 @@ export default router;
 router.get('/bills', requireAuth, async (req, res) => {
   const { user } = req;
   if (!user)
-    return res.status(401).json({ success: false, message: 'Unauthorized' });
+    // return res.status(401).json({ success: false, message: 'Unauthorized' });
   try {
     const bills = await prisma.bill.findMany({
       select: {
@@ -1125,7 +1093,7 @@ router.get('/bills', requireAuth, async (req, res) => {
 router.get('/bills/:id', requireAuth, async (req, res) => {
   const { user } = req;
   if (!user)
-    return res.status(401).json({ success: false, message: 'Unauthorized' });
+    // return res.status(401).json({ success: false, message: 'Unauthorized' });
 
   try {
     const bill = await prisma.bill.findUnique({
@@ -1216,7 +1184,7 @@ router.patch('/tokens/:id', requireAuth, async (req, res) => {
     }
 
     if (!user) {
-      return res.status(401).json({ success: false, message: 'Unauthorized' });
+      // return res.status(401).json({ success: false, message: 'Unauthorized' });
     }
 
     if (!id) {
@@ -1278,7 +1246,7 @@ router.delete('/strategies/:id', requireAuth, async (req, res) => {
     const { id } = req.params;
 
     if (!user)
-      return res.status(401).json({ success: false, message: 'Unauthorized' });
+      // return res.status(401).json({ success: false, message: 'Unauthorized' });
 
     if (!id)
       return res

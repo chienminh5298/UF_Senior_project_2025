@@ -4,7 +4,7 @@
   "description": "Buy-nance Bandits Admin Dashboard - Administrative interface for system management",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "vite --port 3002",
     "build": "tsc && vite build",
     "preview": "vite preview",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",

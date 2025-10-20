@@ -82,7 +82,7 @@ const startServer = async () => {
     }
 };
 
-startServer();
+// startServer();
 
 const checkTokens = async () => {
     let tokens: Token[] = await prisma.token.findMany();
