@@ -730,22 +730,27 @@ router.patch('/strategies/:id/targets', requireAuth, async (req, res) => {
       // Create new targets
       if (targets && targets.length > 0) {
         await tx.target.createMany({
-          data: targets.map((t: { targetPercent: number; stoplossPercent: number }) => ({
-            strategyId,
-            targetPercent: t.targetPercent,
-            stoplossPercent: t.stoplossPercent,
-          })),
+          data: targets.map(
+            (t: { targetPercent: number; stoplossPercent: number }) => ({
+              strategyId,
+              targetPercent: t.targetPercent,
+              stoplossPercent: t.stoplossPercent,
+            })
+          ),
         });
       }
     });
 
-    return res.status(200).json({ success: true, message: 'Targets updated successfully' });
+    return res
+      .status(200)
+      .json({ success: true, message: 'Targets updated successfully' });
   } catch (error) {
     console.error('Error updating targets:', error);
-    return res.status(500).json({ success: false, message: 'Failed to update targets' });
+    return res
+      .status(500)
+      .json({ success: false, message: 'Failed to update targets' });
   }
 });
-
 
 // GET /api/admin/strategies/{id}
 /**
@@ -787,7 +792,7 @@ router.patch('/strategies/:id/targets', requireAuth, async (req, res) => {
  *                           items:
  *                             type: object
  *                             properties:
- *                               id: { type: integer, example: 3 }                
+ *                               id: { type: integer, example: 3 }
  *                               targetPercent: { type: number, example: 2.5 }
  *                               stoplossPercent: { type: number, example: 1.0 }
  *                         tokenStrategies:
@@ -804,7 +809,6 @@ router.patch('/strategies/:id/targets', requireAuth, async (req, res) => {
  *       500:
  *         description: Failed to fetch strategy
  */
-
 
 // Get /api/admin/strategies/{id}
 router.get('/strategies/:id', requireAuth, async (req, res) => {
@@ -824,7 +828,7 @@ router.get('/strategies/:id', requireAuth, async (req, res) => {
         isActive: true,
         targets: {
           select: {
-            id: true,      
+            id: true,
             targetPercent: true,
             stoplossPercent: true,
           },
@@ -852,7 +856,6 @@ router.get('/strategies/:id', requireAuth, async (req, res) => {
     });
   }
 });
-
 
 // POST /api/admin/strategies
 /**
@@ -927,10 +930,9 @@ router.get('/strategies/:id', requireAuth, async (req, res) => {
 
 router.post('/strategies', requireAuth, async (req, res) => {
   const { user } = req;
-  if (!user){
+  if (!user) {
     // return res.status(401).json({ success: false, message: 'Unauthorized' });
   }
-
 
   try {
     const {
@@ -1119,7 +1121,13 @@ router.get('/tokens', requireAuth, async (req, res) => {
 router.patch('/strategies/:id', requireAuth, async (req, res) => {
   const { user } = req;
   const { id } = req.params;
-  const { description, contribution, isActive, isCloseBeforeNewCandle, direction } = req.body;
+  const {
+    description,
+    contribution,
+    isActive,
+    isCloseBeforeNewCandle,
+    direction,
+  } = req.body;
 
   if (!user) {
     // return res.status(401).json({ success: false, message: 'Unauthorized' });
@@ -1128,18 +1136,24 @@ router.patch('/strategies/:id', requireAuth, async (req, res) => {
   try {
     const strategyId = parseInt(id);
     if (isNaN(strategyId)) {
-      return res.status(400).json({ success: false, message: 'Invalid strategy ID' });
+      return res
+        .status(400)
+        .json({ success: false, message: 'Invalid strategy ID' });
     }
 
     if (direction && !['SAME', 'OPPOSITE'].includes(direction)) {
-      return res.status(400).json({ success: false, message: 'Invalid direction' });
+      return res
+        .status(400)
+        .json({ success: false, message: 'Invalid direction' });
     }
 
     const updateData: any = {};
     if (description !== undefined) updateData.description = description;
-    if (contribution !== undefined) updateData.contribution = Number(contribution);
+    if (contribution !== undefined)
+      updateData.contribution = Number(contribution);
     if (isActive !== undefined) updateData.isActive = Boolean(isActive);
-    if (isCloseBeforeNewCandle !== undefined) updateData.isCloseBeforeNewCandle = Boolean(isCloseBeforeNewCandle);
+    if (isCloseBeforeNewCandle !== undefined)
+      updateData.isCloseBeforeNewCandle = Boolean(isCloseBeforeNewCandle);
     if (direction !== undefined) updateData.direction = direction;
 
     const strategy = await prisma.strategy.update({
@@ -1164,7 +1178,6 @@ router.patch('/strategies/:id', requireAuth, async (req, res) => {
     });
   }
 });
-
 
 // GET  /api/admin/bills     # List bills
 /**
@@ -1211,28 +1224,28 @@ router.get('/bills', requireAuth, async (req, res) => {
   const { user } = req;
   if (!user)
     // return res.status(401).json({ success: false, message: 'Unauthorized' });
-  try {
-    const bills = await prisma.bill.findMany({
-      select: {
-        id: true,
-        status: true,
-        netProfit: true,
-        from: true,
-        to: true,
-        user: { select: { id: true, username: true } },
-      },
-    });
-    return res.status(200).json({
-      success: true,
-      message: 'Bills fetched successfully',
-      data: { bills },
-    });
-  } catch (error) {
-    return res.status(500).json({
-      success: false,
-      message: 'Failed to fetch bills',
-    });
-  }
+    try {
+      const bills = await prisma.bill.findMany({
+        select: {
+          id: true,
+          status: true,
+          netProfit: true,
+          from: true,
+          to: true,
+          user: { select: { id: true, username: true } },
+        },
+      });
+      return res.status(200).json({
+        success: true,
+        message: 'Bills fetched successfully',
+        data: { bills },
+      });
+    } catch (error) {
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to fetch bills',
+      });
+    }
 });
 
 // GET /api/admin/bills/{id}
@@ -1286,47 +1299,47 @@ router.get('/bills/:id', requireAuth, async (req, res) => {
   if (!user)
     // return res.status(401).json({ success: false, message: 'Unauthorized' });
 
-  try {
-    const bill = await prisma.bill.findUnique({
-      where: { id: parseInt(req.params.id) },
-      select: {
-        id: true,
-        status: true,
-        netProfit: true,
-        from: true,
-        to: true,
-        note: true,
-        claimId: true,
-        orders: {
-          select: {
-            id: true,
-            orderId: true,
-            side: true,
-            entryPrice: true,
-            qty: true,
-            budget: true,
-            netProfit: true,
-            token: { where: { isActive: true }, select: { name: true } },
+    try {
+      const bill = await prisma.bill.findUnique({
+        where: { id: parseInt(req.params.id) },
+        select: {
+          id: true,
+          status: true,
+          netProfit: true,
+          from: true,
+          to: true,
+          note: true,
+          claimId: true,
+          orders: {
+            select: {
+              id: true,
+              orderId: true,
+              side: true,
+              entryPrice: true,
+              qty: true,
+              budget: true,
+              netProfit: true,
+              token: { where: { isActive: true }, select: { name: true } },
+            },
+          },
+          user: {
+            where: { isActive: true },
+            select: { id: true, username: true },
           },
         },
-        user: {
-          where: { isActive: true },
-          select: { id: true, username: true },
-        },
-      },
-    });
+      });
 
-    return res.status(200).json({
-      success: true,
-      message: 'Bill fetched successfully',
-      data: { bill },
-    });
-  } catch (error) {
-    return res.status(500).json({
-      success: false,
-      message: 'Failed to fetch bill',
-    });
-  }
+      return res.status(200).json({
+        success: true,
+        message: 'Bill fetched successfully',
+        data: { bill },
+      });
+    } catch (error) {
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to fetch bill',
+      });
+    }
 });
 
 // PATCH api/admin/tokens/{id}
@@ -1437,12 +1450,12 @@ router.delete('/strategies/:id', requireAuth, async (req, res) => {
     const { id } = req.params;
 
     if (!user)
-      // return res.status(401).json({ success: false, message: 'Unauthorized' });
+      if (!id)
+        // return res.status(401).json({ success: false, message: 'Unauthorized' });
 
-    if (!id)
-      return res
-        .status(400)
-        .json({ success: false, message: 'Strategy ID not found' });
+        return res
+          .status(400)
+          .json({ success: false, message: 'Strategy ID not found' });
 
     const strategyId = parseInt(id);
 
@@ -1512,17 +1525,28 @@ router.patch('/strategies/:id/tokens', requireAuth, async (req, res) => {
   try {
     const strategyId = parseInt(id);
     if (isNaN(strategyId)) {
-      return res.status(400).json({ success: false, message: 'Invalid strategy ID' });
+      return res
+        .status(400)
+        .json({ success: false, message: 'Invalid strategy ID' });
     }
 
     if (!Array.isArray(tokenIds)) {
-      return res.status(400).json({ success: false, message: 'tokenIds must be an array' });
+      return res
+        .status(400)
+        .json({ success: false, message: 'tokenIds must be an array' });
     }
 
     // Validate all token IDs are numbers
-    const validTokenIds = tokenIds.filter(id => typeof id === 'number' && !isNaN(id));
+    const validTokenIds = tokenIds.filter(
+      (id) => typeof id === 'number' && !isNaN(id)
+    );
     if (validTokenIds.length !== tokenIds.length) {
-      return res.status(400).json({ success: false, message: 'All token IDs must be valid numbers' });
+      return res
+        .status(400)
+        .json({
+          success: false,
+          message: 'All token IDs must be valid numbers',
+        });
     }
 
     // Use transaction to ensure atomicity
@@ -1535,7 +1559,7 @@ router.patch('/strategies/:id/tokens', requireAuth, async (req, res) => {
       // Create new token associations
       if (validTokenIds.length > 0) {
         await tx.tokenStrategy.createMany({
-          data: validTokenIds.map(tokenId => ({
+          data: validTokenIds.map((tokenId) => ({
             strategyId,
             tokenId,
           })),
