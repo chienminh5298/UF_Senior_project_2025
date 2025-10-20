@@ -336,6 +336,26 @@ const updateStrategyTargets = async (strategyId: number, targets: any[]) => {
   return response.json()
 }
 
+const updateStrategyTokens = async (strategyId: number, tokenIds: number[]) => {
+  const token = localStorage.getItem('adminToken')
+  
+  const response = await fetch(`${API_BASE}/api/admin/strategies/${strategyId}/tokens`, {
+    method: 'PATCH',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ tokenIds })
+  })
+  
+  if (!response.ok) {
+    const errorData = await response.json()
+    throw new Error(errorData.message || 'Failed to update strategy tokens')
+  }
+  
+  return response.json()
+}
+
 const fetchUserDetails = async (userId: number) => {
   const token = localStorage.getItem('adminToken')
   
@@ -503,6 +523,9 @@ export function Admin() {
       // Update targets
       await updateStrategyTargets(selectedStrategy.id, configureStrategyForm.targets)
       
+      // Update token associations
+      await updateStrategyTokens(selectedStrategy.id, configureStrategyForm.selectedTokens)
+      
       // Refresh strategies list
       const strategiesData = await fetchStrategies()
       setStrategies(strategiesData)
@@ -519,7 +542,6 @@ export function Admin() {
   
   const tabs = ['Analyze', 'Orders', 'Transactions', 'Strategies', 'Users']
 
-  // Load data when component mounts or tab changes
   useEffect(() => {
     const loadData = async () => {
       setLoading(true)

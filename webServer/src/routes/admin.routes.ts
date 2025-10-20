@@ -1131,7 +1131,6 @@ router.patch('/strategies/:id', requireAuth, async (req, res) => {
       return res.status(400).json({ success: false, message: 'Invalid strategy ID' });
     }
 
-    // Validate direction if provided
     if (direction && !['SAME', 'OPPOSITE'].includes(direction)) {
       return res.status(400).json({ success: false, message: 'Invalid direction' });
     }
@@ -1166,8 +1165,6 @@ router.patch('/strategies/:id', requireAuth, async (req, res) => {
   }
 });
 
-
-export default router;
 
 // GET  /api/admin/bills     # List bills
 /**
@@ -1465,3 +1462,98 @@ router.delete('/strategies/:id', requireAuth, async (req, res) => {
       .json({ success: false, message: 'Failed to delete strategy' });
   }
 });
+
+// PATCH /api/admin/strategies/{id}/tokens
+/**
+ * @swagger
+ * /api/admin/strategies/{id}/tokens:
+ *   patch:
+ *     summary: Update token associations for a strategy
+ *     tags: [Admin]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         description: Strategy ID
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [tokenIds]
+ *             properties:
+ *               tokenIds:
+ *                 type: array
+ *                 description: Array of token IDs to associate with this strategy
+ *                 items:
+ *                   type: integer
+ *                   example: 5
+ *     responses:
+ *       200:
+ *         description: Token associations updated successfully
+ *       401: { description: Unauthorized }
+ *       400: { description: Invalid input or missing fields }
+ *       500: { description: Failed to update token associations }
+ */
+router.patch('/strategies/:id/tokens', requireAuth, async (req, res) => {
+  const { user } = req;
+  const { id } = req.params;
+  const { tokenIds } = req.body;
+
+  if (!user) {
+    // return res.status(401).json({ success: false, message: 'Unauthorized' });
+  }
+
+  try {
+    const strategyId = parseInt(id);
+    if (isNaN(strategyId)) {
+      return res.status(400).json({ success: false, message: 'Invalid strategy ID' });
+    }
+
+    if (!Array.isArray(tokenIds)) {
+      return res.status(400).json({ success: false, message: 'tokenIds must be an array' });
+    }
+
+    // Validate all token IDs are numbers
+    const validTokenIds = tokenIds.filter(id => typeof id === 'number' && !isNaN(id));
+    if (validTokenIds.length !== tokenIds.length) {
+      return res.status(400).json({ success: false, message: 'All token IDs must be valid numbers' });
+    }
+
+    // Use transaction to ensure atomicity
+    await prisma.$transaction(async (tx) => {
+      // Delete existing token associations
+      await tx.tokenStrategy.deleteMany({
+        where: { strategyId },
+      });
+
+      // Create new token associations
+      if (validTokenIds.length > 0) {
+        await tx.tokenStrategy.createMany({
+          data: validTokenIds.map(tokenId => ({
+            strategyId,
+            tokenId,
+          })),
+        });
+      }
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: 'Token associations updated successfully',
+    });
+  } catch (error) {
+    console.error('Error updating token associations:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to update token associations',
+    });
+  }
+});
+
+export default router;
