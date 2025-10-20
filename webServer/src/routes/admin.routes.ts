@@ -1541,12 +1541,10 @@ router.patch('/strategies/:id/tokens', requireAuth, async (req, res) => {
       (id) => typeof id === 'number' && !isNaN(id)
     );
     if (validTokenIds.length !== tokenIds.length) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: 'All token IDs must be valid numbers',
-        });
+      return res.status(400).json({
+        success: false,
+        message: 'All token IDs must be valid numbers',
+      });
     }
 
     // Use transaction to ensure atomicity
