@@ -2,7 +2,7 @@ import { Router } from 'express';
 import prisma from '../models/prismaClient';
 import { requireAuth } from '../middleware/auth';
 import bcrypt from 'bcrypt';
-import { VoucherStatus } from '@prisma/client';
+import { BillStatus, VoucherStatus } from '@prisma/client';
 const router = Router();
 
 // POST /api/user/tokens
@@ -437,23 +437,21 @@ router.post('/claim', requireAuth, async (req, res) => {
  *     tags: [User]
  *     security:
  *       - bearerAuth: []
- *     query:
- *       type: object
- *       properties:
- *         status:
- *           type: string
- *           enum: [NEW, PROCESSING, CLAIMED, REJECTED]
- *         from:
- *           type: string
- *           format: date-time
- *         to:
- *           type: string
- *           format: date-time
- *         page:
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         description: Page number
+ *         required: false
+ *         schema:
  *           type: integer
  *           default: 1
- *         limit:
+ *       - in: query
+ *         name: limit
+ *         description: Number of bills per page
+ *         required: false
+ *         schema:
  *           type: integer
+ *           enum: [5, 10, 25]
  *           default: 10
  *     responses:
  *       200:
@@ -468,21 +466,46 @@ router.post('/claim', requireAuth, async (req, res) => {
  *                 message:
  *                   type: string
  *                 data:
- *                   type: array
- *                   items:
- *                     type: object
- *                     properties:
- *                       id:
- *                         type: integer
- *                       netProfit:
- *                         type: number
- *                       status:
- *                         type: string
- *                       createdAt:
- *                         type: string
- *                       updatedAt:
- *                         type: string
- *                         format: date-time
+ *                   type: object
+ *                   properties:
+ *                     bills:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           id:
+ *                             type: integer
+ *                           netProfit:
+ *                             type: number
+ *                           status:
+ *                             type: string
+ *                           createdAt:
+ *                             type: string
+ *                             format: date-time
+ *                           updatedAt:
+ *                             type: string
+ *                             format: date-time
+ *                           from:
+ *                             type: string
+ *                           to:
+ *                             type: string
+ *                           note:
+ *                             type: string
+ *                     pagination:
+ *                       type: object
+ *                       properties:
+ *                         currentPage:
+ *                           type: integer
+ *                         totalPages:
+ *                           type: integer
+ *                         totalBills:
+ *                           type: integer
+ *                         limit:
+ *                           type: integer
+ *                         hasNextPage:
+ *                           type: boolean
+ *                         hasPrevPage:
+ *                           type: boolean
  *       401:
  *         description: Unauthorized
  *       500:
@@ -490,23 +513,65 @@ router.post('/claim', requireAuth, async (req, res) => {
  */
 router.get('/bills', requireAuth, async (req, res) => {
   const { user } = req;
+  const page = parseInt(req.query.page as string) || 1;
+  const limit = parseInt(req.query.limit as string) || 10;
 
   if (!user) {
     return res.status(401).json({ success: false, message: 'Unauthorized' });
   }
 
-  try{
+  const validLimits = [5, 10, 25];
+  const validatedLimit = validLimits.includes(limit) ? limit : 10;
 
-    const bills = await prisma.bill.findMany({ where: { userId: user.id , netProfit: { gt: 0 } }, select: {
-      id: true,
-      netProfit: true,
-      status: true,
-      createdAt: true,
-      updatedAt: true,
-    } });
+  try {
+    const skip = (page - 1) * validatedLimit;
 
-    return res.status(200).json({ success: true, message: 'Bills fetched successfully', data: bills });
+    const totalBills = await prisma.bill.count({
+      where: {
+        userId: user.id,
+        netProfit: { gt: 0 }
+      }
+    });
+
+    const bills = await prisma.bill.findMany({
+      where: {
+        userId: user.id,
+        netProfit: { gt: 0 }
+      },
+      skip,
+      take: validatedLimit,
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        netProfit: true,
+        status: true,
+        createdAt: true,
+        updatedAt: true,
+        from: true,
+        to: true,
+        note: true,
+      },
+    });
+
+    const totalPages = Math.ceil(totalBills / validatedLimit);
+
+    return res.status(200).json({
+      success: true,
+      message: 'Bills fetched successfully',
+      data: {
+        bills,
+        pagination: {
+          currentPage: page,
+          totalPages,
+          totalBills,
+          limit: validatedLimit,
+          hasNextPage: page < totalPages,
+          hasPrevPage: page > 1,
+        },
+      },
+    });
   } catch (error) {
+    console.error('Error fetching bills:', error);
     return res.status(500).json({ success: false, message: 'Failed to fetch bills' });
   }
 });
