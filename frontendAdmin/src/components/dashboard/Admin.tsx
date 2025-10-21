@@ -13,7 +13,9 @@ import {
   Calendar,
   BarChart3,
   RefreshCw,
-  Trash2
+  Trash2,
+  Clock,
+  AlertCircle
 } from 'lucide-react'
 
 // API Configuration
@@ -133,12 +135,6 @@ const users = [
 ]
 
 
-const transactions = [
-  { id: 1, user: 'John Thompson', type: 'DEPOSIT', amount: 15000, status: 'PENDING', timestamp: '2024-09-18 12:00:00' },
-  { id: 2, user: 'Sarah Chen', type: 'WITHDRAW', amount: 5000, status: 'PENDING', timestamp: '2024-09-18 11:30:00' },
-  { id: 3, user: 'Emily Watson', type: 'DEPOSIT', amount: 25000, status: 'APPROVED', timestamp: '2024-09-18 10:15:00' },
-  { id: 4, user: 'Michael Rodriguez', type: 'WITHDRAW', amount: 2000, status: 'REJECTED', timestamp: '2024-09-18 09:45:00' }
-]
 
 
 const getStatusColor = (status: string) => {
@@ -211,6 +207,24 @@ const fetchOrderStats = async () => {
   
   const data = await response.json()
   return data.data
+}
+
+const fetchClaims = async () => {
+  const token = localStorage.getItem('adminToken')
+  
+  const response = await fetch(`${API_BASE}/api/admin/claims`, {
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    }
+  })
+  
+  if (!response.ok) {
+    throw new Error('Failed to fetch claims')
+  }
+  
+  const data = await response.json()
+  return data.data.claims
 }
 
 const fetchTokens = async (): Promise<ApiToken[]> => {
@@ -403,6 +417,7 @@ export function Admin() {
   // API Data State
   const [apiOrders, setApiOrders] = useState<ApiOrder[]>([])
   const [apiUsers, setApiUsers] = useState<ApiUser[]>([])
+  const [apiClaims, setApiClaims] = useState<any[]>([])
   const [orderStats, setOrderStats] = useState<any>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -554,6 +569,9 @@ export function Admin() {
         } else if (activeTab === 'Users') {
           const usersData = await fetchUsers()
           setApiUsers(usersData)
+        } else if (activeTab === 'Transactions') {
+          const claimsData = await fetchClaims()
+          setApiClaims(claimsData)
         } else if (activeTab === 'Analyze') {
           const statsData = await fetchOrderStats()
           setOrderStats(statsData)
@@ -1016,60 +1034,150 @@ export function Admin() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-white">Transaction Management</h1>
-          <p className="text-gray-400">Approve or reject investor deposits and withdrawals</p>
+          <h1 className="text-2xl font-bold text-white">Transaction Claims</h1>
+          <p className="text-gray-400">Manage user withdrawal claims and transactions</p>
         </div>
         <div className="text-right">
-          <p className="text-sm text-gray-400">Pending Requests</p>
-          <p className="text-2xl font-bold text-yellow-400">2</p>
+          <p className="text-sm text-gray-400">Pending Claims</p>
+          <p className="text-2xl font-bold text-yellow-400">
+            {loading ? '...' : (apiClaims?.filter(c => c.status === 'NEW').length || 0)}
+          </p>
         </div>
+      </div>
+
+      {/* Claims Overview Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <Card className="bg-gray-900 border-gray-800">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm text-gray-400 font-medium">Total Claims</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center gap-2">
+              <span className="text-2xl font-bold text-white">
+                {loading ? '...' : (apiClaims?.length || 0)}
+              </span>
+              <DollarSign className="w-5 h-5 text-blue-400" />
+            </div>
+            <p className="text-sm text-gray-400 mt-1">All time</p>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-gray-900 border-gray-800">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm text-gray-400 font-medium">New Claims</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center gap-2">
+              <span className="text-2xl font-bold text-blue-400">
+                {loading ? '...' : (apiClaims?.filter(c => c.status === 'NEW').length || 0)}
+              </span>
+              <Clock className="w-5 h-5 text-blue-400" />
+            </div>
+            <p className="text-sm text-gray-400 mt-1">Pending review</p>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-gray-900 border-gray-800">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm text-gray-400 font-medium">Processing</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center gap-2">
+              <span className="text-2xl font-bold text-yellow-400">
+                {loading ? '...' : (apiClaims?.filter(c => c.status === 'PROCESSING').length || 0)}
+              </span>
+              <AlertCircle className="w-5 h-5 text-yellow-400" />
+            </div>
+            <p className="text-sm text-gray-400 mt-1">In progress</p>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-gray-900 border-gray-800">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm text-gray-400 font-medium">Completed</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center gap-2">
+              <span className="text-2xl font-bold text-green-400">
+                {loading ? '...' : (apiClaims?.filter(c => c.status === 'COMPLETED').length || 0)}
+              </span>
+              <CheckCircle className="w-5 h-5 text-green-400" />
+            </div>
+            <p className="text-sm text-gray-400 mt-1">Successfully processed</p>
+          </CardContent>
+        </Card>
       </div>
 
       <Card className="bg-gray-900 border-gray-800">
         <CardHeader>
-          <CardTitle className="text-white">Transaction Requests</CardTitle>
+          <CardTitle className="text-white">Claims Management</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="space-y-4">
-            {transactions.map((transaction) => (
-              <div key={transaction.id} className="flex items-center justify-between p-4 bg-gray-800 rounded-lg">
-                <div className="flex items-center gap-4">
-                  <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                    transaction.type === 'DEPOSIT' ? 'bg-green-600/20' : 'bg-red-600/20'
-                  }`}>
-                    {transaction.type === 'DEPOSIT' ? 
-                      <TrendingUp className="w-5 h-5 text-green-400" /> : 
-                      <TrendingDown className="w-5 h-5 text-red-400" />
-                    }
-                  </div>
-                  <div>
-                    <p className="text-white font-medium">{transaction.user}</p>
-                    <p className="text-gray-400 text-sm">
-                      {transaction.type} - ${transaction.amount.toLocaleString()}
-                    </p>
-                    <p className="text-gray-500 text-xs">{transaction.timestamp}</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3">
-                  <Badge className={`${getStatusColor(transaction.status)} text-white`}>
-                    {transaction.status}
-                  </Badge>
-                  {transaction.status === 'PENDING' && (
-                    <div className="flex gap-2">
-                      <Button size="sm" className="bg-green-600 hover:bg-green-700">
-                        <CheckCircle className="w-4 h-4 mr-1" />
-                        Approve
-                      </Button>
-                      <Button size="sm" variant="outline" className="border-red-600 text-red-400 hover:bg-red-600 hover:text-white">
-                        <X className="w-4 h-4 mr-1" />
-                        Reject
-                      </Button>
+          {loading ? (
+            <div className="py-8 text-center text-gray-400">
+              Loading claims...
+            </div>
+          ) : error ? (
+            <div className="py-8 text-center text-red-400">
+              Error: {error}
+            </div>
+          ) : !apiClaims || apiClaims.length === 0 ? (
+            <div className="py-8 text-center text-gray-400">
+              No claims found
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {apiClaims.map((claim) => (
+                <div key={claim.id} className="flex items-center justify-between p-4 bg-gray-800 rounded-lg">
+                  <div className="flex items-center gap-4">
+                    <div className="w-10 h-10 rounded-full flex items-center justify-center bg-blue-600/20">
+                      <Users className="w-5 h-5 text-blue-400" />
                     </div>
-                  )}
+                    <div>
+                      <p className="text-white font-medium">{claim.user?.username || 'Unknown User'}</p>
+                      <p className="text-gray-400 text-sm">
+                        ${claim.amount.toLocaleString()} - {claim.network}
+                      </p>
+                      <p className="text-gray-500 text-xs">
+                        {claim.billsCount} bills • {new Date(claim.createdAt).toLocaleDateString()}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="text-right">
+                      <p className="text-gray-400 text-xs">Address</p>
+                      <p className="text-white text-sm font-mono">
+                        {claim.address.slice(0, 8)}...{claim.address.slice(-6)}
+                      </p>
+                      {claim.hashId && (
+                        <>
+                          <p className="text-gray-400 text-xs mt-1">Hash ID</p>
+                          <p className="text-white text-sm font-mono">
+                            {claim.hashId.slice(0, 8)}...{claim.hashId.slice(-6)}
+                          </p>
+                        </>
+                      )}
+                    </div>
+                    <Badge className={`${getStatusColor(claim.status)} text-white`}>
+                      {claim.status}
+                    </Badge>
+                    {claim.status === 'NEW' && (
+                      <div className="flex gap-2">
+                        <Button size="sm" className="bg-green-600 hover:bg-green-700">
+                          <CheckCircle className="w-4 h-4 mr-1" />
+                          Approve
+                        </Button>
+                        <Button size="sm" variant="outline" className="border-red-600 text-red-400 hover:bg-red-600 hover:text-white">
+                          <X className="w-4 h-4 mr-1" />
+                          Reject
+                        </Button>
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

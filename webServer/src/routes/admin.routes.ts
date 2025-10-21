@@ -1679,4 +1679,224 @@ router.patch('/strategies/:id/tokens', requireAuth, async (req, res) => {
   }
 });
 
+// GET /api/admin/claims
+/**
+ * @swagger
+ * /api/admin/claims:
+ *   get:
+ *     summary: Get all claims with pagination
+ *     tags:
+ *       - Admin
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           default: 1
+ *         description: 'Page number'
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           enum: [5, 10, 25]
+ *           default: 10
+ *         description: 'Number of claims per page'
+ *       - in: query
+ *         name: status
+ *         schema:
+ *           type: string
+ *           enum: [NEW, PROCESSING, COMPLETED, REJECTED]
+ *         description: 'Filter by claim status'
+ *     responses:
+ *       '200':
+ *         description: 'Claims fetched successfully'
+ *       '401':
+ *         description: 'Unauthorized'
+ *       '500':
+ *         description: 'Failed to fetch claims'
+ */
+router.get('/claims', requireAuth, async (req, res) => {
+  const { user } = req;
+  const page = parseInt(req.query.page as string) || 1;
+  const limit = parseInt(req.query.limit as string) || 10;
+  const status = req.query.status as string;
+
+  if (!user) {
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
+  }
+
+  // Validate limit
+  const validLimits = [5, 10, 25];
+  const validatedLimit = validLimits.includes(limit) ? limit : 10;
+
+  try {
+    const skip = (page - 1) * validatedLimit;
+
+    // Build where clause
+    const whereClause: any = {};
+    if (status && ['NEW', 'PROCESSING', 'COMPLETED', 'REJECTED'].includes(status)) {
+      whereClause.status = status;
+    }
+
+    // Get total count
+    const totalClaims = await prisma.claim.count({ where: whereClause });
+
+    // Fetch claims with related data
+    const claims = await prisma.claim.findMany({
+      where: whereClause,
+      skip,
+      take: validatedLimit,
+      orderBy: { createdAt: 'desc' },
+      include: {
+        user: {
+          select: {
+            id: true,
+            username: true,
+            email: true
+          }
+        },
+        bills: {
+          select: {
+            id: true,
+            netProfit: true,
+            status: true
+          }
+        }
+      }
+    });
+
+    // Format claims data
+    const formattedClaims = claims.map(claim => ({
+      id: claim.id,
+      amount: claim.amount,
+      status: claim.status,
+      network: claim.network,
+      address: claim.address,
+      hashId: claim.hashId,
+      createdAt: claim.createdAt,
+      updatedAt: claim.updatedAt,
+      user: claim.user,
+      billsCount: claim.bills.length
+    }));
+
+    const totalPages = Math.ceil(totalClaims / validatedLimit);
+
+    return res.status(200).json({
+      success: true,
+      message: 'Claims fetched successfully',
+      data: {
+        claims: formattedClaims,
+        pagination: {
+          currentPage: page,
+          totalPages,
+          totalClaims,
+          limit: validatedLimit,
+          hasNextPage: page < totalPages,
+          hasPrevPage: page > 1
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching claims:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to fetch claims'
+    });
+  }
+});
+
+// GET /api/admin/claims/{id}
+/**
+ * @swagger
+ * /api/admin/claims/{id}:
+ *   get:
+ *     summary: Get detailed claim information
+ *     tags:
+ *       - Admin
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: 'Claim ID'
+ *     responses:
+ *       '200':
+ *         description: 'Claim details fetched successfully'
+ *       '404':
+ *         description: 'Claim not found'
+ *       '401':
+ *         description: 'Unauthorized'
+ *       '500':
+ *         description: 'Failed to fetch claim details'
+ */
+router.get('/claims/:id', requireAuth, async (req, res) => {
+  const { user } = req;
+  const { id } = req.params;
+
+  if (!user) {
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
+  }
+
+  try {
+    const claimId = parseInt(id);
+    if (isNaN(claimId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid claim ID'
+      });
+    }
+
+    const claim = await prisma.claim.findUnique({
+      where: { id: claimId },
+      include: {
+        user: {
+          select: {
+            id: true,
+            username: true,
+            email: true
+          }
+        },
+        bills: {
+          include: {
+            orders: {
+              include: {
+                token: {
+                  select: {
+                    name: true
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    });
+
+    if (!claim) {
+      return res.status(404).json({
+        success: false,
+        message: 'Claim not found'
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: 'Claim details fetched successfully',
+      data: { claim }
+    });
+  } catch (error) {
+    console.error('Error fetching claim details:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to fetch claim details'
+    });
+  }
+});
+
 export default router;
