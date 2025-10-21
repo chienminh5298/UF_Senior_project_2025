@@ -331,6 +331,41 @@ router.post('/settings', requireAuth, async (req, res) => {
 
 
 // POST api/user/claim
+/**
+ * @swagger
+ * /api/user/claim:
+ *   post:
+ *     summary: Claim bills
+ *     tags: [User]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               billIds:
+ *                 type: array
+ *                 items:
+ *                   type: integer
+ *               network:
+ *                 type: string
+ *               address:
+ *                 type: string
+ *               hashId:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Claim created successfully
+ *       400:
+ *         description: Missing required fields
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Failed to create claim
+ */
 router.post('/claim', requireAuth, async (req, res) => {
   const { user } = req;
 
@@ -390,5 +425,88 @@ router.post('/claim', requireAuth, async (req, res) => {
     return res.status(200).json({ success: true, message: 'Claim created successfully', data: claim });
   } catch (error) {
     return res.status(500).json({ success: false, message: 'Failed to create claim' });
+  }
+});
+
+// GET /api/user/bills
+/**
+ * @swagger
+ * /api/user/bills:
+ *   get:
+ *     summary: Get user bills
+ *     tags: [User]
+ *     security:
+ *       - bearerAuth: []
+ *     query:
+ *       type: object
+ *       properties:
+ *         status:
+ *           type: string
+ *           enum: [NEW, PROCESSING, CLAIMED, REJECTED]
+ *         from:
+ *           type: string
+ *           format: date-time
+ *         to:
+ *           type: string
+ *           format: date-time
+ *         page:
+ *           type: integer
+ *           default: 1
+ *         limit:
+ *           type: integer
+ *           default: 10
+ *     responses:
+ *       200:
+ *         description: Bills fetched successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: integer
+ *                       netProfit:
+ *                         type: number
+ *                       status:
+ *                         type: string
+ *                       createdAt:
+ *                         type: string
+ *                       updatedAt:
+ *                         type: string
+ *                         format: date-time
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Failed to fetch bills
+ */
+router.get('/bills', requireAuth, async (req, res) => {
+  const { user } = req;
+
+  if (!user) {
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
+  }
+
+  try{
+
+    const bills = await prisma.bill.findMany({ where: { userId: user.id , netProfit: { gt: 0 } }, select: {
+      id: true,
+      netProfit: true,
+      status: true,
+      createdAt: true,
+      updatedAt: true,
+    } });
+
+    return res.status(200).json({ success: true, message: 'Bills fetched successfully', data: bills });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: 'Failed to fetch bills' });
   }
 });
