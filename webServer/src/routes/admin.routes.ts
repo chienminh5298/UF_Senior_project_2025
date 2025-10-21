@@ -1899,4 +1899,220 @@ router.get('/claims/:id', requireAuth, async (req, res) => {
   }
 });
 
+// PATCH /api/admin/claims/{id}/approve
+/**
+ * @swagger
+ * /api/admin/claims/{id}/approve:
+ *   patch:
+ *     summary: Approve a claim
+ *     tags:
+ *       - Admin
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: 'Claim ID'
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               note:
+ *                 type: string
+ *                 description: 'Admin note for the user'
+ *                 example: 'Claim approved. Funds will be transferred within 24 hours.'
+ *     responses:
+ *       '200':
+ *         description: 'Claim approved successfully'
+ *       '404':
+ *         description: 'Claim not found'
+ *       '400':
+ *         description: 'Invalid request or claim cannot be approved'
+ *       '401':
+ *         description: 'Unauthorized'
+ *       '500':
+ *         description: 'Failed to approve claim'
+ */
+router.patch('/claims/:id/approve', requireAuth, async (req, res) => {
+  const { user } = req;
+  const { id } = req.params;
+  const { note } = req.body;
+
+  if (!user) {
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
+  }
+
+  try {
+    const claimId = parseInt(id);
+    if (isNaN(claimId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid claim ID'
+      });
+    }
+
+    const claim = await prisma.claim.findUnique({
+      where: { id: claimId },
+      include: { user: true }
+    });
+
+    if (!claim) {
+      return res.status(404).json({
+        success: false,
+        message: 'Claim not found'
+      });
+    }
+
+    if (claim.status !== 'NEW') {
+      return res.status(400).json({
+        success: false,
+        message: 'Only NEW claims can be approved'
+      });
+    }
+
+    const updatedClaim = await prisma.claim.update({
+      where: { id: claimId },
+      data: {
+        status: 'FINISHED',
+        hashId: note || 'Claim approved by admin'
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            username: true,
+            email: true
+          }
+        }
+      }
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: 'Claim approved successfully',
+      data: { claim: updatedClaim }
+    });
+  } catch (error) {
+    console.error('Error approving claim:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to approve claim'
+    });
+  }
+});
+
+// PATCH /api/admin/claims/{id}/reject
+/**
+ * @swagger
+ * /api/admin/claims/{id}/reject:
+ *   patch:
+ *     summary: Reject a claim
+ *     tags:
+ *       - Admin
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: 'Claim ID'
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               note:
+ *                 type: string
+ *                 description: 'Admin note explaining rejection reason'
+ *                 example: 'Insufficient trading activity or invalid documentation.'
+ *     responses:
+ *       '200':
+ *         description: 'Claim rejected successfully'
+ *       '404':
+ *         description: 'Claim not found'
+ *       '400':
+ *         description: 'Invalid request or claim cannot be rejected'
+ *       '401':
+ *         description: 'Unauthorized'
+ *       '500':
+ *         description: 'Failed to reject claim'
+ */
+router.patch('/claims/:id/reject', requireAuth, async (req, res) => {
+  const { user } = req;
+  const { id } = req.params;
+  const { note } = req.body;
+
+  if (!user) {
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
+  }
+
+  try {
+    const claimId = parseInt(id);
+    if (isNaN(claimId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid claim ID'
+      });
+    }
+
+    const claim = await prisma.claim.findUnique({
+      where: { id: claimId },
+      include: { user: true }
+    });
+
+    if (!claim) {
+      return res.status(404).json({
+        success: false,
+        message: 'Claim not found'
+      });
+    }
+
+    if (claim.status !== 'NEW') {
+      return res.status(400).json({
+        success: false,
+        message: 'Only NEW claims can be rejected'
+      });
+    }
+
+    const updatedClaim = await prisma.claim.update({
+      where: { id: claimId },
+      data: {
+        status: 'FINISHED',
+        hashId: note || 'Claim rejected by admin'
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            username: true,
+            email: true
+          }
+        }
+      }
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: 'Claim rejected successfully',
+      data: { claim: updatedClaim }
+    });
+  } catch (error) {
+    console.error('Error rejecting claim:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to reject claim'
+    });
+  }
+});
+
 export default router;

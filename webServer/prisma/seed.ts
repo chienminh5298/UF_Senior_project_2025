@@ -487,47 +487,353 @@ await prisma.user.deleteMany();
   ]);
   console.log('Created orders:', orders.length);
 
-  const claim = await prisma.claim.create({
-    data: {
-      status: 'NEW',
-      amount: 0,
-      userId: users[0].id,
-      hashId: 'CLM-001',
-      network: Network.ERC20,
-      address: '0xabc123...deadbeef',
-    },
-  });
-  console.log('Created claim:', claim.id);
+  // Create additional orders for more comprehensive bills
+  const additionalOrders = await Promise.all([
+    prisma.order.create({
+      data: {
+        orderId: 'ORD-004',
+        side: Side.BUY,
+        timestamp: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
+        entryPrice: 45000,
+        qty: 0.02,
+        budget: 900,
+        status: Status.FINISHED,
+        netProfit: 45.50,
+        markPrice: 45227.50,
+        strategyId: strategies[0].id,
+        tokenId: tokens[0].id, // Bitcoin
+        fee: 0.9,
+        leverage: 3,
+        userId: users[0].id,
+        sellDate: new Date(Date.now() - 4 * 24 * 60 * 60 * 1000),
+      },
+    }),
+    prisma.order.create({
+      data: {
+        orderId: 'ORD-005',
+        side: Side.SELL,
+        timestamp: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
+        entryPrice: 3200,
+        qty: 0.5,
+        budget: 1600,
+        status: Status.FINISHED,
+        netProfit: -25.30,
+        markPrice: 3150,
+        strategyId: strategies[1].id,
+        tokenId: tokens[1].id, // Ethereum
+        fee: 1.6,
+        leverage: 2,
+        userId: users[0].id,
+        sellDate: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
+      },
+    }),
+    prisma.order.create({
+      data: {
+        orderId: 'ORD-006',
+        side: Side.BUY,
+        timestamp: new Date(Date.now() - 6 * 24 * 60 * 60 * 1000).toISOString(),
+        entryPrice: 0.45,
+        qty: 1000,
+        budget: 450,
+        status: Status.FINISHED,
+        netProfit: 78.90,
+        markPrice: 0.528,
+        strategyId: strategies[0].id,
+        tokenId: tokens[2].id, // Cardano
+        fee: 0.45,
+        leverage: 2,
+        userId: users[1].id,
+        sellDate: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000),
+      },
+    }),
+    prisma.order.create({
+      data: {
+        orderId: 'ORD-007',
+        side: Side.BUY,
+        timestamp: new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString(),
+        entryPrice: 95,
+        qty: 2,
+        budget: 190,
+        status: Status.FINISHED,
+        netProfit: 15.20,
+        markPrice: 102.60,
+        strategyId: strategies[1].id,
+        tokenId: tokens[3].id, // Solana
+        fee: 0.19,
+        leverage: 5,
+        userId: users[1].id,
+        sellDate: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000),
+      },
+    }),
+    prisma.order.create({
+      data: {
+        orderId: 'ORD-008',
+        side: Side.SELL,
+        timestamp: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+        entryPrice: 0.85,
+        qty: 500,
+        budget: 425,
+        status: Status.FINISHED,
+        netProfit: -12.50,
+        markPrice: 0.82,
+        strategyId: strategies[0].id,
+        tokenId: tokens[4].id, // Polygon
+        fee: 0.425,
+        leverage: 2,
+        userId: users[2].id,
+        sellDate: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000),
+      },
+    }),
+  ]);
+  console.log('Created additional orders:', additionalOrders.length);
 
-  const bill1 = await prisma.bill.create({
-    data: {
-      adminCommissionPercent: 30,
-      referralCommissionPercent: 0,
-      status: BillStatus.NEW,
-      userId: users[0].id,
-      from: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
-      to: new Date(),
-      note: 'Weekly bill',
-      netProfit: 150,
-      claimId: claim.id,
-      orders: { connect: [{ id: orders[0].id }] },
-    },
-  });
+  // Create multiple claims with different statuses
+  const claims = await Promise.all([
+    // Claim 1: NEW status with multiple bills
+    prisma.claim.create({
+      data: {
+        status: ClaimStatus.NEW,
+        amount: 1250.75,
+        userId: users[0].id,
+        hashId: '0x1a2b3c4d5e6f7890abcdef1234567890abcdef12',
+        network: Network.ERC20,
+        address: '0x742d35Cc6634C0532925a3b8D0C4C3C2C1B0A9F8E7D6C5B4A3928171615141312111',
+      },
+    }),
+    // Claim 2: FINISHED status (processing)
+    prisma.claim.create({
+      data: {
+        status: ClaimStatus.FINISHED,
+        amount: 850.30,
+        userId: users[1].id,
+        hashId: '0x2b3c4d5e6f7890abcdef1234567890abcdef1234',
+        network: Network.BEP20,
+        address: '0x8f3d35Cc6634C0532925a3b8D0C4C3C2C1B0A9F8E7D6C5B4A3928171615141312111',
+      },
+    }),
+    // Claim 3: FINISHED status (completed)
+    prisma.claim.create({
+      data: {
+        status: ClaimStatus.FINISHED,
+        amount: 2100.50,
+        userId: users[2].id,
+        hashId: '0x3c4d5e6f7890abcdef1234567890abcdef123456',
+        network: Network.ERC20,
+        address: '0x9a4d35Cc6634C0532925a3b8D0C4C3C2C1B0A9F8E7D6C5B4A3928171615141312111',
+      },
+    }),
+    // Claim 4: NEW status (rejected)
+    prisma.claim.create({
+      data: {
+        status: ClaimStatus.NEW,
+        amount: 500.00,
+        userId: users[3].id,
+        network: Network.BEP20,
+        address: '0x1b5d35Cc6634C0532925a3b8D0C4C3C2C1B0A9F8E7D6C5B4A3928171615141312111',
+      },
+    }),
+    // Claim 5: NEW status with no transaction hash yet
+    prisma.claim.create({
+      data: {
+        status: ClaimStatus.NEW,
+        amount: 750.25,
+        userId: users[0].id,
+        network: Network.ERC20,
+        address: '0x2c6d35Cc6634C0532925a3b8D0C4C3C2C1B0A9F8E7D6C5B4A3928171615141312111',
+      },
+    }),
+  ]);
+  console.log('Created claims:', claims.length);
 
-  const bill2 = await prisma.bill.create({
-    data: {
-      adminCommissionPercent: 30,
-      referralCommissionPercent: 0,
-      status: BillStatus.PROCESSING,
-      userId: users[1].id,
-      from: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
-      to: new Date(),
-      netProfit: -80,
-      orders: { connect: [{ id: orders[1].id }] },
-    },
-  });
+  // Create comprehensive bills for each claim
+  const bills = await Promise.all([
+    // Bills for Claim 1 (NEW)
+    prisma.bill.create({
+      data: {
+        adminCommissionPercent: 30,
+        referralCommissionPercent: 5,
+        status: BillStatus.NEW,
+        userId: users[0].id,
+        from: new Date(Date.now() - 14 * 24 * 60 * 60 * 1000), // 2 weeks ago
+        to: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000), // 1 week ago
+        note: 'Weekly trading bill - Bitcoin and Ethereum trades',
+        netProfit: 450.25,
+        claimId: claims[0].id,
+        orders: { 
+          connect: [
+            { id: orders[0].id },
+            { id: additionalOrders[0].id },
+            { id: additionalOrders[1].id }
+          ] 
+        },
+      },
+    }),
+    prisma.bill.create({
+      data: {
+        adminCommissionPercent: 30,
+        referralCommissionPercent: 5,
+        status: BillStatus.NEW,
+        userId: users[0].id,
+        from: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000), // 1 week ago
+        to: new Date(), // now
+        note: 'Current week trading bill - Mixed results',
+        netProfit: 800.50,
+        claimId: claims[0].id,
+        orders: { 
+          connect: [
+            { id: orders[1].id },
+            { id: orders[2].id }
+          ] 
+        },
+      },
+    }),
+    
+    // Bills for Claim 2 (PROCESSING)
+    prisma.bill.create({
+      data: {
+        adminCommissionPercent: 25,
+        referralCommissionPercent: 0,
+        status: BillStatus.PROCESSING,
+        userId: users[1].id,
+        from: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000),
+        to: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000),
+        note: 'Cardano and Solana trading period',
+        netProfit: 650.30,
+        claimId: claims[1].id,
+        orders: { 
+          connect: [
+            { id: additionalOrders[2].id },
+            { id: additionalOrders[3].id }
+          ] 
+        },
+      },
+    }),
+    prisma.bill.create({
+      data: {
+        adminCommissionPercent: 25,
+        referralCommissionPercent: 0,
+        status: BillStatus.PROCESSING,
+        userId: users[1].id,
+        from: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000),
+        to: new Date(),
+        note: 'Recent trading activity',
+        netProfit: 200.00,
+        claimId: claims[1].id,
+        orders: { 
+          connect: [
+            { id: orders[3].id }
+          ] 
+        },
+      },
+    }),
+    
+    // Bills for Claim 3 (COMPLETED)
+    prisma.bill.create({
+      data: {
+        adminCommissionPercent: 20,
+        referralCommissionPercent: 10,
+        status: BillStatus.CLAIMED,
+        userId: users[2].id,
+        from: new Date(Date.now() - 21 * 24 * 60 * 60 * 1000), // 3 weeks ago
+        to: new Date(Date.now() - 14 * 24 * 60 * 60 * 1000), // 2 weeks ago
+        note: 'Successful trading period - High profits',
+        netProfit: 1200.75,
+        claimId: claims[2].id,
+        orders: { 
+          connect: [
+            { id: orders[0].id },
+            { id: orders[1].id }
+          ] 
+        },
+      },
+    }),
+    prisma.bill.create({
+      data: {
+        adminCommissionPercent: 20,
+        referralCommissionPercent: 10,
+        status: BillStatus.CLAIMED,
+        userId: users[2].id,
+        from: new Date(Date.now() - 14 * 24 * 60 * 60 * 1000),
+        to: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
+        note: 'Second week of successful trading',
+        netProfit: 899.75,
+        claimId: claims[2].id,
+        orders: { 
+          connect: [
+            { id: orders[2].id },
+            { id: orders[3].id }
+          ] 
+        },
+      },
+    }),
+    
+    // Bills for Claim 4 (REJECTED)
+    prisma.bill.create({
+      data: {
+        adminCommissionPercent: 30,
+        referralCommissionPercent: 0,
+        status: BillStatus.REJECTED,
+        userId: users[3].id,
+        from: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000),
+        to: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
+        note: 'Trading period with losses - insufficient profit',
+        netProfit: -150.25,
+        claimId: claims[3].id,
+        orders: { 
+          connect: [
+            { id: additionalOrders[4].id }
+          ] 
+        },
+      },
+    }),
+    
+    // Bills for Claim 5 (NEW - no hash yet)
+    prisma.bill.create({
+      data: {
+        adminCommissionPercent: 30,
+        referralCommissionPercent: 0,
+        status: BillStatus.NEW,
+        userId: users[0].id,
+        from: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000),
+        to: new Date(),
+        note: 'Recent trading activity - pending review',
+        netProfit: 750.25,
+        claimId: claims[4].id,
+        orders: { 
+          connect: [
+            { id: orders[0].id },
+            { id: additionalOrders[0].id }
+          ] 
+        },
+      },
+    }),
+  ]);
+  console.log('Created bills:', bills.length);
 
-  console.log('Created bills:', bill1.id, bill2.id);
+  // Update claim amounts to match the sum of their bills
+  await Promise.all([
+    prisma.claim.update({
+      where: { id: claims[0].id },
+      data: { amount: 1250.75 } // 450.25 + 800.50
+    }),
+    prisma.claim.update({
+      where: { id: claims[1].id },
+      data: { amount: 850.30 } // 650.30 + 200.00
+    }),
+    prisma.claim.update({
+      where: { id: claims[2].id },
+      data: { amount: 2100.50 } // 1200.75 + 899.75
+    }),
+    prisma.claim.update({
+      where: { id: claims[3].id },
+      data: { amount: 500.00 } // Fixed amount for rejected claim
+    }),
+    prisma.claim.update({
+      where: { id: claims[4].id },
+      data: { amount: 750.25 } // 750.25
+    }),
+  ]);
+  console.log('Updated claim amounts');
 
   await Promise.all([
     prisma.voucher.create({

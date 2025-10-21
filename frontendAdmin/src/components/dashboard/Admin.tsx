@@ -246,6 +246,46 @@ const fetchClaimDetails = async (claimId: number) => {
   return data.data.claim
 }
 
+const approveClaim = async (claimId: number, note: string) => {
+  const token = localStorage.getItem('adminToken')
+  
+  const response = await fetch(`${API_BASE}/api/admin/claims/${claimId}/approve`, {
+    method: 'PATCH',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ note })
+  })
+  
+  if (!response.ok) {
+    throw new Error('Failed to approve claim')
+  }
+  
+  const data = await response.json()
+  return data.data.claim
+}
+
+const rejectClaim = async (claimId: number, note: string) => {
+  const token = localStorage.getItem('adminToken')
+  
+  const response = await fetch(`${API_BASE}/api/admin/claims/${claimId}/reject`, {
+    method: 'PATCH',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ note })
+  })
+  
+  if (!response.ok) {
+    throw new Error('Failed to reject claim')
+  }
+  
+  const data = await response.json()
+  return data.data.claim
+}
+
 const fetchTokens = async (): Promise<ApiToken[]> => {
   const token = localStorage.getItem('adminToken')
   
@@ -449,6 +489,12 @@ export function Admin() {
   // Claim Details Modal State
   const [showClaimDetails, setShowClaimDetails] = useState(false)
   const [claimDetails, setClaimDetails] = useState<any>(null)
+  
+  // Approve/Reject Modal State
+  const [showApproveModal, setShowApproveModal] = useState(false)
+  const [showRejectModal, setShowRejectModal] = useState(false)
+  const [selectedClaimForAction, setSelectedClaimForAction] = useState<any>(null)
+  const [adminNote, setAdminNote] = useState('')
   const [availableTokens, setAvailableTokens] = useState<ApiToken[]>([])
   const [strategies, setStrategies] = useState<any[]>([])
   const [newStrategyForm, setNewStrategyForm] = useState<NewStrategyForm>({
@@ -589,6 +635,74 @@ export function Admin() {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load claim details')
       console.error('Failed to load claim details:', err)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleApproveClaim = (claim: any) => {
+    setSelectedClaimForAction(claim)
+    setAdminNote('')
+    setShowApproveModal(true)
+  }
+
+  const handleRejectClaim = (claim: any) => {
+    setSelectedClaimForAction(claim)
+    setAdminNote('')
+    setShowRejectModal(true)
+  }
+
+  const confirmApproveClaim = async () => {
+    if (!selectedClaimForAction) return
+    
+    setLoading(true)
+    setError(null)
+    
+    try {
+      await approveClaim(selectedClaimForAction.id, adminNote)
+      
+      // Refresh claims list
+      const claimsData = await fetchClaims()
+      setApiClaims(claimsData)
+      
+      // Close modal and reset state
+      setShowApproveModal(false)
+      setSelectedClaimForAction(null)
+      setAdminNote('')
+      
+      // Show success message (you could add a toast notification here)
+      console.log('Claim approved successfully')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to approve claim')
+      console.error('Failed to approve claim:', err)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const confirmRejectClaim = async () => {
+    if (!selectedClaimForAction) return
+    
+    setLoading(true)
+    setError(null)
+    
+    try {
+      await rejectClaim(selectedClaimForAction.id, adminNote)
+      
+      // Refresh claims list
+      const claimsData = await fetchClaims()
+      setApiClaims(claimsData)
+      
+      // Close modal and reset state
+      setShowRejectModal(false)
+      setSelectedClaimForAction(null)
+      setAdminNote('')
+      
+      // Show success message (you could add a toast notification here)
+      console.log('Claim rejected successfully')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to reject claim')
+      console.error('Failed to reject claim:', err)
     } finally {
       setLoading(false)
     }
@@ -1175,11 +1289,21 @@ export function Admin() {
                     <div>
                       <p className="text-white font-medium">{claim.user?.username || 'Unknown User'}</p>
                       <p className="text-gray-400 text-sm">
-                        ${claim.amount.toLocaleString()} - {claim.network}
+                        ${claim.amount.toLocaleString()} • {claim.network}
                       </p>
-                      <p className="text-gray-500 text-xs">
-                        {claim.billsCount} bills • {new Date(claim.createdAt).toLocaleDateString()}
-                      </p>
+                      <div className="flex items-center gap-4 mt-1">
+                        <span className="text-gray-500 text-xs">
+                          {claim.billsCount} bills
+                        </span>
+                        <span className="text-gray-500 text-xs">
+                          {new Date(claim.createdAt).toLocaleDateString()}
+                        </span>
+                        {claim.hashId && (
+                          <span className="text-blue-400 text-xs">
+                            Has Transaction
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
@@ -1212,11 +1336,20 @@ export function Admin() {
                       </Button>
                       {claim.status === 'NEW' && (
                         <>
-                          <Button size="sm" className="bg-green-600 hover:bg-green-700">
+                          <Button 
+                            size="sm" 
+                            onClick={() => handleApproveClaim(claim)}
+                            className="bg-green-600 hover:bg-green-700"
+                          >
                             <CheckCircle className="w-4 h-4 mr-1" />
                             Approve
                           </Button>
-                          <Button size="sm" variant="outline" className="border-red-600 text-red-400 hover:bg-red-600 hover:text-white">
+                          <Button 
+                            size="sm" 
+                            variant="outline" 
+                            onClick={() => handleRejectClaim(claim)}
+                            className="border-red-600 text-red-400 hover:bg-red-600 hover:text-white"
+                          >
                             <X className="w-4 h-4 mr-1" />
                             Reject
                           </Button>
@@ -2398,7 +2531,9 @@ export function Admin() {
                           </div>
                           {claimDetails.hashId && (
                             <div>
-                              <label className="text-sm text-gray-400">Transaction Hash</label>
+                              <label className="text-sm text-gray-400">
+                                {claimDetails.status === 'FINISHED' ? 'Admin Note' : 'Transaction Hash'}
+                              </label>
                               <div className="flex items-center gap-2">
                                 <p className="text-white font-mono text-sm break-all">{claimDetails.hashId}</p>
                                 <Button
@@ -2424,56 +2559,131 @@ export function Admin() {
                   {/* Bills Breakdown */}
                   <Card className="bg-gray-800 border-gray-700">
                     <CardHeader>
-                      <CardTitle className="text-white flex items-center gap-3">
-                        <DollarSign className="w-5 h-5" />
-                        Bills Breakdown ({claimDetails.bills?.length || 0} bills)
-                      </CardTitle>
+                      <div className="flex items-center justify-between">
+                        <CardTitle className="text-white flex items-center gap-3">
+                          <DollarSign className="w-5 h-5" />
+                          Bills Breakdown ({claimDetails.bills?.length || 0} bills)
+                        </CardTitle>
+                        {claimDetails.bills && claimDetails.bills.length > 0 && (
+                          <div className="text-right">
+                            <p className="text-sm text-gray-400">Total Bills Value</p>
+                            <p className="text-xl font-bold text-white">
+                              ${claimDetails.bills.reduce((sum: number, bill: any) => sum + (bill.netProfit || 0), 0).toLocaleString()}
+                            </p>
+                          </div>
+                        )}
+                      </div>
                     </CardHeader>
                     <CardContent>
                       {claimDetails.bills && claimDetails.bills.length > 0 ? (
-                        <div className="space-y-4">
+                        <div className="space-y-6">
+                          {/* Bills Summary */}
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                            <div className="bg-gray-700 rounded-lg p-4">
+                              <div className="flex items-center gap-2 mb-2">
+                                <DollarSign className="w-4 h-4 text-green-400" />
+                                <span className="text-sm text-gray-400">Total Profit</span>
+                              </div>
+                              <p className="text-xl font-bold text-green-400">
+                                ${claimDetails.bills
+                                  .filter((bill: any) => bill.netProfit > 0)
+                                  .reduce((sum: number, bill: any) => sum + bill.netProfit, 0)
+                                  .toLocaleString()}
+                              </p>
+                            </div>
+                            <div className="bg-gray-700 rounded-lg p-4">
+                              <div className="flex items-center gap-2 mb-2">
+                                <TrendingDown className="w-4 h-4 text-red-400" />
+                                <span className="text-sm text-gray-400">Total Loss</span>
+                              </div>
+                              <p className="text-xl font-bold text-red-400">
+                                ${Math.abs(claimDetails.bills
+                                  .filter((bill: any) => bill.netProfit < 0)
+                                  .reduce((sum: number, bill: any) => sum + bill.netProfit, 0))
+                                  .toLocaleString()}
+                              </p>
+                            </div>
+                            <div className="bg-gray-700 rounded-lg p-4">
+                              <div className="flex items-center gap-2 mb-2">
+                                <BarChart3 className="w-4 h-4 text-blue-400" />
+                                <span className="text-sm text-gray-400">Net Total</span>
+                              </div>
+                              <p className={`text-xl font-bold ${
+                                claimDetails.bills.reduce((sum: number, bill: any) => sum + (bill.netProfit || 0), 0) >= 0 
+                                  ? 'text-green-400' 
+                                  : 'text-red-400'
+                              }`}>
+                                ${claimDetails.bills.reduce((sum: number, bill: any) => sum + (bill.netProfit || 0), 0).toLocaleString()}
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* Individual Bills */}
                           {claimDetails.bills.map((bill: any) => (
-                            <div key={bill.id} className="bg-gray-700 rounded-lg p-4">
-                              <div className="flex items-center justify-between mb-3">
-                                <div>
-                                  <h4 className="text-white font-medium">Bill #{bill.id}</h4>
-                                  <p className="text-gray-400 text-sm">
-                                    Net Profit: ${bill.netProfit.toLocaleString()}
+                            <div key={bill.id} className="bg-gray-700 rounded-lg p-6">
+                              <div className="flex items-center justify-between mb-4">
+                                <div className="flex items-center gap-4">
+                                  <div className="bg-gray-600 rounded-lg p-3">
+                                    <DollarSign className="w-6 h-6 text-blue-400" />
+                                  </div>
+                                  <div>
+                                    <h4 className="text-white font-medium text-lg">Bill #{bill.id}</h4>
+                                    <div className="flex items-center gap-4 mt-1">
+                                      <span className="text-gray-400 text-sm">
+                                        {bill.from && bill.to ? 
+                                          `${new Date(bill.from).toLocaleDateString()} - ${new Date(bill.to).toLocaleDateString()}` :
+                                          'Date range not available'
+                                        }
+                                      </span>
+                                      <Badge className={`${getStatusColor(bill.status)} text-white`}>
+                                        {bill.status}
+                                      </Badge>
+                                    </div>
+                                  </div>
+                                </div>
+                                <div className="text-right">
+                                  <p className="text-sm text-gray-400">Net Profit</p>
+                                  <p className={`text-xl font-bold ${
+                                    bill.netProfit >= 0 ? 'text-green-400' : 'text-red-400'
+                                  }`}>
+                                    ${bill.netProfit.toLocaleString()}
                                   </p>
                                 </div>
-                                <Badge className={`${getStatusColor(bill.status)} text-white`}>
-                                  {bill.status}
-                                </Badge>
                               </div>
                               
                               {/* Orders in this bill */}
-                              {bill.orders && bill.orders.length > 0 && (
-                                <div className="mt-4">
-                                  <h5 className="text-gray-300 text-sm font-medium mb-2">Orders ({bill.orders.length})</h5>
-                                  <div className="space-y-2">
+                              {bill.orders && bill.orders.length > 0 ? (
+                                <div className="mt-6">
+                                  <div className="flex items-center justify-between mb-4">
+                                    <h5 className="text-gray-300 font-medium">Orders ({bill.orders.length})</h5>
+                                    <div className="text-sm text-gray-400">
+                                      Total Orders Value: ${bill.orders.reduce((sum: number, order: any) => sum + (order.netProfit || 0), 0).toLocaleString()}
+                                    </div>
+                                  </div>
+                                  <div className="grid gap-3">
                                     {bill.orders.map((order: any) => (
-                                      <div key={order.id} className="bg-gray-600 rounded p-3">
-                                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                                          <div>
-                                            <span className="text-gray-400">Order ID:</span>
-                                            <p className="text-white font-mono">{order.orderId}</p>
+                                      <div key={order.id} className="bg-gray-600 rounded-lg p-4 border border-gray-500/30">
+                                        <div className="flex items-center justify-between mb-3">
+                                          <div className="flex items-center gap-3">
+                                            <div className={`w-3 h-3 rounded-full ${
+                                              order.side === 'BUY' ? 'bg-green-500' : 'bg-red-500'
+                                            }`}></div>
+                                            <div>
+                                              <p className="text-white font-mono text-sm">{order.orderId}</p>
+                                              <p className="text-gray-400 text-xs">{order.token?.name || 'Unknown Token'}</p>
+                                            </div>
                                           </div>
-                                          <div>
-                                            <span className="text-gray-400">Token:</span>
-                                            <p className="text-white">{order.token?.name || 'Unknown'}</p>
-                                          </div>
-                                          <div>
-                                            <span className="text-gray-400">Side:</span>
-                                            <p className="text-white">{order.side}</p>
-                                          </div>
-                                          <div>
-                                            <span className="text-gray-400">Profit:</span>
-                                            <p className={`${order.netProfit >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                          <div className="text-right">
+                                            <p className={`font-bold ${
+                                              order.netProfit >= 0 ? 'text-green-400' : 'text-red-400'
+                                            }`}>
                                               ${order.netProfit.toLocaleString()}
                                             </p>
+                                            <p className="text-gray-400 text-xs">{order.side}</p>
                                           </div>
                                         </div>
-                                        <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm mt-2">
+                                        
+                                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                                           <div>
                                             <span className="text-gray-400">Entry Price:</span>
                                             <p className="text-white">${order.entryPrice}</p>
@@ -2483,13 +2693,28 @@ export function Admin() {
                                             <p className="text-white">{order.qty}</p>
                                           </div>
                                           <div>
+                                            <span className="text-gray-400">Budget:</span>
+                                            <p className="text-white">${order.budget?.toLocaleString() || 'N/A'}</p>
+                                          </div>
+                                          <div>
                                             <span className="text-gray-400">Date:</span>
                                             <p className="text-white">{new Date(order.buyDate).toLocaleDateString()}</p>
                                           </div>
                                         </div>
+                                        
+                                        {order.note && (
+                                          <div className="mt-3 pt-3 border-t border-gray-500/30">
+                                            <span className="text-gray-400 text-xs">Note:</span>
+                                            <p className="text-gray-300 text-sm">{order.note}</p>
+                                          </div>
+                                        )}
                                       </div>
                                     ))}
                                   </div>
+                                </div>
+                              ) : (
+                                <div className="text-center py-4 text-gray-400">
+                                  No orders in this bill
                                 </div>
                               )}
                             </div>
@@ -2497,7 +2722,9 @@ export function Admin() {
                         </div>
                       ) : (
                         <div className="text-center py-8 text-gray-400">
-                          No bills associated with this claim
+                          <DollarSign className="w-12 h-12 mx-auto mb-4 text-gray-500" />
+                          <p className="text-lg">No bills associated with this claim</p>
+                          <p className="text-sm">This claim has no associated billing information</p>
                         </div>
                       )}
                     </CardContent>
@@ -2508,12 +2735,16 @@ export function Admin() {
                     <div className="flex gap-3 justify-end">
                       <Button
                         variant="outline"
+                        onClick={() => handleRejectClaim(claimDetails)}
                         className="border-red-600 text-red-400 hover:bg-red-600 hover:text-white"
                       >
                         <X className="w-4 h-4 mr-2" />
                         Reject Claim
                       </Button>
-                      <Button className="bg-green-600 hover:bg-green-700">
+                      <Button 
+                        onClick={() => handleApproveClaim(claimDetails)}
+                        className="bg-green-600 hover:bg-green-700"
+                      >
                         <CheckCircle className="w-4 h-4 mr-2" />
                         Approve Claim
                       </Button>
@@ -2525,6 +2756,141 @@ export function Admin() {
                   No claim details available
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Approve Claim Modal */}
+      {showApproveModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-900 border border-gray-800 rounded-lg w-full max-w-md">
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-xl font-bold text-white">Approve Claim</h3>
+                <Button
+                  onClick={() => {
+                    setShowApproveModal(false)
+                    setSelectedClaimForAction(null)
+                    setAdminNote('')
+                  }}
+                  variant="outline"
+                  className="border-gray-600 text-gray-300 hover:bg-gray-700"
+                >
+                  <X className="w-4 h-4" />
+                </Button>
+              </div>
+              
+              <div className="mb-4">
+                <p className="text-gray-300 mb-2">
+                  Approving claim #{selectedClaimForAction?.id} for ${selectedClaimForAction?.amount?.toLocaleString()}
+                </p>
+                <p className="text-gray-400 text-sm">
+                  User: {selectedClaimForAction?.user?.username}
+                </p>
+              </div>
+
+              <div className="mb-6">
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Admin Note (Optional)
+                </label>
+                <textarea
+                  value={adminNote}
+                  onChange={(e) => setAdminNote(e.target.value)}
+                  placeholder="Add a note for the user"
+                  className="w-full p-3 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-green-500 resize-none"
+                  rows={3}
+                />
+              </div>
+
+              <div className="flex gap-3 justify-end">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setShowApproveModal(false)
+                    setSelectedClaimForAction(null)
+                    setAdminNote('')
+                  }}
+                  className="border-gray-600 text-gray-300 hover:bg-gray-700"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={confirmApproveClaim}
+                  disabled={loading}
+                  className="bg-green-600 hover:bg-green-700 disabled:opacity-50"
+                >
+                  {loading ? 'Approving...' : 'Approve Claim'}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reject Claim Modal */}
+      {showRejectModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-900 border border-gray-800 rounded-lg w-full max-w-md">
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-xl font-bold text-white">Reject Claim</h3>
+                <Button
+                  onClick={() => {
+                    setShowRejectModal(false)
+                    setSelectedClaimForAction(null)
+                    setAdminNote('')
+                  }}
+                  variant="outline"
+                  className="border-gray-600 text-gray-300 hover:bg-gray-700"
+                >
+                  <X className="w-4 h-4" />
+                </Button>
+              </div>
+              
+              <div className="mb-4">
+                <p className="text-gray-300 mb-2">
+                  Rejecting claim #{selectedClaimForAction?.id} for ${selectedClaimForAction?.amount?.toLocaleString()}
+                </p>
+                <p className="text-gray-400 text-sm">
+                  User: {selectedClaimForAction?.user?.username}
+                </p>
+              </div>
+
+              <div className="mb-6">
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Rejection Reason (Required)
+                </label>
+                <textarea
+                  value={adminNote}
+                  onChange={(e) => setAdminNote(e.target.value)}
+                  placeholder="Explain why the claim is being rejected (e.g., 'Insufficient trading activity' or 'Invalid documentation')"
+                  className="w-full p-3 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-red-500 resize-none"
+                  rows={3}
+                  required
+                />
+              </div>
+
+              <div className="flex gap-3 justify-end">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setShowRejectModal(false)
+                    setSelectedClaimForAction(null)
+                    setAdminNote('')
+                  }}
+                  className="border-gray-600 text-gray-300 hover:bg-gray-700"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={confirmRejectClaim}
+                  disabled={loading || !adminNote.trim()}
+                  className="bg-red-600 hover:bg-red-700 disabled:opacity-50"
+                >
+                  {loading ? 'Rejecting...' : 'Reject Claim'}
+                </Button>
+              </div>
             </div>
           </div>
         </div>
