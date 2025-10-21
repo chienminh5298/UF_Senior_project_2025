@@ -15,7 +15,8 @@ import {
   RefreshCw,
   Trash2,
   Clock,
-  AlertCircle
+  AlertCircle,
+  Copy
 } from 'lucide-react'
 
 // API Configuration
@@ -227,6 +228,24 @@ const fetchClaims = async () => {
   return data.data.claims
 }
 
+const fetchClaimDetails = async (claimId: number) => {
+  const token = localStorage.getItem('adminToken')
+  
+  const response = await fetch(`${API_BASE}/api/admin/claims/${claimId}`, {
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    }
+  })
+  
+  if (!response.ok) {
+    throw new Error('Failed to fetch claim details')
+  }
+  
+  const data = await response.json()
+  return data.data.claim
+}
+
 const fetchTokens = async (): Promise<ApiToken[]> => {
   const token = localStorage.getItem('adminToken')
   
@@ -426,6 +445,10 @@ export function Admin() {
   const [showNewStrategyForm, setShowNewStrategyForm] = useState(false)
   const [showConfigureStrategy, setShowConfigureStrategy] = useState(false)
   const [selectedStrategy, setSelectedStrategy] = useState<any>(null)
+  
+  // Claim Details Modal State
+  const [showClaimDetails, setShowClaimDetails] = useState(false)
+  const [claimDetails, setClaimDetails] = useState<any>(null)
   const [availableTokens, setAvailableTokens] = useState<ApiToken[]>([])
   const [strategies, setStrategies] = useState<any[]>([])
   const [newStrategyForm, setNewStrategyForm] = useState<NewStrategyForm>({
@@ -550,6 +573,22 @@ export function Admin() {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update strategy')
       console.error('Failed to update strategy:', err)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleViewClaimDetails = async (claim: any) => {
+    setLoading(true)
+    setError(null)
+    
+    try {
+      const details = await fetchClaimDetails(claim.id)
+      setClaimDetails(details)
+      setShowClaimDetails(true)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load claim details')
+      console.error('Failed to load claim details:', err)
     } finally {
       setLoading(false)
     }
@@ -1161,18 +1200,29 @@ export function Admin() {
                     <Badge className={`${getStatusColor(claim.status)} text-white`}>
                       {claim.status}
                     </Badge>
-                    {claim.status === 'NEW' && (
-                      <div className="flex gap-2">
-                        <Button size="sm" className="bg-green-600 hover:bg-green-700">
-                          <CheckCircle className="w-4 h-4 mr-1" />
-                          Approve
-                        </Button>
-                        <Button size="sm" variant="outline" className="border-red-600 text-red-400 hover:bg-red-600 hover:text-white">
-                          <X className="w-4 h-4 mr-1" />
-                          Reject
-                        </Button>
-                      </div>
-                    )}
+                    <div className="flex gap-2">
+                      <Button 
+                        size="sm" 
+                        variant="outline" 
+                        onClick={() => handleViewClaimDetails(claim)}
+                        className="border-blue-600 text-blue-400 hover:bg-blue-600 hover:text-white"
+                      >
+                        <Users className="w-4 h-4 mr-1" />
+                        View Details
+                      </Button>
+                      {claim.status === 'NEW' && (
+                        <>
+                          <Button size="sm" className="bg-green-600 hover:bg-green-700">
+                            <CheckCircle className="w-4 h-4 mr-1" />
+                            Approve
+                          </Button>
+                          <Button size="sm" variant="outline" className="border-red-600 text-red-400 hover:bg-red-600 hover:text-white">
+                            <X className="w-4 h-4 mr-1" />
+                            Reject
+                          </Button>
+                        </>
+                      )}
+                    </div>
                   </div>
                 </div>
               ))}
@@ -2262,6 +2312,223 @@ export function Admin() {
       <div className="px-6 pt-4">
         {renderTabContent()}
       </div>
+
+      {/* Claim Details Modal */}
+      {showClaimDetails && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-900 border border-gray-800 rounded-lg w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+            <div className="p-6">
+              {/* Modal Header */}
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h2 className="text-2xl font-bold text-white">Claim Details</h2>
+                  <p className="text-gray-400">Comprehensive claim information and bills breakdown</p>
+                </div>
+                <Button
+                  onClick={() => {
+                    setShowClaimDetails(false)
+                    setClaimDetails(null)
+                  }}
+                  variant="outline"
+                  className="border-gray-600 text-gray-300 hover:bg-gray-700"
+                >
+                  <X className="w-4 h-4" />
+                </Button>
+              </div>
+
+              {loading ? (
+                <div className="py-8 text-center text-gray-400">
+                  Loading claim details...
+                </div>
+              ) : error ? (
+                <div className="py-8 text-center text-red-400">
+                  Error: {error}
+                </div>
+              ) : claimDetails ? (
+                <div className="space-y-6">
+                  {/* Claim Overview */}
+                  <Card className="bg-gray-800 border-gray-700">
+                    <CardHeader>
+                      <CardTitle className="text-white flex items-center gap-3">
+                        <Users className="w-5 h-5" />
+                        Claim Information
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="space-y-4">
+                          <div>
+                            <label className="text-sm text-gray-400">Claim ID</label>
+                            <p className="text-white font-mono">#{claimDetails.id}</p>
+                          </div>
+                          <div>
+                            <label className="text-sm text-gray-400">Amount</label>
+                            <p className="text-white text-xl font-bold">${claimDetails.amount.toLocaleString()}</p>
+                          </div>
+                          <div>
+                            <label className="text-sm text-gray-400">Status</label>
+                            <Badge className={`${getStatusColor(claimDetails.status)} text-white`}>
+                              {claimDetails.status}
+                            </Badge>
+                          </div>
+                          <div>
+                            <label className="text-sm text-gray-400">Network</label>
+                            <p className="text-white">{claimDetails.network}</p>
+                          </div>
+                        </div>
+                        <div className="space-y-4">
+                          <div>
+                            <label className="text-sm text-gray-400">User</label>
+                            <p className="text-white">{claimDetails.user?.username || 'Unknown'}</p>
+                            <p className="text-gray-400 text-sm">{claimDetails.user?.email}</p>
+                          </div>
+                          <div>
+                            <label className="text-sm text-gray-400">Wallet Address</label>
+                            <div className="flex items-center gap-2">
+                              <p className="text-white font-mono text-sm break-all">{claimDetails.address}</p>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => navigator.clipboard.writeText(claimDetails.address)}
+                                className="p-1 h-6 w-6 text-gray-400 hover:text-white"
+                              >
+                                <Copy className="w-3 h-3" />
+                              </Button>
+                            </div>
+                          </div>
+                          {claimDetails.hashId && (
+                            <div>
+                              <label className="text-sm text-gray-400">Transaction Hash</label>
+                              <div className="flex items-center gap-2">
+                                <p className="text-white font-mono text-sm break-all">{claimDetails.hashId}</p>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => navigator.clipboard.writeText(claimDetails.hashId)}
+                                  className="p-1 h-6 w-6 text-gray-400 hover:text-white"
+                                >
+                                  <Copy className="w-3 h-3" />
+                                </Button>
+                              </div>
+                            </div>
+                          )}
+                          <div>
+                            <label className="text-sm text-gray-400">Created</label>
+                            <p className="text-white">{new Date(claimDetails.createdAt).toLocaleString()}</p>
+                          </div>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* Bills Breakdown */}
+                  <Card className="bg-gray-800 border-gray-700">
+                    <CardHeader>
+                      <CardTitle className="text-white flex items-center gap-3">
+                        <DollarSign className="w-5 h-5" />
+                        Bills Breakdown ({claimDetails.bills?.length || 0} bills)
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      {claimDetails.bills && claimDetails.bills.length > 0 ? (
+                        <div className="space-y-4">
+                          {claimDetails.bills.map((bill: any) => (
+                            <div key={bill.id} className="bg-gray-700 rounded-lg p-4">
+                              <div className="flex items-center justify-between mb-3">
+                                <div>
+                                  <h4 className="text-white font-medium">Bill #{bill.id}</h4>
+                                  <p className="text-gray-400 text-sm">
+                                    Net Profit: ${bill.netProfit.toLocaleString()}
+                                  </p>
+                                </div>
+                                <Badge className={`${getStatusColor(bill.status)} text-white`}>
+                                  {bill.status}
+                                </Badge>
+                              </div>
+                              
+                              {/* Orders in this bill */}
+                              {bill.orders && bill.orders.length > 0 && (
+                                <div className="mt-4">
+                                  <h5 className="text-gray-300 text-sm font-medium mb-2">Orders ({bill.orders.length})</h5>
+                                  <div className="space-y-2">
+                                    {bill.orders.map((order: any) => (
+                                      <div key={order.id} className="bg-gray-600 rounded p-3">
+                                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                                          <div>
+                                            <span className="text-gray-400">Order ID:</span>
+                                            <p className="text-white font-mono">{order.orderId}</p>
+                                          </div>
+                                          <div>
+                                            <span className="text-gray-400">Token:</span>
+                                            <p className="text-white">{order.token?.name || 'Unknown'}</p>
+                                          </div>
+                                          <div>
+                                            <span className="text-gray-400">Side:</span>
+                                            <p className="text-white">{order.side}</p>
+                                          </div>
+                                          <div>
+                                            <span className="text-gray-400">Profit:</span>
+                                            <p className={`${order.netProfit >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                              ${order.netProfit.toLocaleString()}
+                                            </p>
+                                          </div>
+                                        </div>
+                                        <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm mt-2">
+                                          <div>
+                                            <span className="text-gray-400">Entry Price:</span>
+                                            <p className="text-white">${order.entryPrice}</p>
+                                          </div>
+                                          <div>
+                                            <span className="text-gray-400">Quantity:</span>
+                                            <p className="text-white">{order.qty}</p>
+                                          </div>
+                                          <div>
+                                            <span className="text-gray-400">Date:</span>
+                                            <p className="text-white">{new Date(order.buyDate).toLocaleDateString()}</p>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="text-center py-8 text-gray-400">
+                          No bills associated with this claim
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+
+                  {/* Action Buttons */}
+                  {claimDetails.status === 'NEW' && (
+                    <div className="flex gap-3 justify-end">
+                      <Button
+                        variant="outline"
+                        className="border-red-600 text-red-400 hover:bg-red-600 hover:text-white"
+                      >
+                        <X className="w-4 h-4 mr-2" />
+                        Reject Claim
+                      </Button>
+                      <Button className="bg-green-600 hover:bg-green-700">
+                        <CheckCircle className="w-4 h-4 mr-2" />
+                        Approve Claim
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="py-8 text-center text-gray-400">
+                  No claim details available
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
