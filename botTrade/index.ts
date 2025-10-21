@@ -71,7 +71,7 @@ const startServer = async () => {
             const minute = now.getMinutes();
             const second = now.getSeconds();
             // logging("info", `hour:${hour} - minute: ${minute} - second: ${second}`);
-            if (hour === 18 && minute === 32 && second === 5) {
+            if ((hour === 0 && minute === 0 && second === 5) || (hour === 8 && minute === 0 && second === 5) || (hour === 16 && minute === 0 && second === 5)) {
                 logging("info", `hour:${hour} - minute: ${minute} - second: ${second}`);
                 await checkExpireVouchers();
                 await checkGenerateBill();
@@ -82,7 +82,7 @@ const startServer = async () => {
     }
 };
 
-// startServer();
+startServer();
 
 const checkTokens = async () => {
     let tokens: Token[] = await prisma.token.findMany();

@@ -1,6 +1,8 @@
+version: '3.8'
+
 services:
     ufdatabase:
-        image: 'mysql'
+        image: mysql
         environment:
             MYSQL_ROOT_PASSWORD: moneymachine
             MYSQL_DATABASE: moneymachine
@@ -10,65 +12,91 @@ services:
         healthcheck:
             test: ['CMD', 'mysqladmin', 'ping', '-h', 'localhost']
             timeout: 5s
-            retries: 1
-        ports:
-            - '3306:3306'
-        container_name: ufdatabase
+            retries: 3
+        restart: always
+        container_name: database
+
     bottrade:
-        build:
-            context: ./botTrade
-            dockerfile: Dockerfile.dev
+        image: 'chienminh5298/uf-bottrade:testproduction'
         depends_on:
             ufdatabase:
                 condition: service_healthy
-        ports:
-            - '9999:9999'
         env_file: ./botTrade/.env
         volumes:
-            - ./botTrade:/app            # Mount local source for hot-reload
-            - /app/node_modules          # Prevent overwriting node_modules
             - log-volume:/app/log
-            # - ~/.aws:/root/.aws:ro
         container_name: bottrade
-    backend:
-        build:
-            context: ./webServer
-            dockerfile: Dockerfile.dev
-        depends_on:
-            ufdatabase:
-                condition: service_healthy
-        ports:
-            - '3001:3001'
-            - '7777:7777'
-        env_file: ./webServer/.env
-        volumes:
-            - ./webServer:/app
-            - /app/node_modules          
-            # - ./certbot/conf:/etc/letsencrypt #Mount for SSL certs
-            # - ~/.aws:/root/.aws:ro
-        container_name: backend
-        # environment:
-        #     - AWS_PROFILE=AdministratorAccess-427078961005
-        #     - AWS_SDK_LOAD_CONFIG=1     # bắt SDK đọc ~/.aws/config
-        #     - AWS_REGION=ap-southeast-1
-    frontend-user:
-        build:
-            context: ./frontendUser
-            dockerfile: Dockerfile.dev
-        ports:
-            - '3000:3000'
-        volumes:
-            - ./frontendUser:/app
-            - /app/node_modules # avoid overwriting node_modules
-    frontend-admin:
-        build:
-            context: ./frontendAdmin
-            dockerfile: Dockerfile.dev
-        ports:
-            - '3002:3002'
-        volumes:
-            - ./frontendAdmin:/app
-            - /app/node_modules # avoid overwriting node_modules
+        restart: always
+
+    # backend:
+    #     image: 'chienminh5298/moneymachine-backend:production'
+    #     # build:
+    #     #     context: ./moneyMachine
+    #     #     dockerfile: Dockerfile
+    #     depends_on:
+    #         ufdatabase:
+    #             condition: service_healthy
+    #     ports:
+    #         - '1234:1234'
+    #         - '7777:7777'
+    #     env_file: ./moneyMachine/.env
+    #     volumes:
+    #         - log-volume:/app/log
+    #         - ./certbot/conf:/etc/letsencrypt
+    #     container_name: backend
+    #     restart: always
+
+    # frontend-admin:
+    #     image: 'chienminh5298/moneymachine-frontend-admin:production'
+    #     # build:
+    #     #     context: ./moneyMachine-FE-admin
+    #     #     dockerfile: Dockerfile
+    #     depends_on:
+    #         - backend
+    #     container_name: frontend-admin
+    #     restart: always
+
+    # frontend-user:
+    #     image: 'chienminh5298/moneymachine-frontend-user:production'
+    #     # build:
+    #     #     context: ./moneyMachine-FE
+    #     #     dockerfile: Dockerfile
+    #     depends_on:
+    #         - backend
+    #     container_name: frontend-user
+    #     restart: always
+
+    # # This container help nginx can run 2 difference FE webserver on same port depend on sub-domain
+    # nginx-proxy:
+    #     image: nginx
+    #     ports:
+    #         - '80:80'
+    #         - '443:443'
+    #     volumes:
+    #         - ./nginx.conf:/etc/nginx/nginx.conf
+    #         - ./certbot/conf:/etc/letsencrypt
+    #     depends_on:
+    #         - backend
+    #         - frontend-admin
+    #         - frontend-user
+    #     container_name: nginx
+    # certbot:
+    #     image: certbot/dns-cloudflare
+    #     container_name: certbot
+    #     volumes: 
+    #         - ./certbot/conf:/etc/letsencrypt
+    #         - ./certbot/www:/var/www/certbot
+    #         - ./certbot/cloudflare.ini:/root/cloudflare.ini:ro
+    #     command: >-
+    #         certonly --dns-cloudflare
+    #         --dns-cloudflare-credentials /root/cloudflare.ini
+    #         --dns-cloudflare-propagation-seconds 15
+    #         --email chienminh5298@gmail.com
+    #         --agree-tos --no-eff-email
+    #         --force-renewal
+    #         -d moneymachine.fund
+    #         -d *.moneymachine.fund
+    #     restart: on-failure
+
 volumes:
     db-volume:
     log-volume:

@@ -1,3 +1,5 @@
+import { SystemSetting } from "@root/type";
+
 export const setting: SystemSetting = {
     BINANCE: {
         BASE_URL_WEB_SOCKET: "wss://fstream.binance.com/stream",

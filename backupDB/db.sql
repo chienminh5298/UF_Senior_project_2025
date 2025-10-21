@@ -27,12 +27,12 @@ CREATE TABLE `Bill` (
   `adminCommissionPercent` double NOT NULL DEFAULT '30',
   `referralCommissionPercent` double NOT NULL DEFAULT '0',
   `referralUserId` int DEFAULT NULL,
-  `status` enum('NEW','FINISHED','REJECTED','PROCESSING','CLAIMED') COLLATE utf8mb4_unicode_ci NOT NULL,
-  `hashId` varchar(191) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `status` enum('NEW','FINISHED','REJECTED','PROCESSING','CLAIMED') CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  `hashId` varchar(191) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `userId` int DEFAULT NULL,
   `from` datetime(3) NOT NULL,
   `to` datetime(3) NOT NULL,
-  `note` varchar(191) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `note` varchar(191) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `netProfit` double NOT NULL DEFAULT '0',
   `claimId` int DEFAULT NULL,
   `createdAt` datetime(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
@@ -63,12 +63,12 @@ DROP TABLE IF EXISTS `Claim`;
 /*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `Claim` (
   `id` int NOT NULL AUTO_INCREMENT,
-  `status` enum('NEW','FINISHED') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'NEW',
+  `status` enum('NEW','FINISHED') CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'NEW',
   `amount` double NOT NULL DEFAULT '0',
   `userId` int DEFAULT NULL,
-  `hashId` varchar(191) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
-  `network` enum('ERC20','SOLANA','BEP20') COLLATE utf8mb4_unicode_ci NOT NULL,
-  `address` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `hashId` varchar(191) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `network` enum('ERC20','SOLANA','BEP20') CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  `address` varchar(191) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
   `createdAt` datetime(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   `updatedAt` datetime(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   PRIMARY KEY (`id`),
@@ -95,20 +95,20 @@ DROP TABLE IF EXISTS `Order`;
 /*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `Order` (
   `id` int NOT NULL AUTO_INCREMENT,
-  `orderId` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,
-  `side` enum('SELL','BUY') COLLATE utf8mb4_unicode_ci NOT NULL,
-  `timestamp` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `orderId` varchar(191) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  `side` enum('SELL','BUY') CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  `timestamp` varchar(191) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
   `entryPrice` double NOT NULL,
   `qty` double NOT NULL,
   `budget` double NOT NULL,
-  `status` enum('ACTIVE','EXPIRED','FINISHED') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'ACTIVE',
+  `status` enum('ACTIVE','EXPIRED','FINISHED') CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'ACTIVE',
   `netProfit` double NOT NULL DEFAULT '0',
   `markPrice` double DEFAULT NULL,
   `strategyId` int NOT NULL,
   `currentTargetId` int DEFAULT NULL,
   `tokenId` int NOT NULL,
   `fee` double NOT NULL DEFAULT '0',
-  `stoplossOrderId` varchar(191) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `stoplossOrderId` varchar(191) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `createdAt` datetime(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   `updatedAt` datetime(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   `billId` int DEFAULT NULL,
@@ -128,7 +128,7 @@ CREATE TABLE `Order` (
   CONSTRAINT `Order_strategyId_fkey` FOREIGN KEY (`strategyId`) REFERENCES `Strategy` (`id`) ON DELETE RESTRICT ON UPDATE CASCADE,
   CONSTRAINT `Order_tokenId_fkey` FOREIGN KEY (`tokenId`) REFERENCES `Token` (`id`) ON DELETE RESTRICT ON UPDATE CASCADE,
   CONSTRAINT `Order_userId_fkey` FOREIGN KEY (`userId`) REFERENCES `User` (`id`) ON DELETE RESTRICT ON UPDATE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=22 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -137,6 +137,7 @@ CREATE TABLE `Order` (
 
 LOCK TABLES `Order` WRITE;
 /*!40000 ALTER TABLE `Order` DISABLE KEYS */;
+INSERT INTO `Order` VALUES (16,'151054901266','SELL','1759513447379',232.02,0.34,78.88680000000001,'FINISHED',-0.004049400000000397,231.8,1,3,1,0.07884940000000001,NULL,'2025-10-03 17:44:09.350','2025-10-03 17:45:24.445',NULL,1,1,'2025-10-03 17:44:09.350',NULL),(17,'160495397461','SELL','1761054549656',184.08,0.42,77.31360000000001,'FINISHED',-0.07731360000000001,184.08,1,3,1,0.07731360000000001,'160495575466','2025-10-21 13:49:12.138','2025-10-21 13:49:35.517',NULL,1,1,'2025-10-21 13:49:12.138',NULL),(21,'160516328897','SELL','1761057669067',188.79,0.4,75.516,'FINISHED',-0.1595580000000032,189,1,2,1,0.07555800000000001,NULL,'2025-10-21 14:41:11.637','2025-10-21 14:43:08.479',NULL,1,1,'2025-10-21 14:41:11.637',NULL);
 /*!40000 ALTER TABLE `Order` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -149,16 +150,16 @@ DROP TABLE IF EXISTS `Strategy`;
 /*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `Strategy` (
   `id` int NOT NULL AUTO_INCREMENT,
-  `description` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `description` varchar(191) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
   `contribution` int NOT NULL DEFAULT '0',
   `isActive` tinyint(1) NOT NULL DEFAULT '0',
   `isCloseBeforeNewCandle` tinyint(1) NOT NULL DEFAULT '0',
-  `direction` enum('SAME','OPPOSITE') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'SAME',
+  `direction` enum('SAME','OPPOSITE') CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'SAME',
   `createdAt` datetime(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   `updatedAt` datetime(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   `parentStrategy` int DEFAULT NULL,
   PRIMARY KEY (`id`)
-) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -191,7 +192,7 @@ CREATE TABLE `Target` (
   KEY `Target_strategyId_fkey` (`strategyId`),
   CONSTRAINT `Target_strategyId_fkey` FOREIGN KEY (`strategyId`) REFERENCES `Strategy` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
   CONSTRAINT `Target_tokenId_fkey` FOREIGN KEY (`tokenId`) REFERENCES `Token` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
-) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=6 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -200,7 +201,7 @@ CREATE TABLE `Target` (
 
 LOCK TABLES `Target` WRITE;
 /*!40000 ALTER TABLE `Target` DISABLE KEYS */;
-INSERT INTO `Target` VALUES (1,0,-1.6,1,1,'2025-09-08 19:06:42.158','2025-09-08 19:06:42.158'),(2,1,1,1,1,'2025-09-08 19:07:09.095','2025-09-08 19:07:09.095');
+INSERT INTO `Target` VALUES (1,0,-1.85,1,1,'2025-09-08 19:06:42.158','2025-09-08 19:06:42.158'),(2,0.6,0,1,1,'2025-09-08 19:07:09.095','2025-09-08 19:07:09.095'),(3,1,1,1,1,'2025-10-03 17:41:35.929','2025-10-03 17:41:35.929');
 /*!40000 ALTER TABLE `Target` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -213,8 +214,8 @@ DROP TABLE IF EXISTS `Token`;
 /*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `Token` (
   `id` int NOT NULL AUTO_INCREMENT,
-  `name` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,
-  `stable` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `name` varchar(191) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  `stable` varchar(191) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
   `minQty` double NOT NULL DEFAULT '0',
   `isActive` tinyint(1) NOT NULL DEFAULT '1',
   `createdAt` datetime(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
@@ -222,7 +223,7 @@ CREATE TABLE `Token` (
   `leverage` int NOT NULL DEFAULT '1',
   PRIMARY KEY (`id`),
   UNIQUE KEY `Token_name_key` (`name`)
-) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=4 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -231,7 +232,7 @@ CREATE TABLE `Token` (
 
 LOCK TABLES `Token` WRITE;
 /*!40000 ALTER TABLE `Token` DISABLE KEYS */;
-INSERT INTO `Token` VALUES (1,'SOL','USDT',0.03,1,'2025-09-08 19:02:01.386','2025-09-08 19:02:01.386',1);
+INSERT INTO `Token` VALUES (1,'SOL','USDT',0.03,1,'2025-09-08 19:02:01.386','2025-09-08 19:02:01.386',1),(2,'ETH','USDT',0.01,1,'2023-09-29 20:08:51.000','2023-09-29 20:00:00.000',2),(3,'BTC','USDT',0.002,1,'2023-09-29 20:00:00.000','2023-09-20 20:00:00.000',2);
 /*!40000 ALTER TABLE `Token` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -253,7 +254,7 @@ CREATE TABLE `TokenStrategy` (
   KEY `TokenStrategy_strategyId_fkey` (`strategyId`),
   CONSTRAINT `TokenStrategy_strategyId_fkey` FOREIGN KEY (`strategyId`) REFERENCES `Strategy` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
   CONSTRAINT `TokenStrategy_tokenId_fkey` FOREIGN KEY (`tokenId`) REFERENCES `Token` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -262,6 +263,7 @@ CREATE TABLE `TokenStrategy` (
 
 LOCK TABLES `TokenStrategy` WRITE;
 /*!40000 ALTER TABLE `TokenStrategy` DISABLE KEYS */;
+INSERT INTO `TokenStrategy` VALUES (1,1,1,'2025-10-02 14:10:32.654','2025-09-08 11:11:22.729'),(2,1,NULL,'2025-10-20 18:58:26.643','2025-10-20 18:58:26.643');
 /*!40000 ALTER TABLE `TokenStrategy` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -274,10 +276,10 @@ DROP TABLE IF EXISTS `User`;
 /*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `User` (
   `id` int NOT NULL AUTO_INCREMENT,
-  `fullname` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,
-  `username` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,
-  `email` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,
-  `password` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `fullname` varchar(191) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  `username` varchar(191) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  `email` varchar(191) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  `password` varchar(191) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
   `profit` double NOT NULL DEFAULT '0',
   `isActive` tinyint(1) NOT NULL DEFAULT '0',
   `isVerified` tinyint(1) NOT NULL DEFAULT '0',
@@ -285,17 +287,17 @@ CREATE TABLE `User` (
   `createdAt` datetime(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   `updatedAt` datetime(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   `tradeBalance` int NOT NULL DEFAULT '0',
-  `telegramChatId` varchar(191) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `telegramChatId` varchar(191) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `adminCommissionPercent` double NOT NULL DEFAULT '0.3',
   `adminInsurance` double NOT NULL DEFAULT '0',
   `insurancePercent` double NOT NULL DEFAULT '0',
-  `referralCode` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `referralCode` varchar(191) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
   `referralCommissionPercent` double NOT NULL DEFAULT '0',
   `referralInsurance` double NOT NULL DEFAULT '0',
   `referralUserId` int DEFAULT NULL,
-  `apiKey` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,
-  `apiPassphrase` varchar(191) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
-  `apiSecret` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `apiKey` varchar(191) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  `apiPassphrase` varchar(191) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `apiSecret` varchar(191) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `User_username_key` (`username`),
   UNIQUE KEY `User_email_key` (`email`),
@@ -312,7 +314,7 @@ CREATE TABLE `User` (
 
 LOCK TABLES `User` WRITE;
 /*!40000 ALTER TABLE `User` DISABLE KEYS */;
-INSERT INTO `User` VALUES (1,'minh c nguyen','chienminh5298','chienminh5298@gmail.com','wefweF',0,1,0,0,'2025-09-08 19:13:42.122','2025-09-08 19:13:42.122',90,NULL,0.3,0,0,'a',0,0,NULL,'UJ4FK08d0mij32wOMXJPs6BRWaM3HuY5d2MOuJw3DvX0uq0vcIIjdiD22lfoAHIB',NULL,'ySv2ZjeULNRxO5IQ9JdCw1m5vWwtNOOwqtvy0weV5IDFnN3vA5vxeVv7TIKcXBx2');
+INSERT INTO `User` VALUES (1,'minh c nguyen','chienminh5298','chienminh5298@gmail.com','$2a$12$44N/zbAmXf5PebSuJ8vUH.nT3Aze45k4O.Maul019bIjojxFOAysO',0,1,0,0,'2025-09-08 19:13:42.122','2025-10-21 14:43:08.486',76,NULL,0.3,0,0,'a',0,0,NULL,'UJ4FK08d0mij32wOMXJPs6BRWaM3HuY5d2MOuJw3DvX0uq0vcIIjdiD22lfoAHIB',NULL,'ySv2ZjeULNRxO5IQ9JdCw1m5vWwtNOOwqtvy0weV5IDFnN3vA5vxeVv7TIKcXBx2');
 /*!40000 ALTER TABLE `User` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -356,14 +358,14 @@ DROP TABLE IF EXISTS `Voucher`;
 /*!50503 SET character_set_client = utf8mb4 */;
 CREATE TABLE `Voucher` (
   `id` int NOT NULL AUTO_INCREMENT,
-  `code` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,
-  `description` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,
-  `type` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `code` varchar(191) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  `description` varchar(191) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  `type` varchar(191) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
   `value` int NOT NULL,
   `activeDate` datetime(3) DEFAULT NULL,
   `effectDate` datetime(3) NOT NULL,
   `expireDate` datetime(3) NOT NULL,
-  `status` enum('inuse','expired','unused') COLLATE utf8mb4_unicode_ci NOT NULL,
+  `status` enum('inuse','expired','unused') CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
   `createdAt` datetime(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   `updatedAt` datetime(3) NOT NULL,
   `userId` int DEFAULT NULL,
@@ -392,4 +394,4 @@ UNLOCK TABLES;
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2025-09-09 17:15:48
+-- Dump completed on 2025-10-21 14:45:06

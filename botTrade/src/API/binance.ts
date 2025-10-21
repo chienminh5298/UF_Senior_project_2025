@@ -430,7 +430,7 @@ class Binance implements BrokerInterface {
 
                 socket.on("open", () => {
                     // no auth message needed
-                    logging("info", `Open socket Binance successfull.`);
+                    // logging("info", `Open socket Binance successfull.`);
                 });
 
                 socket.on("message", async (msg: WebSocket.RawData) => {
@@ -574,13 +574,20 @@ class Binance implements BrokerInterface {
     };
 
     getPrice = async (symbol: string) => {
-        const response = await axios.get(`${this.BASE_URL_API}/fapi/v1/premiumIndex?symbol=${symbol}`);
-
-        if (response.status !== 200) {
-            writeLog([`Error get price ${symbol}`, response]);
+        try {
+            const response = await axios.get(`${this.BASE_URL_API}/fapi/v1/premiumIndex`, {
+                params: { symbol: symbol.toUpperCase() },
+                timeout: 5000, // optional: avoid hanging requests
+            });
+            if (response.status !== 200 || !response.data?.markPrice) {
+                console.error(`Error fetching price for ${symbol}:`, response.data);
+                return undefined;
+            }
+            return parseFloat(response.data.markPrice);
+        } catch (err) {
+            handleError(`Can't getPrice ${symbol}`, "error", [err]);
             return undefined;
         }
-        return parseFloat(response.data.markPrice);
     };
 }
 
