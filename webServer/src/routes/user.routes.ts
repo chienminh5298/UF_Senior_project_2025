@@ -429,13 +429,11 @@ router.post('/claim', requireAuth, async (req, res) => {
       data: { status: BillStatus.CLAIMED },
     });
 
-    return res
-      .status(200)
-      .json({
-        success: true,
-        message: 'Claim created successfully',
-        data: claim,
-      });
+    return res.status(200).json({
+      success: true,
+      message: 'Claim created successfully',
+      data: claim,
+    });
   } catch (error) {
     return res
       .status(500)
