@@ -2,6 +2,7 @@ import { Router } from 'express';
 import prisma from '../models/prismaClient';
 import { requireAuth } from '../middleware/auth';
 import bcrypt from 'bcrypt';
+import { VoucherStatus } from '@prisma/client';
 const router = Router();
 
 // POST /api/user/tokens
@@ -325,5 +326,69 @@ router.post('/settings', requireAuth, async (req, res) => {
     return res
       .status(500)
       .json({ success: false, message: 'Failed to update password' });
+  }
+});
+
+
+// POST api/user/claim
+router.post('/claim', requireAuth, async (req, res) => {
+  const { user } = req;
+
+  if (!user) {
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
+  }
+
+  try{
+    const { billIds = [], network, address, hashId } = req.body;
+   
+    let amount = 0;
+    const bills = await prisma.bill.findMany({
+      where: { id: { in: billIds } },
+    });
+    for (const bill of bills) {
+      amount += bill.netProfit;
+    }
+
+    const userData = await prisma.user.findUnique({
+      where: { id: user.id },
+      select: {
+        adminCommissionPercent: true,
+        referralCommissionPercent: true,
+      },
+    });
+
+    const voucher = await prisma.voucher.findFirst({
+      where: { userId: user.id },
+    });
+
+    if (voucher && voucher.status === VoucherStatus.inuse) {
+      amount = 0;
+    } else {
+      amount = amount * (userData?.adminCommissionPercent ?? 0);
+    }
+
+    if (!amount) {
+      return res.status(400).json({ success: false, message: 'No bills to claim' });
+    }
+
+
+    if (!billIds.length || !network || !address || !hashId) {
+      return res.status(400).json({ success: false, message: 'Missing required fields' });
+    }
+
+    const claim = await prisma.claim.create({
+      data: {
+        amount,
+        bills: { connect: billIds.map((id: number) => ({ id })) },
+        network,
+        address,
+        hashId,
+        userId: user.id,
+      },
+    });
+
+    return res.status(200).json({ success: true, message: 'Claim created successfully', data: claim });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: 'Failed to create claim' });
   }
 });
