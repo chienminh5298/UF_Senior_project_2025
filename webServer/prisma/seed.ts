@@ -11,7 +11,9 @@ import {
 } from '@prisma/client';
 import bcrypt from 'bcrypt';
 
-const prisma = new PrismaClient();
+const prisma = new PrismaClient({
+  log: ['query', 'info', 'warn', 'error'],
+});
 
 // Helper function to hash passwords
 async function hashPassword(password: string): Promise<string> {
@@ -19,19 +21,41 @@ async function hashPassword(password: string): Promise<string> {
 }
 
 async function main() {
-  console.log('Starting database seeding aligned to UPDATED schema...');
+  console.log('ZStarting database seeding...');
+  
+  try {
+    // Test database connection
+    await prisma.$connect();
+    console.log('Database connection established');
+
+    // Clean existing data in proper order (respecting foreign key constraints)
+    console.log('Cleaning existing data...');
 
 await prisma.order.deleteMany();
+    console.log('   - Orders deleted');
+    
 await prisma.bill.deleteMany();
+    console.log('   - Bills deleted');
+    
 await prisma.userToken.deleteMany();
+    console.log('   - User tokens deleted');
+    
 await prisma.voucher.deleteMany();
+    console.log('   - Vouchers deleted');
+    
 await prisma.claim.deleteMany();
+    console.log('   - Claims deleted');
+    
 await prisma.strategy.deleteMany();
+    console.log('   - Strategies deleted');
+    
 await prisma.token.deleteMany();
+    console.log('   - Tokens deleted');
+    
 await prisma.user.deleteMany();
+    console.log('   - Users deleted');
 
-
-  console.log('Cleaned existing data');
+    console.log('Existing data cleaned successfully');
 
   const tokens = await Promise.all([
     prisma.token.create({ data: { name: 'Bitcoin',  stable: 'USDT', minQty: 0.001, isActive: true,  leverage: 3 } }),
@@ -634,11 +658,11 @@ await prisma.user.deleteMany();
     }),
     // Claim 5: NEW status with no transaction hash yet
     prisma.claim.create({
-      data: {
+    data: {
         status: ClaimStatus.NEW,
         amount: 750.25,
-        userId: users[0].id,
-        network: Network.ERC20,
+      userId: users[0].id,
+      network: Network.ERC20,
         address: '0x2c6d35Cc6634C0532925a3b8D0C4C3C2C1B0A9F8E7D6C5B4A3928171615141312111',
       },
     }),
@@ -789,13 +813,13 @@ await prisma.user.deleteMany();
     
     // Bills for Claim 5 (NEW - no hash yet)
     prisma.bill.create({
-      data: {
-        adminCommissionPercent: 30,
-        referralCommissionPercent: 0,
-        status: BillStatus.NEW,
-        userId: users[0].id,
+    data: {
+      adminCommissionPercent: 30,
+      referralCommissionPercent: 0,
+      status: BillStatus.NEW,
+      userId: users[0].id,
         from: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000),
-        to: new Date(),
+      to: new Date(),
         note: 'Recent trading activity - pending review',
         netProfit: 750.25,
         claimId: claims[4].id,
@@ -808,33 +832,35 @@ await prisma.user.deleteMany();
       },
     }),
   ]);
-  console.log('Created bills:', bills.length);
+    console.log('Created bills:', bills.length);
 
-  // Update claim amounts to match the sum of their bills
-  await Promise.all([
-    prisma.claim.update({
-      where: { id: claims[0].id },
-      data: { amount: 1250.75 } // 450.25 + 800.50
-    }),
-    prisma.claim.update({
-      where: { id: claims[1].id },
-      data: { amount: 850.30 } // 650.30 + 200.00
-    }),
-    prisma.claim.update({
-      where: { id: claims[2].id },
-      data: { amount: 2100.50 } // 1200.75 + 899.75
-    }),
-    prisma.claim.update({
-      where: { id: claims[3].id },
-      data: { amount: 500.00 } // Fixed amount for rejected claim
-    }),
-    prisma.claim.update({
-      where: { id: claims[4].id },
-      data: { amount: 750.25 } // 750.25
-    }),
-  ]);
-  console.log('Updated claim amounts');
+    // Update claim amounts to match the sum of their bills
+    console.log('💰 Updating claim amounts...');
+    await Promise.all([
+      prisma.claim.update({
+        where: { id: claims[0].id },
+        data: { amount: 1250.75 } // 450.25 + 800.50
+      }),
+      prisma.claim.update({
+        where: { id: claims[1].id },
+        data: { amount: 850.30 } // 650.30 + 200.00
+      }),
+      prisma.claim.update({
+        where: { id: claims[2].id },
+        data: { amount: 2100.50 } // 1200.75 + 899.75
+      }),
+      prisma.claim.update({
+        where: { id: claims[3].id },
+        data: { amount: 500.00 } // Fixed amount for rejected claim
+      }),
+      prisma.claim.update({
+        where: { id: claims[4].id },
+        data: { amount: 750.25 } // 750.25
+      }),
+    ]);
+    console.log('Claim amounts updated');
 
+    console.log('Creating vouchers...');
   await Promise.all([
     prisma.voucher.create({
       data: {
@@ -876,16 +902,29 @@ await prisma.user.deleteMany();
       },
     }),
   ]);
-  console.log('Created vouchers: 3');
+    console.log('Created 3 vouchers');
 
-  console.log('Seeding completed successfully!');
+    console.log('Database seeding completed successfully!');
+    console.log('Summary:');
+    console.log(`   - ${tokens.length} tokens created`);
+    console.log(`   - ${users.length} users created`);
+    console.log(`   - ${strategies.length} strategies created`);
+    console.log(`   - ${orders.length + additionalOrders.length} orders created`);
+    console.log(`   - ${claims.length} claims created`);
+    console.log(`   - ${bills.length} bills created`);
+    console.log(`   - 3 vouchers created`);
+
+  } catch (error) {
+    console.error('Error during seeding:', error);
+    throw error;
+  } finally {
+    await prisma.$disconnect();
+    console.log('Database connection closed');
+  }
 }
 
 main()
   .catch((e) => {
-    console.error('Error during seeding:', e);
+    console.error('Fatal error during seeding:', e);
     process.exit(1);
-  })
-  .finally(async () => {
-    await prisma.$disconnect();
   });

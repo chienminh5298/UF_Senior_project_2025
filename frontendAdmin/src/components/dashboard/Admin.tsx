@@ -2578,42 +2578,23 @@ export function Admin() {
                       {claimDetails.bills && claimDetails.bills.length > 0 ? (
                         <div className="space-y-6">
                           {/* Bills Summary */}
-                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
                             <div className="bg-gray-700 rounded-lg p-4">
                               <div className="flex items-center gap-2 mb-2">
-                                <DollarSign className="w-4 h-4 text-green-400" />
-                                <span className="text-sm text-gray-400">Total Profit</span>
+                                <DollarSign className="w-4 h-4 text-blue-400" />
+                                <span className="text-sm text-gray-400">Total Bills Net Profit</span>
+                              </div>
+                              <p className="text-xl font-bold text-white">
+                                ${claimDetails.bills.reduce((sum: number, bill: any) => sum + (bill.netProfit || 0), 0).toLocaleString()}
+                              </p>
+                            </div>
+                            <div className="bg-gray-700 rounded-lg p-4">
+                              <div className="flex items-center gap-2 mb-2">
+                                <BarChart3 className="w-4 h-4 text-green-400" />
+                                <span className="text-sm text-gray-400">Claim Amount (After 30% Commission)</span>
                               </div>
                               <p className="text-xl font-bold text-green-400">
-                                ${claimDetails.bills
-                                  .filter((bill: any) => bill.netProfit > 0)
-                                  .reduce((sum: number, bill: any) => sum + bill.netProfit, 0)
-                                  .toLocaleString()}
-                              </p>
-                            </div>
-                            <div className="bg-gray-700 rounded-lg p-4">
-                              <div className="flex items-center gap-2 mb-2">
-                                <TrendingDown className="w-4 h-4 text-red-400" />
-                                <span className="text-sm text-gray-400">Total Loss</span>
-                              </div>
-                              <p className="text-xl font-bold text-red-400">
-                                ${Math.abs(claimDetails.bills
-                                  .filter((bill: any) => bill.netProfit < 0)
-                                  .reduce((sum: number, bill: any) => sum + bill.netProfit, 0))
-                                  .toLocaleString()}
-                              </p>
-                            </div>
-                            <div className="bg-gray-700 rounded-lg p-4">
-                              <div className="flex items-center gap-2 mb-2">
-                                <BarChart3 className="w-4 h-4 text-blue-400" />
-                                <span className="text-sm text-gray-400">Net Total</span>
-                              </div>
-                              <p className={`text-xl font-bold ${
-                                claimDetails.bills.reduce((sum: number, bill: any) => sum + (bill.netProfit || 0), 0) >= 0 
-                                  ? 'text-green-400' 
-                                  : 'text-red-400'
-                              }`}>
-                                ${claimDetails.bills.reduce((sum: number, bill: any) => sum + (bill.netProfit || 0), 0).toLocaleString()}
+                                ${claimDetails.amount.toLocaleString()}
                               </p>
                             </div>
                           </div>
