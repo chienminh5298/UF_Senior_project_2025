@@ -417,10 +417,103 @@ router.get('/orders', requireAuth, async (req, res) => {
  *         description: 'Failed to fetch stats'
  */
 
+// GET /api/admin/orders/all
+/**
+ * @swagger
+ * /api/admin/orders/all:
+ *   get:
+ *     summary: Get all orders with pagination and status filtering
+ *     tags:
+ *       - Admin
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           default: 1
+ *         description: 'Page number (default: 1)'
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           enum: [5, 10, 25]
+ *           default: 10
+ *         description: 'Number of orders per page'
+ *       - in: query
+ *         name: status
+ *         schema:
+ *           type: string
+ *           enum: [FINISHED, ACTIVE, EXPIRED]
+ *         description: 'Filter orders by status'
+ *     responses:
+ *       '200':
+ *         description: 'Orders fetched successfully'
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     orders:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           id: { type: integer }
+ *                           orderId: { type: string }
+ *                           status: { type: string, enum: [ACTIVE, FINISHED, EXPIRED] }
+ *                           side: { type: string, enum: [BUY, SELL] }
+ *                           entryPrice: { type: number }
+ *                           fee: { type: number }
+ *                           qty: { type: number }
+ *                           budget: { type: number }
+ *                           netProfit: { type: number }
+ *                           buyDate: { type: string, format: date-time }
+ *                           sellDate: { type: string, format: date-time, nullable: true }
+ *                           token:
+ *                             type: object
+ *                             properties:
+ *                               name: { type: string }
+ *                               isActive: { type: boolean }
+ *                           user:
+ *                             type: object
+ *                             properties:
+ *                               id: { type: integer }
+ *                               email: { type: string }
+ *                               isActive: { type: boolean }
+ *                           strategy:
+ *                             type: object
+ *                             properties:
+ *                               description: { type: string }
+ *                     pagination:
+ *                       type: object
+ *                       properties:
+ *                         currentPage: { type: integer }
+ *                         totalPages: { type: integer }
+ *                         totalOrders: { type: integer }
+ *                         limit: { type: integer }
+ *                         hasNextPage: { type: boolean }
+ *                         hasPrevPage: { type: boolean }
+ *       '401':
+ *         description: 'Unauthorized'
+ *       '500':
+ *         description: 'Failed to fetch orders'
+ */
+
 router.get('/orders/all', requireAuth, async (req, res) => {
   const { user } = req;
   const page = parseInt(req.query.page as string) || 1;
   const limit = parseInt(req.query.limit as string) || 10;
+  const status = req.query.status as string;
 
   if (!user) {
     // return res.status(401).json({ success: false, message: 'Unauthorized' });
@@ -433,10 +526,17 @@ router.get('/orders/all', requireAuth, async (req, res) => {
   try {
     const skip = (page - 1) * validatedLimit;
 
+    // Build where clause for status filtering
+    const whereClause: any = {};
+    if (status && ['FINISHED', 'ACTIVE', 'EXPIRED'].includes(status)) {
+      whereClause.status = status;
+    }
+
     // Get total count for pagination info
-    const totalOrders = await prisma.order.count();
+    const totalOrders = await prisma.order.count({ where: whereClause });
 
     const orders = await prisma.order.findMany({
+      where: whereClause,
       skip,
       take: validatedLimit,
       orderBy: { buyDate: 'desc' },
