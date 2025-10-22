@@ -1,0 +1,22 @@
+# 1. Base image
+FROM node:18
+
+# 2. Set working directory
+WORKDIR /app
+
+# 3. Copy package files and install dependencies
+COPY package*.json ./
+
+# 4. Install dependencies
+RUN npm install
+
+# 5. Copy source files
+COPY . .
+
+# 6. Expose port (Next.js dev mode default is 3000)
+EXPOSE 3000
+
+# 7. Start dev server
+CMD ["npm", "run", "dev"]
+
+# docker compose -f Docker-compose.dev.yaml up frontend-user-next -d
