@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card'
 import { Button } from '../ui/button'
 import { Badge } from '../ui/badge'
@@ -21,6 +21,20 @@ export function Settings() {
   const [pushNotifications, setPushNotifications] = useState(false)
   const [twoFactorEnabled, setTwoFactorEnabled] = useState(false)
   const [showApiKeys, setShowApiKeys] = useState(false)
+  const [userData, setUserData] = useState<{ fullname: string; username: string; email: string } | null>(null)
+
+  useEffect(() => {
+    // Load user data from localStorage
+    try {
+      const auth = localStorage.getItem('auth')
+      if (auth) {
+        const { user } = JSON.parse(auth)
+        setUserData(user)
+      }
+    } catch (e) {
+      console.error('Failed to load user data:', e)
+    }
+  }, [])
 
   const sections = [
     { id: 'profile', label: 'Profile', icon: User },
@@ -30,52 +44,72 @@ export function Settings() {
     { id: 'api', label: 'API Keys', icon: Key },
   ]
 
-  const renderProfileSection = () => (
-    <div className="space-y-6">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+  const renderProfileSection = () => {
+    // Split full name into first and last name
+    const nameParts = userData?.fullname?.split(' ') || []
+    const firstName = nameParts[0] || ''
+    const lastName = nameParts.slice(1).join(' ') || ''
+
+    return (
+      <div className="space-y-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-gray-300">First Name</label>
+            <input
+              type="text"
+              value={firstName}
+              className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
+              readOnly
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-gray-300">Last Name</label>
+            <input
+              type="text"
+              value={lastName}
+              className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
+              readOnly
+            />
+          </div>
+        </div>
+        
         <div className="space-y-2">
-          <label className="text-sm font-medium text-gray-300">First Name</label>
+          <label className="text-sm font-medium text-gray-300">Username</label>
           <input
             type="text"
-            defaultValue="John"
+            value={userData?.username || ''}
             className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
+            readOnly
           />
         </div>
+        
         <div className="space-y-2">
-          <label className="text-sm font-medium text-gray-300">Last Name</label>
+          <label className="text-sm font-medium text-gray-300">Email Address</label>
           <input
-            type="text"
-            defaultValue="Doe"
+            type="email"
+            value={userData?.email || ''}
             className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
+            readOnly
           />
         </div>
-      </div>
-      
-      <div className="space-y-2">
-        <label className="text-sm font-medium text-gray-300">Email Address</label>
-        <input
-          type="email"
-          defaultValue="john.doe@example.com"
-          className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
-        />
-      </div>
 
-      <div className="space-y-2">
-        <label className="text-sm font-medium text-gray-300">Time Zone</label>
-        <select className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-blue-500">
-          <option>UTC-5 (Eastern Time)</option>
-          <option>UTC-8 (Pacific Time)</option>
-          <option>UTC+0 (GMT)</option>
-          <option>UTC+1 (Central European Time)</option>
-        </select>
-      </div>
+        <div className="space-y-2">
+          <label className="text-sm font-medium text-gray-300">Time Zone</label>
+          <select className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-blue-500">
+            <option>UTC-5 (Eastern Time)</option>
+            <option>UTC-8 (Pacific Time)</option>
+            <option>UTC+0 (GMT)</option>
+            <option>UTC+1 (Central European Time)</option>
+          </select>
+        </div>
 
-      <Button className="bg-blue-600 hover:bg-blue-700">
-        <Save className="w-4 h-4 mr-2" />
-        Save Changes
-      </Button>
-    </div>
-  )
+        <Button className="bg-blue-600 hover:bg-blue-700">
+          <Save className="w-4 h-4 mr-2" />
+          Save Changes
+        </Button>
+      </div>
+    )
+  }
 
   const renderSecuritySection = () => (
     <div className="space-y-6">

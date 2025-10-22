@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Button } from '../ui/button'
 import { Card, CardContent, CardHeader } from '../ui/card'
 import { Badge } from '../ui/badge'
@@ -11,28 +12,43 @@ interface LoginPageProps {
 }
 
 export function LoginPage({ onLogin }: LoginPageProps) {
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
   const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3001'
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    // Admin Login - no credentials needed, uses environment variables
-    console.log(`${API_BASE}/api/auth/login/admin`)
-    const response = await fetch(`${API_BASE}/api/auth/login/admin`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' }
-    })
-    const data = await response.json()
-    if (data.success) {
-      // Store the token for future requests
-      localStorage.setItem('adminToken', data.token)
-      onLogin()
-    } else {
-      alert(data.message)
+    if (isLoading) return
+    
+    setError(null)
+    setIsLoading(true)
+    
+    try {
+      // Admin Login - no credentials needed, uses environment variables
+      console.log(`${API_BASE}/api/auth/login/admin`)
+      const response = await fetch(`${API_BASE}/api/auth/login/admin`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      })
+      
+      const data = await response.json()
+      
+      if (data.success) {
+        // Store the token for future requests
+        localStorage.setItem('adminToken', data.token)
+        onLogin()
+      } else {
+        setError(data.message || 'Login failed')
+      }
+    } catch (err: any) {
+      setError(err?.message || 'Unable to login. Please try again.')
+    } finally {
+      setIsLoading(false)
     }
   }
 
   const handleDemoLogin = () => {
-    // Simulate demo login
     onLogin()
   }
 
@@ -55,6 +71,12 @@ export function LoginPage({ onLogin }: LoginPageProps) {
             </CardHeader>
 
             <CardContent>
+              {error && (
+                <div className="mb-4 p-3 bg-red-900/20 border border-red-800 rounded-lg text-sm text-red-400" role="alert">
+                  {error}
+                </div>
+              )}
+              
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div className="text-center text-gray-400 mb-6">
                   <p>Admin access uses secure environment credentials</p>
@@ -64,8 +86,9 @@ export function LoginPage({ onLogin }: LoginPageProps) {
                 <Button
                   type="submit"
                   className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2"
+                  disabled={isLoading}
                 >
-                  Access Admin Panel
+                  {isLoading ? 'Signing In...' : 'Access Admin Panel'}
                 </Button>
               </form>
 
@@ -87,7 +110,6 @@ export function LoginPage({ onLogin }: LoginPageProps) {
                   Demo Admin Access
                 </Button>
               </div>
-
 
               {/* Admin Badge */}
               <div className="mt-6 flex justify-center">

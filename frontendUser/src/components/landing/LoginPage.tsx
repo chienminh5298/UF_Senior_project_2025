@@ -26,65 +26,79 @@ export function LoginPage({ onNavigateToLanding, onLogin }: LoginPageProps) {
   const [confirmPassword, setConfirmPassword] = useState('')
   const [firstName, setFirstName] = useState('')
   const [lastName, setLastName] = useState('')
-
-  const API_BASE = 'http://localhost:3001'
+  const [username, setUsername] = useState('')
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (isSignUp) {
-      if (password !== confirmPassword) {
-        alert('Passwords do not match!')
-        return
-      }
-      
-      try {
-        const response = await fetch(`${API_BASE}/api/auth/signup`, {
+    if (isLoading) return
+    setError(null)
+    setIsLoading(true)
+    try {
+      if (isSignUp) {
+        if (password !== confirmPassword) {
+          throw new Error('Passwords do not match')
+        }
+        const fullname = `${firstName} ${lastName}`.trim()
+        const usernameToSend = (username || `${firstName}${lastName}` || firstName)
+          .replace(/\s+/g, '')
+          .toLowerCase()
+        const res = await fetch('/api/auth/signup', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({
-            fullname: `${firstName} ${lastName}`,
-            username: email.split('@')[0],
-            email,
-            password
-          })
+          body: JSON.stringify({ fullname, username: usernameToSend, email, password })
         })
-        const data = await response.json()
-        if (data.success) {
-          // Store jwt token for future requests
-          localStorage.setItem('userToken', data.token)
-          onLogin()
-        } else {
-          alert(data.message)
+        let data: any = null
+        try {
+          data = await res.json()
+        } catch (_) {
+          // Non-JSON error, will be handled below
         }
-      } catch (error) {
-        alert('Sign up failed. Please try again.')
+        if (!res.ok || !data?.success) {
+          throw new Error(data?.message || 'Signup failed')
+        }
+        // After signup, auto-login
       }
-    } else {
-      // Handle login
+
+      const loginRes = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
+      })
+      let loginData: any = null
       try {
-        const response = await fetch(`${API_BASE}/api/auth/login`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({ email, password })
-        })
-        const data = await response.json()
-        if (data.success) {
-          // Store the token for future requests
-          localStorage.setItem('userToken', data.token)
-          onLogin()
-        } else {
-          alert(data.message)
-        }
-      } catch (error) {
-        alert('Login failed. Please try again.')
+        loginData = await loginRes.json()
+      } catch (_) {
+        // Non-JSON error
       }
+      if (!loginRes.ok || !loginData?.success) {
+        throw new Error(loginData?.message || 'Login failed')
+      }
+      const authPayload = { token: loginData.token, user: loginData.user }
+      localStorage.setItem('auth', JSON.stringify(authPayload))
+      onLogin()
+    } catch (err: any) {
+      setError(err?.message || 'Unable to authenticate')
+    } finally {
+      setIsLoading(false)
     }
   }
 
   const handleDemoLogin = () => {
-    // Simulate demo login
+    const demoAuth = {
+      token: 'demo-token',
+      user: {
+        id: 0,
+        fullname: 'Demo Investor',
+        username: 'demo',
+        email: 'demo@example.com',
+        isVerified: true
+      }
+    }
+    try {
+      localStorage.setItem('auth', JSON.stringify(demoAuth))
+    } catch {}
     onLogin()
   }
 
@@ -186,6 +200,9 @@ export function LoginPage({ onNavigateToLanding, onLogin }: LoginPageProps) {
             </CardHeader>
             
             <CardContent className="space-y-6">
+              {error && (
+                <div className="text-sm text-red-400" role="alert">{error}</div>
+              )}
               <form onSubmit={handleSubmit} className="space-y-4">
                 {isSignUp && (
                   <div className="grid grid-cols-2 gap-3">
@@ -213,6 +230,20 @@ export function LoginPage({ onNavigateToLanding, onLogin }: LoginPageProps) {
                         value={lastName}
                         onChange={(e) => setLastName(e.target.value)}
                         placeholder="Last name"
+                        className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                        required
+                      />
+                    </div>
+                    <div className="col-span-2 space-y-2">
+                      <label htmlFor="username" className="text-sm font-medium text-gray-300">
+                        Username
+                      </label>
+                      <input
+                        id="username"
+                        type="text"
+                        value={username}
+                        onChange={(e) => setUsername(e.target.value)}
+                        placeholder="Choose a username"
                         className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                         required
                       />
@@ -331,8 +362,9 @@ export function LoginPage({ onNavigateToLanding, onLogin }: LoginPageProps) {
                 <Button 
                   type="submit"
                   className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 text-base"
+                  disabled={isLoading}
                 >
-                  {isSignUp ? 'Create Account' : 'Sign In to Dashboard'}
+                  {isLoading ? (isSignUp ? 'Creating Account...' : 'Signing In...') : (isSignUp ? 'Create Account' : 'Sign In to Dashboard')}
                 </Button>
               </form>
 
