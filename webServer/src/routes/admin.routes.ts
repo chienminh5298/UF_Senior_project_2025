@@ -417,10 +417,103 @@ router.get('/orders', requireAuth, async (req, res) => {
  *         description: 'Failed to fetch stats'
  */
 
+// GET /api/admin/orders/all
+/**
+ * @swagger
+ * /api/admin/orders/all:
+ *   get:
+ *     summary: Get all orders with pagination and status filtering
+ *     tags:
+ *       - Admin
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           default: 1
+ *         description: 'Page number (default: 1)'
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           enum: [5, 10, 25]
+ *           default: 10
+ *         description: 'Number of orders per page'
+ *       - in: query
+ *         name: status
+ *         schema:
+ *           type: string
+ *           enum: [FINISHED, ACTIVE, EXPIRED]
+ *         description: 'Filter orders by status'
+ *     responses:
+ *       '200':
+ *         description: 'Orders fetched successfully'
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     orders:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           id: { type: integer }
+ *                           orderId: { type: string }
+ *                           status: { type: string, enum: [ACTIVE, FINISHED, EXPIRED] }
+ *                           side: { type: string, enum: [BUY, SELL] }
+ *                           entryPrice: { type: number }
+ *                           fee: { type: number }
+ *                           qty: { type: number }
+ *                           budget: { type: number }
+ *                           netProfit: { type: number }
+ *                           buyDate: { type: string, format: date-time }
+ *                           sellDate: { type: string, format: date-time, nullable: true }
+ *                           token:
+ *                             type: object
+ *                             properties:
+ *                               name: { type: string }
+ *                               isActive: { type: boolean }
+ *                           user:
+ *                             type: object
+ *                             properties:
+ *                               id: { type: integer }
+ *                               email: { type: string }
+ *                               isActive: { type: boolean }
+ *                           strategy:
+ *                             type: object
+ *                             properties:
+ *                               description: { type: string }
+ *                     pagination:
+ *                       type: object
+ *                       properties:
+ *                         currentPage: { type: integer }
+ *                         totalPages: { type: integer }
+ *                         totalOrders: { type: integer }
+ *                         limit: { type: integer }
+ *                         hasNextPage: { type: boolean }
+ *                         hasPrevPage: { type: boolean }
+ *       '401':
+ *         description: 'Unauthorized'
+ *       '500':
+ *         description: 'Failed to fetch orders'
+ */
+
 router.get('/orders/all', requireAuth, async (req, res) => {
   const { user } = req;
   const page = parseInt(req.query.page as string) || 1;
   const limit = parseInt(req.query.limit as string) || 10;
+  const status = req.query.status as string;
 
   if (!user) {
     // return res.status(401).json({ success: false, message: 'Unauthorized' });
@@ -433,10 +526,17 @@ router.get('/orders/all', requireAuth, async (req, res) => {
   try {
     const skip = (page - 1) * validatedLimit;
 
+    // Build where clause for status filtering
+    const whereClause: any = {};
+    if (status && ['FINISHED', 'ACTIVE', 'EXPIRED'].includes(status)) {
+      whereClause.status = status;
+    }
+
     // Get total count for pagination info
-    const totalOrders = await prisma.order.count();
+    const totalOrders = await prisma.order.count({ where: whereClause });
 
     const orders = await prisma.order.findMany({
+      where: whereClause,
       skip,
       take: validatedLimit,
       orderBy: { buyDate: 'desc' },
@@ -1575,6 +1675,642 @@ router.patch('/strategies/:id/tokens', requireAuth, async (req, res) => {
     return res.status(500).json({
       success: false,
       message: 'Failed to update token associations',
+    });
+  }
+});
+
+// GET /api/admin/claims
+/**
+ * @swagger
+ * /api/admin/claims:
+ *   get:
+ *     summary: Get all claims with pagination
+ *     tags:
+ *       - Admin
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           default: 1
+ *         description: 'Page number'
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           enum: [5, 10, 25]
+ *           default: 10
+ *         description: 'Number of claims per page'
+ *       - in: query
+ *         name: status
+ *         schema:
+ *           type: string
+ *           enum: [NEW, PROCESSING, COMPLETED, REJECTED]
+ *         description: 'Filter by claim status'
+ *     responses:
+ *       '200':
+ *         description: 'Claims fetched successfully'
+ *       '401':
+ *         description: 'Unauthorized'
+ *       '500':
+ *         description: 'Failed to fetch claims'
+ */
+router.get('/claims', requireAuth, async (req, res) => {
+  const { user } = req;
+  const page = parseInt(req.query.page as string) || 1;
+  const limit = parseInt(req.query.limit as string) || 10;
+  const status = req.query.status as string;
+
+  if (!user) {
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
+  }
+
+  // Validate limit
+  const validLimits = [5, 10, 25];
+  const validatedLimit = validLimits.includes(limit) ? limit : 10;
+
+  try {
+    const skip = (page - 1) * validatedLimit;
+
+    // Build where clause
+    const whereClause: any = {};
+    if (
+      status &&
+      ['NEW', 'PROCESSING', 'COMPLETED', 'REJECTED'].includes(status)
+    ) {
+      whereClause.status = status;
+    }
+
+    // Get total count
+    const totalClaims = await prisma.claim.count({ where: whereClause });
+
+    // Fetch claims with related data
+    const claims = await prisma.claim.findMany({
+      where: whereClause,
+      skip,
+      take: validatedLimit,
+      orderBy: { createdAt: 'desc' },
+      include: {
+        user: {
+          select: {
+            id: true,
+            username: true,
+            email: true,
+          },
+        },
+        bills: {
+          select: {
+            id: true,
+            netProfit: true,
+            status: true,
+          },
+        },
+      },
+    });
+
+    // Format claims data
+    const formattedClaims = claims.map((claim) => ({
+      id: claim.id,
+      amount: claim.amount,
+      status: claim.status,
+      network: claim.network,
+      address: claim.address,
+      hashId: claim.hashId,
+      createdAt: claim.createdAt,
+      updatedAt: claim.updatedAt,
+      user: claim.user,
+      billsCount: claim.bills.length,
+    }));
+
+    const totalPages = Math.ceil(totalClaims / validatedLimit);
+
+    return res.status(200).json({
+      success: true,
+      message: 'Claims fetched successfully',
+      data: {
+        claims: formattedClaims,
+        pagination: {
+          currentPage: page,
+          totalPages,
+          totalClaims,
+          limit: validatedLimit,
+          hasNextPage: page < totalPages,
+          hasPrevPage: page > 1,
+        },
+      },
+    });
+  } catch (error) {
+    console.error('Error fetching claims:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to fetch claims',
+    });
+  }
+});
+
+// GET /api/admin/claims/{id}
+/**
+ * @swagger
+ * /api/admin/claims/{id}:
+ *   get:
+ *     summary: Get detailed claim information
+ *     tags:
+ *       - Admin
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: 'Claim ID'
+ *     responses:
+ *       '200':
+ *         description: 'Claim details fetched successfully'
+ *       '404':
+ *         description: 'Claim not found'
+ *       '401':
+ *         description: 'Unauthorized'
+ *       '500':
+ *         description: 'Failed to fetch claim details'
+ */
+router.get('/claims/:id', requireAuth, async (req, res) => {
+  const { user } = req;
+  const { id } = req.params;
+
+  if (!user) {
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
+  }
+
+  try {
+    const claimId = parseInt(id);
+    if (isNaN(claimId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid claim ID',
+      });
+    }
+
+    const claim = await prisma.claim.findUnique({
+      where: { id: claimId },
+      include: {
+        user: {
+          select: {
+            id: true,
+            username: true,
+            email: true,
+          },
+        },
+        bills: {
+          include: {
+            orders: {
+              include: {
+                token: {
+                  select: {
+                    name: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!claim) {
+      return res.status(404).json({
+        success: false,
+        message: 'Claim not found',
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: 'Claim details fetched successfully',
+      data: { claim },
+    });
+  } catch (error) {
+    console.error('Error fetching claim details:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to fetch claim details',
+    });
+  }
+});
+
+// PATCH /api/admin/claims/{id}/approve
+/**
+ * @swagger
+ * /api/admin/claims/{id}/approve:
+ *   patch:
+ *     summary: Approve a claim
+ *     tags:
+ *       - Admin
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: 'Claim ID'
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               note:
+ *                 type: string
+ *                 description: 'Admin note for the user'
+ *                 example: 'Claim approved. Funds will be transferred within 24 hours.'
+ *     responses:
+ *       '200':
+ *         description: 'Claim approved successfully'
+ *       '404':
+ *         description: 'Claim not found'
+ *       '400':
+ *         description: 'Invalid request or claim cannot be approved'
+ *       '401':
+ *         description: 'Unauthorized'
+ *       '500':
+ *         description: 'Failed to approve claim'
+ */
+router.patch('/claims/:id/approve', requireAuth, async (req, res) => {
+  const { user } = req;
+  const { id } = req.params;
+  const { note } = req.body;
+
+  if (!user) {
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
+  }
+
+  try {
+    const claimId = parseInt(id);
+    if (isNaN(claimId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid claim ID',
+      });
+    }
+
+    const claim = await prisma.claim.findUnique({
+      where: { id: claimId },
+      include: { user: true },
+    });
+
+    if (!claim) {
+      return res.status(404).json({
+        success: false,
+        message: 'Claim not found',
+      });
+    }
+
+    if (claim.status !== 'NEW') {
+      return res.status(400).json({
+        success: false,
+        message: 'Only NEW claims can be approved',
+      });
+    }
+
+    const updatedClaim = await prisma.claim.update({
+      where: { id: claimId },
+      data: {
+        status: 'FINISHED',
+        hashId: note || 'Claim approved by admin',
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            username: true,
+            email: true,
+          },
+        },
+      },
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: 'Claim approved successfully',
+      data: { claim: updatedClaim },
+    });
+  } catch (error) {
+    console.error('Error approving claim:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to approve claim',
+    });
+  }
+});
+
+// PATCH /api/admin/claims/{id}/reject
+/**
+ * @swagger
+ * /api/admin/claims/{id}/reject:
+ *   patch:
+ *     summary: Reject a claim
+ *     tags:
+ *       - Admin
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: 'Claim ID'
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               note:
+ *                 type: string
+ *                 description: 'Admin note explaining rejection reason'
+ *                 example: 'Insufficient trading activity or invalid documentation.'
+ *     responses:
+ *       '200':
+ *         description: 'Claim rejected successfully'
+ *       '404':
+ *         description: 'Claim not found'
+ *       '400':
+ *         description: 'Invalid request or claim cannot be rejected'
+ *       '401':
+ *         description: 'Unauthorized'
+ *       '500':
+ *         description: 'Failed to reject claim'
+ */
+router.patch('/claims/:id/reject', requireAuth, async (req, res) => {
+  const { user } = req;
+  const { id } = req.params;
+  const { note } = req.body;
+
+  if (!user) {
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
+  }
+
+  try {
+    const claimId = parseInt(id);
+    if (isNaN(claimId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid claim ID',
+      });
+    }
+
+    const claim = await prisma.claim.findUnique({
+      where: { id: claimId },
+      include: { user: true },
+    });
+
+    if (!claim) {
+      return res.status(404).json({
+        success: false,
+        message: 'Claim not found',
+      });
+    }
+
+    if (claim.status !== 'NEW') {
+      return res.status(400).json({
+        success: false,
+        message: 'Only NEW claims can be rejected',
+      });
+    }
+
+    const updatedClaim = await prisma.claim.update({
+      where: { id: claimId },
+      data: {
+        status: 'FINISHED',
+        hashId: note || 'Claim rejected by admin',
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            username: true,
+            email: true,
+          },
+        },
+      },
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: 'Claim rejected successfully',
+      data: { claim: updatedClaim },
+    });
+  } catch (error) {
+    console.error('Error rejecting claim:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to reject claim',
+    });
+  }
+});
+
+// GET /api/admin/orders/realtime-pnl
+/**
+ * @swagger
+ * /api/admin/orders/realtime-pnl:
+ *   get:
+ *     summary: Get real-time P&L for all active orders
+ *     tags: [Admin]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Real-time P&L data fetched successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     orders:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           orderId:
+ *                             type: integer
+ *                           tokenName:
+ *                             type: string
+ *                           entryPrice:
+ *                             type: number
+ *                           currentPrice:
+ *                             type: number
+ *                           quantity:
+ *                             type: number
+ *                           side:
+ *                             type: string
+ *                             enum: [BUY, SELL]
+ *                           unrealizedPnL:
+ *                             type: number
+ *                           unrealizedPnLPercent:
+ *                             type: number
+ *                           userId:
+ *                             type: integer
+ *                           userEmail:
+ *                             type: string
+ *                           status:
+ *                             type: string
+ *                           buyDate:
+ *                             type: string
+ *                             format: date-time
+ *                           strategy:
+ *                             type: string
+ *                           lastUpdated:
+ *                             type: string
+ *                             format: date-time
+ *                     summary:
+ *                       type: object
+ *                       properties:
+ *                         totalUnrealizedPnL:
+ *                           type: number
+ *                         totalUnrealizedPnLPercent:
+ *                           type: number
+ *                         orderCount:
+ *                           type: integer
+ *                         lastUpdated:
+ *                           type: string
+ *                           format: date-time
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Failed to fetch real-time P&L data
+ */
+router.get('/orders/realtime-pnl', requireAuth, async (req, res) => {
+  const { user } = req;
+
+  if (!user) {
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
+  }
+
+  try {
+    const { priceService } = await import('../services/priceService');
+
+    const ordersWithPnL = await priceService.getActiveOrdersWithPnL();
+    const summary = await priceService.getTotalUnrealizedPnL();
+
+    return res.status(200).json({
+      success: true,
+      message: 'Real-time P&L data fetched successfully',
+      data: {
+        orders: ordersWithPnL,
+        summary,
+      },
+    });
+  } catch (error) {
+    console.error('Error fetching real-time P&L:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to fetch real-time P&L data',
+    });
+  }
+});
+
+// GET /api/admin/orders/price-data
+/**
+ * @swagger
+ * /api/admin/orders/price-data:
+ *   get:
+ *     summary: Get current token prices
+ *     tags: [Admin]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: tokens
+ *         schema:
+ *           type: array
+ *           items:
+ *             type: string
+ *         description: Comma-separated list of token names
+ *     responses:
+ *       200:
+ *         description: Token prices fetched successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       tokenName:
+ *                         type: string
+ *                       currentPrice:
+ *                         type: number
+ *                       priceChange:
+ *                         type: number
+ *                       priceChangePercent:
+ *                         type: number
+ *                       lastUpdated:
+ *                         type: string
+ *                         format: date-time
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Failed to fetch price data
+ */
+router.get('/orders/price-data', requireAuth, async (req, res) => {
+  const { user } = req;
+
+  if (!user) {
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
+  }
+
+  try {
+    const { priceService } = await import('../services/priceService');
+
+    const { tokens } = req.query;
+    let tokenNames: string[] = [];
+
+    if (tokens && typeof tokens === 'string') {
+      tokenNames = tokens.split(',').map((t) => t.trim());
+    } else {
+      // Get all active tokens from database
+      const dbTokens = await prisma.token.findMany({
+        where: { isActive: true },
+        select: { name: true },
+      });
+      tokenNames = dbTokens.map((t) => t.name);
+    }
+
+    const prices = await priceService.getTokenPrices(tokenNames);
+
+    return res.status(200).json({
+      success: true,
+      message: 'Token prices fetched successfully',
+      data: prices,
+    });
+  } catch (error) {
+    console.error('Error fetching price data:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to fetch price data',
     });
   }
 });

@@ -4,19 +4,15 @@ import { Button } from '../ui/button'
 import { Badge } from '../ui/badge'
 import { 
   History as HistoryIcon,
-  Filter,
   Download,
-  Search,
   Calendar,
   TrendingUp,
   Clock,
-  CheckCircle,
-  AlertCircle
+  CheckCircle
 } from 'lucide-react'
 
 export function History() {
   const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3001'
-  const [filter, setFilter] = useState('all')
   const [stats, setStats] = useState<any>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -24,13 +20,6 @@ export function History() {
   const [pagination, setPagination] = useState<any>(null)
   const [currentPage, setCurrentPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
-
-  const filters = [
-    { id: 'all', label: 'All Trades' },
-    { id: 'completed', label: 'Completed' },
-    { id: 'pending', label: 'Pending' },
-    { id: 'cancelled', label: 'Cancelled' }
-  ]
 
 
   // Fetch stats from API
@@ -51,10 +40,10 @@ export function History() {
     return data.data
   }
 
-  // Fetch orders from API with pagination
+  // Fetch orders from API with pagination - only FINISHED orders
   const fetchOrders = async (page: number = currentPage, limit: number = pageSize) => {
     const token = localStorage.getItem('adminToken')
-    const response = await fetch(`${API_BASE}/api/admin/orders/all?page=${page}&limit=${limit}`, {
+    const response = await fetch(`${API_BASE}/api/admin/orders/all?page=${page}&limit=${limit}&status=FINISHED`, {
       headers: {
         'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json'
@@ -92,17 +81,7 @@ export function History() {
     loadData()
   }, [currentPage, pageSize])
 
-  const filteredTrades = orders ? (
-    filter === 'all' 
-      ? orders 
-      : orders.filter((order: any) => {
-          const status = order.status.toLowerCase()
-          if (filter === 'completed') return status === 'finished'
-          if (filter === 'pending') return status === 'active'
-          if (filter === 'cancelled') return status === 'expired'
-          return true
-        })
-  ) : []
+  // No filtering needed - only FINISHED orders are fetched from API
 
   return (
     <div className="p-6 space-y-6">
@@ -193,61 +172,12 @@ export function History() {
         </Card>
       </div>
 
-      {/* Filters and Search */}
+      {/* Trade History */}
       <Card className="bg-gray-900 border-gray-800">
         <CardHeader>
-          <div className="flex justify-between items-center">
-            <CardTitle className="text-white">Trade History</CardTitle>
-            <div className="flex items-center gap-3">
-              {/* Search */}
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-                <input
-                  type="text"
-                  placeholder="Search trades..."
-                  className="pl-10 pr-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
-                />
-              </div>
-              {/* Filter */}
-              <Button variant="outline" className="border-gray-700 text-gray-300 hover:text-white">
-                <Filter className="w-4 h-4 mr-2" />
-                Filter
-              </Button>
-            </div>
-          </div>
+          <CardTitle className="text-white">Completed Trades</CardTitle>
         </CardHeader>
         <CardContent>
-          {/* Filter Tabs */}
-          <div className="flex gap-2 mb-6">
-            {filters.map((filterOption) => (
-              <button
-                key={filterOption.id}
-                onClick={() => setFilter(filterOption.id)}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  filter === filterOption.id
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
-                }`}
-              >
-                {filterOption.label}
-                {filterOption.id === 'completed' && (
-                  <span className="ml-2 text-xs bg-gray-700 px-2 py-0.5 rounded">
-                    {loading ? '...' : (stats?.completedTrades || 0)}
-                  </span>
-                )}
-                {filterOption.id === 'pending' && (
-                  <span className="ml-2 text-xs bg-gray-700 px-2 py-0.5 rounded">
-                    {loading ? '...' : (stats?.pendingTrades || 0)}
-                  </span>
-                )}
-                {filterOption.id === 'cancelled' && (
-                  <span className="ml-2 text-xs bg-gray-700 px-2 py-0.5 rounded">
-                    {loading ? '...' : (stats?.cancelledTrades || 0)}
-                  </span>
-                )}
-              </button>
-            ))}
-          </div>
 
           {/* Trade Table */}
           <div className="overflow-x-auto">
@@ -272,14 +202,14 @@ export function History() {
                        Loading orders...
                      </td>
                    </tr>
-                 ) : filteredTrades.length === 0 ? (
+                 ) : orders?.length === 0 ? (
                    <tr>
                      <td colSpan={9} className="py-8 text-center text-gray-400">
-                       No orders found
+                       No completed orders found
                      </td>
                    </tr>
                  ) : (
-                   filteredTrades.map((order: any) => (
+                   orders?.map((order: any) => (
                      <tr key={order.id} className="border-b border-gray-800/50 hover:bg-gray-800/30">
                        <td className="py-4 text-sm text-gray-300">
                          <div className="flex items-center gap-2">
@@ -302,16 +232,8 @@ export function History() {
                          </span>
                        </td>
                        <td className="py-4">
-                         <Badge className={
-                           order.status === 'FINISHED' 
-                             ? 'bg-green-500/20 text-green-400 border-green-500/30'
-                             : order.status === 'ACTIVE'
-                             ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'
-                             : 'bg-red-500/20 text-red-400 border-red-500/30'
-                         }>
-                           {order.status === 'FINISHED' && <CheckCircle className="w-3 h-3 mr-1" />}
-                           {order.status === 'ACTIVE' && <Clock className="w-3 h-3 mr-1" />}
-                           {order.status === 'EXPIRED' && <AlertCircle className="w-3 h-3 mr-1" />}
+                         <Badge className="bg-green-500/20 text-green-400 border-green-500/30">
+                           <CheckCircle className="w-3 h-3 mr-1" />
                            {order.status}
                          </Badge>
                        </td>
