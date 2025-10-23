@@ -127,7 +127,7 @@ export function Strategies() {
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <Card className="bg-gray-900 border-gray-800">
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm text-gray-400 font-medium">Active Strategies</CardTitle>
+            <CardTitle className="text-sm text-gray-400 font-medium">Active Tokens</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="flex items-center gap-2">
@@ -181,7 +181,7 @@ export function Strategies() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Active Strategies */}
+        {/* Active Tokens */}
         <div className="lg:col-span-2">
           <Card className="bg-gray-900 border-gray-800">
             <CardHeader>
