@@ -1,8 +1,12 @@
+import { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card'
 import { Badge } from '../ui/badge'
 import { Button } from '../ui/button'
 import { AreaChart, Area, XAxis, YAxis, ResponsiveContainer } from 'recharts'
-import { TrendingUp, TrendingDown, Zap, BarChart } from 'lucide-react'
+import { TrendingUp, TrendingDown, Zap, BarChart, RefreshCw } from 'lucide-react'
+
+// API Configuration
+const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3001'
 
 // Mock data
 const portfolioData = [
@@ -14,11 +18,23 @@ const portfolioData = [
   { time: '20:00', value: 24567 },
 ]
 
-const cryptoPrices = [
-  { symbol: 'BTC', name: 'Bitcoin', price: 67845.32, change: 2.45, volume: '1.2B' },
-  { symbol: 'ETH', name: 'Ethereum', price: 3456.78, change: -1.23, volume: '890M' },
-  { symbol: 'SOL', name: 'Solana', price: 145.67, change: 5.67, volume: '245M' },
-]
+// API Functions
+const fetchPriceData = async () => {
+  const token = localStorage.getItem('adminToken')
+  const response = await fetch(`${API_BASE}/api/admin/orders/price-data`, {
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    }
+  })
+  
+  if (!response.ok) {
+    throw new Error('Failed to fetch price data')
+  }
+  
+  const data = await response.json()
+  return data.data
+}
 
 const activeStrategies = [
   { 
@@ -38,6 +54,50 @@ const activeStrategies = [
 ]
 
 export function Dashboard() {
+  const [cryptoPrices, setCryptoPrices] = useState<any[]>([])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  // Load price data on component mount
+  useEffect(() => {
+    const loadPriceData = async () => {
+      setLoading(true)
+      setError(null)
+      
+      try {
+        const priceData = await fetchPriceData()
+        setCryptoPrices(priceData || [])
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to load price data')
+        console.error('Error loading price data:', err)
+        // Fallback to mock data if API fails
+        setCryptoPrices([
+          { tokenName: 'Bitcoin', currentPrice: 67845.32, priceChangePercent: 2.45 },
+          { tokenName: 'Ethereum', currentPrice: 3456.78, priceChangePercent: -1.23 },
+          { tokenName: 'Solana', currentPrice: 145.67, priceChangePercent: 5.67 },
+        ])
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    loadPriceData()
+  }, [])
+
+  const handleRefreshPrices = async () => {
+    setLoading(true)
+    setError(null)
+    
+    try {
+      const priceData = await fetchPriceData()
+      setCryptoPrices(priceData || [])
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to refresh prices')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   return (
     <div className="p-6 space-y-6">
       {/* Header */}
@@ -140,33 +200,58 @@ export function Dashboard() {
 
         {/* Crypto Prices */}
         <Card className="bg-gray-900 border-gray-800">
-          <CardHeader>
+          <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle className="text-white">Crypto Prices</CardTitle>
+            <Button 
+              onClick={handleRefreshPrices}
+              disabled={loading}
+              variant="outline" 
+              size="sm"
+              className="border-gray-700 hover:bg-gray-800"
+            >
+              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+            </Button>
           </CardHeader>
           <CardContent>
+            {error && (
+              <div className="mb-4 p-3 bg-red-900/20 border border-red-600 rounded-lg">
+                <p className="text-red-400 text-sm">Error: {error}</p>
+              </div>
+            )}
             <div className="space-y-4">
-              {cryptoPrices.map((crypto) => (
-                <div key={crypto.symbol} className="flex items-center justify-between p-3 border border-gray-800 rounded-lg">
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 bg-gray-800 rounded-full flex items-center justify-center">
-                      <span className="text-xs font-medium text-gray-300">{crypto.symbol}</span>
-                    </div>
-                    <div>
-                      <p className="text-white font-medium">{crypto.symbol}</p>
-                      <p className="text-sm text-gray-400">Vol: {crypto.volume}</p>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-white font-medium">${crypto.price.toLocaleString()}</p>
-                    <div className={`flex items-center gap-1 text-sm ${
-                      crypto.change > 0 ? 'text-green-400' : 'text-red-400'
-                    }`}>
-                      {crypto.change > 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
-                      {crypto.change > 0 ? '+' : ''}{crypto.change}%
-                    </div>
-                  </div>
+              {loading && cryptoPrices.length === 0 ? (
+                <div className="flex items-center justify-center py-8">
+                  <RefreshCw className="w-6 h-6 animate-spin text-gray-400" />
+                  <span className="ml-2 text-gray-400">Loading prices...</span>
                 </div>
-              ))}
+              ) : (
+                cryptoPrices.map((crypto) => (
+                  <div key={crypto.tokenName} className="flex items-center justify-between p-3 border border-gray-800 rounded-lg">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 bg-gray-800 rounded-full flex items-center justify-center">
+                        <span className="text-xs font-medium text-gray-300">
+                          {crypto.tokenName.substring(0, 3).toUpperCase()}
+                        </span>
+                      </div>
+                      <div>
+                        <p className="text-white font-medium">{crypto.tokenName}</p>
+                        <p className="text-sm text-gray-400">
+                          {crypto.lastUpdated ? new Date(crypto.lastUpdated).toLocaleTimeString() : 'Live'}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-white font-medium">${crypto.currentPrice.toLocaleString()}</p>
+                      <div className={`flex items-center gap-1 text-sm ${
+                        crypto.priceChangePercent > 0 ? 'text-green-400' : 'text-red-400'
+                      }`}>
+                        {crypto.priceChangePercent > 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
+                        {crypto.priceChangePercent > 0 ? '+' : ''}{crypto.priceChangePercent.toFixed(2)}%
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           </CardContent>
         </Card>
