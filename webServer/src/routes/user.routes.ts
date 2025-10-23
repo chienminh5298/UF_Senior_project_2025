@@ -241,34 +241,34 @@ router.get('/trading/positions', requireAuth, async (req, res) => {
       where: { id: user.id },
       select: {
         tradeBalance: true,
-        profit: true
-      }
+        profit: true,
+      },
     });
 
     // Get user's active orders with related data
     const activeOrders = await prisma.order.findMany({
-      where: { 
+      where: {
         userId: user.id,
-        status: 'ACTIVE'
+        status: 'ACTIVE',
       },
       include: {
         token: {
           select: {
             id: true,
             name: true,
-            stable: true
-          }
+            stable: true,
+          },
         },
         strategy: {
           select: {
             id: true,
-            description: true
-          }
-        }
+            description: true,
+          },
+        },
       },
       orderBy: {
-        timestamp: 'desc'
-      }
+        timestamp: 'desc',
+      },
     });
 
     // Get user's selected tokens (consistent with dashboard)
@@ -279,23 +279,26 @@ router.get('/trading/positions', requireAuth, async (req, res) => {
           select: {
             id: true,
             name: true,
-            isActive: true
-          }
-        }
-      }
+            isActive: true,
+          },
+        },
+      },
     });
 
     // Create positions for each selected token (not just active orders)
-    const activePositions = userTokens.map(userToken => {
+    const activePositions = userTokens.map((userToken) => {
       // Find if there's an active order for this token
-      const activeOrder = activeOrders.find(order => order.tokenId === userToken.token?.id);
-      
+      const activeOrder = activeOrders.find(
+        (order) => order.tokenId === userToken.token?.id
+      );
+
       if (activeOrder && userToken.token) {
         // Token has an active order
-        const currentValue = activeOrder.qty * (activeOrder.markPrice || activeOrder.entryPrice);
+        const currentValue =
+          activeOrder.qty * (activeOrder.markPrice || activeOrder.entryPrice);
         const pnl = activeOrder.netProfit;
         const pnlColor = pnl >= 0 ? 'text-green-400' : 'text-red-400';
-        
+
         return {
           id: activeOrder.id,
           orderId: activeOrder.orderId,
@@ -305,12 +308,14 @@ router.get('/trading/positions', requireAuth, async (req, res) => {
           pnl: `${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}`,
           pnlColor,
           entry: `$${activeOrder.entryPrice.toLocaleString()}`,
-          strategy: activeOrder.strategy ? activeOrder.strategy.description : 'Active Trading',
+          strategy: activeOrder.strategy
+            ? activeOrder.strategy.description
+            : 'Active Trading',
           investment: `$${activeOrder.budget.toFixed(2)}`,
           startDate: new Date(activeOrder.timestamp).toLocaleDateString(),
           currentValue,
           markPrice: activeOrder.markPrice || activeOrder.entryPrice,
-          hasActiveOrder: true
+          hasActiveOrder: true,
         };
       } else if (userToken.token) {
         // Token is selected but no active order (available for trading)
@@ -328,7 +333,7 @@ router.get('/trading/positions', requireAuth, async (req, res) => {
           startDate: 'Not started',
           currentValue: 0,
           markPrice: 0,
-          hasActiveOrder: false
+          hasActiveOrder: false,
         };
       } else {
         // Fallback for null token
@@ -346,23 +351,34 @@ router.get('/trading/positions', requireAuth, async (req, res) => {
           startDate: 'Not started',
           currentValue: 0,
           markPrice: 0,
-          hasActiveOrder: false
+          hasActiveOrder: false,
         };
       }
     });
 
     // Calculate summary statistics (consistent with dashboard)
-    const activePositionsValue = activeOrders.reduce((sum, order) => sum + (order.qty * (order.markPrice || order.entryPrice)), 0);
-    const activePositionsPnL = activeOrders.reduce((sum, order) => sum + order.netProfit, 0);
-    
+    const activePositionsPnL = activeOrders.reduce(
+      (sum, order) => sum + order.netProfit,
+      0
+    );
+
     // Total P&L = user's historical profit + current active positions P&L (same as dashboard)
     const totalPnL = (userData?.profit || 0) + activePositionsPnL;
-    const totalInvestment = activeOrders.reduce((sum, order) => sum + order.budget, 0);
+    const totalInvestment = activeOrders.reduce(
+      (sum, order) => sum + order.budget,
+      0
+    );
     const availableCash = (userData?.tradeBalance || 0) - totalInvestment;
-    
+
     // Calculate win rate (simplified - in real app this would be more complex)
-    const winRate = activeOrders.length > 0 ? 
-      Math.round((activeOrders.filter(order => order.netProfit > 0).length / activeOrders.length) * 100) : 0;
+    const winRate =
+      activeOrders.length > 0
+        ? Math.round(
+            (activeOrders.filter((order) => order.netProfit > 0).length /
+              activeOrders.length) *
+              100
+          )
+        : 0;
 
     res.status(200).json({
       success: true,
@@ -375,8 +391,8 @@ router.get('/trading/positions', requireAuth, async (req, res) => {
           totalPnL, // Now consistent with dashboard
           totalInvestment,
           winRate,
-          availableCash: Math.max(0, availableCash)
-        }
+          availableCash: Math.max(0, availableCash),
+        },
       },
     });
   } catch (error) {
@@ -567,20 +583,20 @@ router.get('/portfolio', requireAuth, async (req, res) => {
       where: { id: user.id },
       select: {
         tradeBalance: true,
-        profit: true
-      }
+        profit: true,
+      },
     });
 
     // Get user's active orders to calculate current position values
     const activeOrders = await prisma.order.findMany({
-      where: { 
+      where: {
         userId: user.id,
-        status: 'ACTIVE'
+        status: 'ACTIVE',
       },
       include: {
         token: true,
-        strategy: true
-      }
+        strategy: true,
+      },
     });
 
     // Calculate current value of active positions
@@ -588,7 +604,7 @@ router.get('/portfolio', requireAuth, async (req, res) => {
     let activePositionsPnL = 0;
     const activeTokensFromOrders = new Set();
 
-    activeOrders.forEach(order => {
+    activeOrders.forEach((order) => {
       const currentValue = order.qty * (order.markPrice || order.entryPrice);
       activePositionsValue += currentValue;
       activePositionsPnL += order.netProfit;
@@ -599,10 +615,10 @@ router.get('/portfolio', requireAuth, async (req, res) => {
 
     // Total portfolio value = trade balance + current value of active positions
     const totalValue = (userData?.tradeBalance || 0) + activePositionsValue;
-    
+
     // Total P&L = user's historical profit + current active positions P&L
     const totalPnL = (userData?.profit || 0) + activePositionsPnL;
-    
+
     // Calculate P&L percentage based on total value
     const totalPnLPercent = totalValue > 0 ? (totalPnL / totalValue) * 100 : 0;
 
@@ -612,8 +628,8 @@ router.get('/portfolio', requireAuth, async (req, res) => {
       select: {
         id: true,
         name: true,
-        isActive: true
-      }
+        isActive: true,
+      },
     });
 
     // Get user's selected tokens (tokens the user has chosen to trade)
@@ -624,10 +640,10 @@ router.get('/portfolio', requireAuth, async (req, res) => {
           select: {
             id: true,
             name: true,
-            isActive: true
-          }
-        }
-      }
+            isActive: true,
+          },
+        },
+      },
     });
 
     res.status(200).json({
@@ -642,7 +658,7 @@ router.get('/portfolio', requireAuth, async (req, res) => {
         userTokens,
         tradeBalance: userData?.tradeBalance || 0,
         activePositionsValue,
-        activePositionsPnL
+        activePositionsPnL,
       },
     });
   } catch (error) {
@@ -704,55 +720,58 @@ router.get('/portfolio/performance', requireAuth, async (req, res) => {
     const userData = await prisma.user.findUnique({
       where: { id: user.id },
       select: {
-        tradeBalance: true
-      }
+        tradeBalance: true,
+      },
     });
 
     // Get user's orders with timestamps for performance chart
     const orders = await prisma.order.findMany({
-      where: { 
+      where: {
         userId: user.id,
-        status: 'ACTIVE'
+        status: 'ACTIVE',
       },
       select: {
         buyDate: true,
         qty: true,
         entryPrice: true,
         markPrice: true,
-        netProfit: true
+        netProfit: true,
       },
       orderBy: {
-        buyDate: 'asc'
-      }
+        buyDate: 'asc',
+      },
     });
 
     // Generate performance data points (last 2 years)
     const performanceData = [];
     const now = new Date();
     const baseBalance = userData?.tradeBalance || 0;
-    
+
     // Generate data for the last 2 years with monthly data points
     for (let i = 24; i >= 0; i--) {
       const date = new Date(now);
       date.setMonth(date.getMonth() - i);
       date.setDate(1); // First day of the month
       date.setHours(0, 0, 0, 0);
-      
+
       // Calculate portfolio value for this date
       let dayValue = baseBalance; // Start with trade balance
-      orders.forEach(order => {
+      orders.forEach((order) => {
         if (order.buyDate <= date) {
           const currentPrice = order.markPrice || order.entryPrice;
           dayValue += order.qty * currentPrice;
         }
       });
-      
+
       performanceData.push({
-        time: date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' }),
+        time: date.toLocaleDateString('en-US', {
+          month: 'short',
+          year: '2-digit',
+        }),
         year: date.getFullYear().toString(),
         month: date.getMonth() + 1, // 1-12
         day: date.getDate(),
-        value: Math.round(dayValue * 100) / 100
+        value: Math.round(dayValue * 100) / 100,
       });
     }
 
@@ -827,7 +846,7 @@ router.get('/tokens/available', requireAuth, async (req, res) => {
     // Get all active tokens that admin has enabled
     const availableTokens = await prisma.token.findMany({
       where: {
-        isActive: true
+        isActive: true,
       },
       select: {
         id: true,
@@ -835,11 +854,11 @@ router.get('/tokens/available', requireAuth, async (req, res) => {
         stable: true,
         minQty: true,
         leverage: true,
-        isActive: true
+        isActive: true,
       },
       orderBy: {
-        name: 'asc'
-      }
+        name: 'asc',
+      },
     });
 
     res.status(200).json({

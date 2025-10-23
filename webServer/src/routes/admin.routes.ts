@@ -1737,7 +1737,10 @@ router.get('/claims', requireAuth, async (req, res) => {
 
     // Build where clause
     const whereClause: any = {};
-    if (status && ['NEW', 'PROCESSING', 'COMPLETED', 'REJECTED'].includes(status)) {
+    if (
+      status &&
+      ['NEW', 'PROCESSING', 'COMPLETED', 'REJECTED'].includes(status)
+    ) {
       whereClause.status = status;
     }
 
@@ -1755,21 +1758,21 @@ router.get('/claims', requireAuth, async (req, res) => {
           select: {
             id: true,
             username: true,
-            email: true
-          }
+            email: true,
+          },
         },
         bills: {
           select: {
             id: true,
             netProfit: true,
-            status: true
-          }
-        }
-      }
+            status: true,
+          },
+        },
+      },
     });
 
     // Format claims data
-    const formattedClaims = claims.map(claim => ({
+    const formattedClaims = claims.map((claim) => ({
       id: claim.id,
       amount: claim.amount,
       status: claim.status,
@@ -1779,7 +1782,7 @@ router.get('/claims', requireAuth, async (req, res) => {
       createdAt: claim.createdAt,
       updatedAt: claim.updatedAt,
       user: claim.user,
-      billsCount: claim.bills.length
+      billsCount: claim.bills.length,
     }));
 
     const totalPages = Math.ceil(totalClaims / validatedLimit);
@@ -1795,15 +1798,15 @@ router.get('/claims', requireAuth, async (req, res) => {
           totalClaims,
           limit: validatedLimit,
           hasNextPage: page < totalPages,
-          hasPrevPage: page > 1
-        }
-      }
+          hasPrevPage: page > 1,
+        },
+      },
     });
   } catch (error) {
     console.error('Error fetching claims:', error);
     return res.status(500).json({
       success: false,
-      message: 'Failed to fetch claims'
+      message: 'Failed to fetch claims',
     });
   }
 });
@@ -1848,7 +1851,7 @@ router.get('/claims/:id', requireAuth, async (req, res) => {
     if (isNaN(claimId)) {
       return res.status(400).json({
         success: false,
-        message: 'Invalid claim ID'
+        message: 'Invalid claim ID',
       });
     }
 
@@ -1859,8 +1862,8 @@ router.get('/claims/:id', requireAuth, async (req, res) => {
           select: {
             id: true,
             username: true,
-            email: true
-          }
+            email: true,
+          },
         },
         bills: {
           include: {
@@ -1868,33 +1871,33 @@ router.get('/claims/:id', requireAuth, async (req, res) => {
               include: {
                 token: {
                   select: {
-                    name: true
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
+                    name: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
     });
 
     if (!claim) {
       return res.status(404).json({
         success: false,
-        message: 'Claim not found'
+        message: 'Claim not found',
       });
     }
 
     return res.status(200).json({
       success: true,
       message: 'Claim details fetched successfully',
-      data: { claim }
+      data: { claim },
     });
   } catch (error) {
     console.error('Error fetching claim details:', error);
     return res.status(500).json({
       success: false,
-      message: 'Failed to fetch claim details'
+      message: 'Failed to fetch claim details',
     });
   }
 });
@@ -1953,26 +1956,26 @@ router.patch('/claims/:id/approve', requireAuth, async (req, res) => {
     if (isNaN(claimId)) {
       return res.status(400).json({
         success: false,
-        message: 'Invalid claim ID'
+        message: 'Invalid claim ID',
       });
     }
 
     const claim = await prisma.claim.findUnique({
       where: { id: claimId },
-      include: { user: true }
+      include: { user: true },
     });
 
     if (!claim) {
       return res.status(404).json({
         success: false,
-        message: 'Claim not found'
+        message: 'Claim not found',
       });
     }
 
     if (claim.status !== 'NEW') {
       return res.status(400).json({
         success: false,
-        message: 'Only NEW claims can be approved'
+        message: 'Only NEW claims can be approved',
       });
     }
 
@@ -1980,29 +1983,29 @@ router.patch('/claims/:id/approve', requireAuth, async (req, res) => {
       where: { id: claimId },
       data: {
         status: 'FINISHED',
-        hashId: note || 'Claim approved by admin'
+        hashId: note || 'Claim approved by admin',
       },
       include: {
         user: {
           select: {
             id: true,
             username: true,
-            email: true
-          }
-        }
-      }
+            email: true,
+          },
+        },
+      },
     });
 
     return res.status(200).json({
       success: true,
       message: 'Claim approved successfully',
-      data: { claim: updatedClaim }
+      data: { claim: updatedClaim },
     });
   } catch (error) {
     console.error('Error approving claim:', error);
     return res.status(500).json({
       success: false,
-      message: 'Failed to approve claim'
+      message: 'Failed to approve claim',
     });
   }
 });
@@ -2061,26 +2064,26 @@ router.patch('/claims/:id/reject', requireAuth, async (req, res) => {
     if (isNaN(claimId)) {
       return res.status(400).json({
         success: false,
-        message: 'Invalid claim ID'
+        message: 'Invalid claim ID',
       });
     }
 
     const claim = await prisma.claim.findUnique({
       where: { id: claimId },
-      include: { user: true }
+      include: { user: true },
     });
 
     if (!claim) {
       return res.status(404).json({
         success: false,
-        message: 'Claim not found'
+        message: 'Claim not found',
       });
     }
 
     if (claim.status !== 'NEW') {
       return res.status(400).json({
         success: false,
-        message: 'Only NEW claims can be rejected'
+        message: 'Only NEW claims can be rejected',
       });
     }
 
@@ -2088,29 +2091,29 @@ router.patch('/claims/:id/reject', requireAuth, async (req, res) => {
       where: { id: claimId },
       data: {
         status: 'FINISHED',
-        hashId: note || 'Claim rejected by admin'
+        hashId: note || 'Claim rejected by admin',
       },
       include: {
         user: {
           select: {
             id: true,
             username: true,
-            email: true
-          }
-        }
-      }
+            email: true,
+          },
+        },
+      },
     });
 
     return res.status(200).json({
       success: true,
       message: 'Claim rejected successfully',
-      data: { claim: updatedClaim }
+      data: { claim: updatedClaim },
     });
   } catch (error) {
     console.error('Error rejecting claim:', error);
     return res.status(500).json({
       success: false,
-      message: 'Failed to reject claim'
+      message: 'Failed to reject claim',
     });
   }
 });
@@ -2201,7 +2204,7 @@ router.get('/orders/realtime-pnl', requireAuth, async (req, res) => {
 
   try {
     const { priceService } = await import('../services/priceService');
-    
+
     const ordersWithPnL = await priceService.getActiveOrdersWithPnL();
     const summary = await priceService.getTotalUnrealizedPnL();
 
@@ -2210,14 +2213,14 @@ router.get('/orders/realtime-pnl', requireAuth, async (req, res) => {
       message: 'Real-time P&L data fetched successfully',
       data: {
         orders: ordersWithPnL,
-        summary
-      }
+        summary,
+      },
     });
   } catch (error) {
     console.error('Error fetching real-time P&L:', error);
     return res.status(500).json({
       success: false,
-      message: 'Failed to fetch real-time P&L data'
+      message: 'Failed to fetch real-time P&L data',
     });
   }
 });
@@ -2281,19 +2284,19 @@ router.get('/orders/price-data', requireAuth, async (req, res) => {
 
   try {
     const { priceService } = await import('../services/priceService');
-    
+
     const { tokens } = req.query;
     let tokenNames: string[] = [];
-    
+
     if (tokens && typeof tokens === 'string') {
-      tokenNames = tokens.split(',').map(t => t.trim());
+      tokenNames = tokens.split(',').map((t) => t.trim());
     } else {
       // Get all active tokens from database
       const dbTokens = await prisma.token.findMany({
         where: { isActive: true },
-        select: { name: true }
+        select: { name: true },
       });
-      tokenNames = dbTokens.map(t => t.name);
+      tokenNames = dbTokens.map((t) => t.name);
     }
 
     const prices = await priceService.getTokenPrices(tokenNames);
@@ -2301,13 +2304,13 @@ router.get('/orders/price-data', requireAuth, async (req, res) => {
     return res.status(200).json({
       success: true,
       message: 'Token prices fetched successfully',
-      data: prices
+      data: prices,
     });
   } catch (error) {
     console.error('Error fetching price data:', error);
     return res.status(500).json({
       success: false,
-      message: 'Failed to fetch price data'
+      message: 'Failed to fetch price data',
     });
   }
 });

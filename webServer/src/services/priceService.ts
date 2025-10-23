@@ -4,22 +4,22 @@ const prisma = new PrismaClient();
 
 // Sample price data
 const SAMPLE_PRICES: Record<string, number> = {
-  'Bitcoin': 45000.00,
-  'Ethereum': 3200.00,
-  'Cardano': 0.45,
-  'Solana': 95.00,
-  'Polygon': 0.85,
-  'Chainlink': 15.50,
+  Bitcoin: 45000.0,
+  Ethereum: 3200.0,
+  Cardano: 0.45,
+  Solana: 95.0,
+  Polygon: 0.85,
+  Chainlink: 15.5,
 };
 
 // Price change simulation
 const PRICE_CHANGES: Record<string, { min: number; max: number }> = {
-  'Bitcoin': { min: -0.05, max: 0.05 }, 
-  'Ethereum': { min: -0.08, max: 0.08 }, 
-  'Cardano': { min: -0.12, max: 0.12 },
-  'Solana': { min: -0.10, max: 0.10 }, 
-  'Polygon': { min: -0.15, max: 0.15 }, 
-  'Chainlink': { min: -0.09, max: 0.09 }, 
+  Bitcoin: { min: -0.05, max: 0.05 },
+  Ethereum: { min: -0.08, max: 0.08 },
+  Cardano: { min: -0.12, max: 0.12 },
+  Solana: { min: -0.1, max: 0.1 },
+  Polygon: { min: -0.15, max: 0.15 },
+  Chainlink: { min: -0.09, max: 0.09 },
 };
 
 export interface TokenPrice {
@@ -49,14 +49,15 @@ class PriceService {
   async getTokenPrice(tokenName: string): Promise<TokenPrice> {
     const cached = this.priceCache.get(tokenName);
     const now = new Date();
-    
-    if (cached && (now.getTime() - cached.lastUpdated.getTime()) < 30000) {
+
+    if (cached && now.getTime() - cached.lastUpdated.getTime() < 30000) {
       return cached;
     }
 
     const basePrice = SAMPLE_PRICES[tokenName] || 100;
     const changeRange = PRICE_CHANGES[tokenName] || { min: -0.1, max: 0.1 };
-    const changePercent = changeRange.min + Math.random() * (changeRange.max - changeRange.min);
+    const changePercent =
+      changeRange.min + Math.random() * (changeRange.max - changeRange.min);
     const currentPrice = basePrice * (1 + changePercent);
     const priceChange = currentPrice - basePrice;
     const priceChangePercent = (priceChange / basePrice) * 100;
@@ -75,7 +76,7 @@ class PriceService {
 
   async getTokenPrices(tokenNames: string[]): Promise<TokenPrice[]> {
     const prices = await Promise.all(
-      tokenNames.map(name => this.getTokenPrice(name))
+      tokenNames.map((name) => this.getTokenPrice(name))
     );
     return prices;
   }
@@ -88,16 +89,20 @@ class PriceService {
     side: 'BUY' | 'SELL';
   }): Promise<OrderPnL> {
     const tokenPrice = await this.getTokenPrice(order.tokenName);
-    
+
     let unrealizedPnL: number;
     let unrealizedPnLPercent: number;
 
     if (order.side === 'BUY') {
-      unrealizedPnL = (tokenPrice.currentPrice - order.entryPrice) * order.quantity;
-      unrealizedPnLPercent = ((tokenPrice.currentPrice - order.entryPrice) / order.entryPrice) * 100;
+      unrealizedPnL =
+        (tokenPrice.currentPrice - order.entryPrice) * order.quantity;
+      unrealizedPnLPercent =
+        ((tokenPrice.currentPrice - order.entryPrice) / order.entryPrice) * 100;
     } else {
-      unrealizedPnL = (order.entryPrice - tokenPrice.currentPrice) * order.quantity;
-      unrealizedPnLPercent = ((order.entryPrice - tokenPrice.currentPrice) / order.entryPrice) * 100;
+      unrealizedPnL =
+        (order.entryPrice - tokenPrice.currentPrice) * order.quantity;
+      unrealizedPnLPercent =
+        ((order.entryPrice - tokenPrice.currentPrice) / order.entryPrice) * 100;
     }
 
     return {
@@ -113,27 +118,33 @@ class PriceService {
     };
   }
 
-  async calculateOrdersPnL(orders: Array<{
-    id: number;
-    tokenName: string;
-    entryPrice: number;
-    quantity: number;
-    side: 'BUY' | 'SELL';
-  }>): Promise<OrderPnL[]> {
-    const pnlPromises = orders.map(order => this.calculateOrderPnL(order));
+  async calculateOrdersPnL(
+    orders: Array<{
+      id: number;
+      tokenName: string;
+      entryPrice: number;
+      quantity: number;
+      side: 'BUY' | 'SELL';
+    }>
+  ): Promise<OrderPnL[]> {
+    const pnlPromises = orders.map((order) => this.calculateOrderPnL(order));
     return Promise.all(pnlPromises);
   }
 
-  async getActiveOrdersWithPnL(): Promise<Array<OrderPnL & { 
-    userId: number;
-    userEmail: string;
-    status: string;
-    buyDate: Date;
-    strategy?: string;
-  }>> {
+  async getActiveOrdersWithPnL(): Promise<
+    Array<
+      OrderPnL & {
+        userId: number;
+        userEmail: string;
+        status: string;
+        buyDate: Date;
+        strategy?: string;
+      }
+    >
+  > {
     const activeOrders = await prisma.order.findMany({
       where: {
-        status: 'ACTIVE'
+        status: 'ACTIVE',
       },
       select: {
         id: true,
@@ -146,19 +157,19 @@ class PriceService {
           select: {
             id: true,
             email: true,
-          }
+          },
         },
         token: {
           select: {
             name: true,
-          }
+          },
         },
         strategy: {
           select: {
             description: true,
-          }
-        }
-      }
+          },
+        },
+      },
     });
 
     const ordersWithPnL = await Promise.all(
@@ -192,18 +203,27 @@ class PriceService {
     lastUpdated: Date;
   }> {
     const ordersWithPnL = await this.getActiveOrdersWithPnL();
-    
-    const totalUnrealizedPnL = ordersWithPnL.reduce((sum, order) => sum + order.unrealizedPnL, 0);
-    const orderCount = ordersWithPnL.length;
-    const lastUpdated = ordersWithPnL.length > 0 ? ordersWithPnL[0].lastUpdated : new Date();
 
-    const totalUnrealizedPnLPercent = orderCount > 0 
-      ? ordersWithPnL.reduce((sum, order) => sum + order.unrealizedPnLPercent, 0) / orderCount
-      : 0;
+    const totalUnrealizedPnL = ordersWithPnL.reduce(
+      (sum, order) => sum + order.unrealizedPnL,
+      0
+    );
+    const orderCount = ordersWithPnL.length;
+    const lastUpdated =
+      ordersWithPnL.length > 0 ? ordersWithPnL[0].lastUpdated : new Date();
+
+    const totalUnrealizedPnLPercent =
+      orderCount > 0
+        ? ordersWithPnL.reduce(
+            (sum, order) => sum + order.unrealizedPnLPercent,
+            0
+          ) / orderCount
+        : 0;
 
     return {
       totalUnrealizedPnL: Math.round(totalUnrealizedPnL * 100) / 100,
-      totalUnrealizedPnLPercent: Math.round(totalUnrealizedPnLPercent * 100) / 100,
+      totalUnrealizedPnLPercent:
+        Math.round(totalUnrealizedPnLPercent * 100) / 100,
       orderCount,
       lastUpdated,
     };
