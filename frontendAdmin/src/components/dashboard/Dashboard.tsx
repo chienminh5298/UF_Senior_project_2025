@@ -58,7 +58,6 @@ export function Dashboard() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // Load price data on component mount
   useEffect(() => {
     const loadPriceData = async () => {
       setLoading(true)
@@ -70,7 +69,6 @@ export function Dashboard() {
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load price data')
         console.error('Error loading price data:', err)
-        // Fallback to mock data if API fails
         setCryptoPrices([
           { tokenName: 'Bitcoin', currentPrice: 67845.32, priceChangePercent: 2.45 },
           { tokenName: 'Ethereum', currentPrice: 3456.78, priceChangePercent: -1.23 },
