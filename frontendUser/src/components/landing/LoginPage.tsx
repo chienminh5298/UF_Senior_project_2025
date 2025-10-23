@@ -85,22 +85,51 @@ export function LoginPage({ onNavigateToLanding, onLogin }: LoginPageProps) {
     }
   }
 
-  const handleDemoLogin = () => {
-    const demoAuth = {
-      token: 'demo-token',
-      user: {
-        id: 0,
-        fullname: 'Demo Investor',
-        username: 'demo',
-        email: 'demo@example.com',
-        isVerified: true
-      }
-    }
+  const handleDemoLogin = async () => {
+    // Use real John Doe credentials for demo login
     try {
-      localStorage.setItem('auth', JSON.stringify(demoAuth))
-    } catch {}
-    onLogin()
-  }
+      setIsLoading(true);
+      setError(''); // Clear any previous errors
+      
+      console.log('Demo login: Attempting to login with John Doe credentials...');
+      
+      const loginRes = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: 'john@example.com',
+          password: 'password123'
+        })
+      });
+      
+      console.log('Demo login: Response status:', loginRes.status);
+      
+      let loginData;
+      try {
+        loginData = await loginRes.json();
+        console.log('Demo login: Response data:', loginData);
+      } catch (parseError) {
+        console.error('Demo login: Failed to parse response:', parseError);
+        throw new Error('Invalid response from server');
+      }
+      
+      if (!loginRes.ok || !loginData?.success) {
+        console.error('Demo login: Login failed:', loginData);
+        throw new Error(loginData?.message || 'Demo login failed');
+      }
+      
+      console.log('Demo login: Success! Setting auth data...');
+      const authPayload = { token: loginData.token, user: loginData.user };
+      localStorage.setItem('auth', JSON.stringify(authPayload));
+      console.log('Demo login: Auth data saved, calling onLogin...');
+      onLogin();
+    } catch (err: any) {
+      console.error('Demo login: Error occurred:', err);
+      setError(err?.message || 'Demo login failed');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-gray-950 text-white flex items-center justify-center p-4">
@@ -382,8 +411,9 @@ export function LoginPage({ onNavigateToLanding, onLogin }: LoginPageProps) {
                   onClick={() => handleDemoLogin()}
                   variant="outline" 
                   className="border-gray-700 text-gray-300 hover:text-white hover:border-blue-500 px-8"
+                  disabled={isLoading}
                 >
-                  Demo Investor
+                  {isLoading ? 'Logging in...' : 'Demo Investor'}
                 </Button>
               </div>
 

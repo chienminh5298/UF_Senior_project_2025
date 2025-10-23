@@ -152,6 +152,242 @@ router.get('/profile', requireAuth, async (req, res) => {
  *         description: Unauthorized
  */
 
+// GET /api/user/trading/positions
+/**
+ * @swagger
+ * /api/user/trading/positions:
+ *   get:
+ *     summary: Get user's active trading positions
+ *     tags: [User]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Trading positions retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     activePositions:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           id:
+ *                             type: integer
+ *                           orderId:
+ *                             type: string
+ *                           pair:
+ *                             type: string
+ *                           type:
+ *                             type: string
+ *                           size:
+ *                             type: string
+ *                           pnl:
+ *                             type: string
+ *                           pnlColor:
+ *                             type: string
+ *                           entry:
+ *                             type: string
+ *                           strategy:
+ *                             type: string
+ *                           investment:
+ *                             type: string
+ *                           startDate:
+ *                             type: string
+ *                           currentValue:
+ *                             type: number
+ *                           markPrice:
+ *                             type: number
+ *                     summary:
+ *                       type: object
+ *                       properties:
+ *                         totalPositions:
+ *                           type: integer
+ *                         totalPnL:
+ *                           type: number
+ *                         totalInvestment:
+ *                           type: number
+ *                         winRate:
+ *                           type: number
+ *                         availableCash:
+ *                           type: number
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Failed to fetch trading positions
+ */
+router.get('/trading/positions', requireAuth, async (req, res) => {
+  const { user } = req;
+
+  if (!user) {
+    return res.status(401).json({
+      success: false,
+      message: 'Unauthorized',
+    });
+  }
+
+  try {
+    // Get user's trade balance and profit (consistent with dashboard)
+    const userData = await prisma.user.findUnique({
+      where: { id: user.id },
+      select: {
+        tradeBalance: true,
+        profit: true
+      }
+    });
+
+    // Get user's active orders with related data
+    const activeOrders = await prisma.order.findMany({
+      where: { 
+        userId: user.id,
+        status: 'ACTIVE'
+      },
+      include: {
+        token: {
+          select: {
+            id: true,
+            name: true,
+            stable: true
+          }
+        },
+        strategy: {
+          select: {
+            id: true,
+            description: true
+          }
+        }
+      },
+      orderBy: {
+        timestamp: 'desc'
+      }
+    });
+
+    // Get user's selected tokens (consistent with dashboard)
+    const userTokens = await prisma.userToken.findMany({
+      where: { userId: user.id },
+      include: {
+        token: {
+          select: {
+            id: true,
+            name: true,
+            isActive: true
+          }
+        }
+      }
+    });
+
+    // Create positions for each selected token (not just active orders)
+    const activePositions = userTokens.map(userToken => {
+      // Find if there's an active order for this token
+      const activeOrder = activeOrders.find(order => order.tokenId === userToken.token?.id);
+      
+      if (activeOrder && userToken.token) {
+        // Token has an active order
+        const currentValue = activeOrder.qty * (activeOrder.markPrice || activeOrder.entryPrice);
+        const pnl = activeOrder.netProfit;
+        const pnlColor = pnl >= 0 ? 'text-green-400' : 'text-red-400';
+        
+        return {
+          id: activeOrder.id,
+          orderId: activeOrder.orderId,
+          pair: `${userToken.token.name}/USDT`,
+          type: activeOrder.side === 'BUY' ? 'Long' : 'Short',
+          size: `${activeOrder.qty} ${userToken.token.name}`,
+          pnl: `${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}`,
+          pnlColor,
+          entry: `$${activeOrder.entryPrice.toLocaleString()}`,
+          strategy: activeOrder.strategy ? activeOrder.strategy.description : 'Active Trading',
+          investment: `$${activeOrder.budget.toFixed(2)}`,
+          startDate: new Date(activeOrder.timestamp).toLocaleDateString(),
+          currentValue,
+          markPrice: activeOrder.markPrice || activeOrder.entryPrice,
+          hasActiveOrder: true
+        };
+      } else if (userToken.token) {
+        // Token is selected but no active order (available for trading)
+        return {
+          id: userToken.id,
+          orderId: null,
+          pair: `${userToken.token.name}/USDT`,
+          type: 'Available',
+          size: `0 ${userToken.token.name}`,
+          pnl: '$0.00',
+          pnlColor: 'text-gray-400',
+          entry: 'Not started',
+          strategy: 'Ready to trade',
+          investment: '$0.00',
+          startDate: 'Not started',
+          currentValue: 0,
+          markPrice: 0,
+          hasActiveOrder: false
+        };
+      } else {
+        // Fallback for null token
+        return {
+          id: userToken.id,
+          orderId: null,
+          pair: 'Unknown/USDT',
+          type: 'Available',
+          size: '0 Unknown',
+          pnl: '$0.00',
+          pnlColor: 'text-gray-400',
+          entry: 'Not started',
+          strategy: 'Ready to trade',
+          investment: '$0.00',
+          startDate: 'Not started',
+          currentValue: 0,
+          markPrice: 0,
+          hasActiveOrder: false
+        };
+      }
+    });
+
+    // Calculate summary statistics (consistent with dashboard)
+    const activePositionsValue = activeOrders.reduce((sum, order) => sum + (order.qty * (order.markPrice || order.entryPrice)), 0);
+    const activePositionsPnL = activeOrders.reduce((sum, order) => sum + order.netProfit, 0);
+    
+    // Total P&L = user's historical profit + current active positions P&L (same as dashboard)
+    const totalPnL = (userData?.profit || 0) + activePositionsPnL;
+    const totalInvestment = activeOrders.reduce((sum, order) => sum + order.budget, 0);
+    const availableCash = (userData?.tradeBalance || 0) - totalInvestment;
+    
+    // Calculate win rate (simplified - in real app this would be more complex)
+    const winRate = activeOrders.length > 0 ? 
+      Math.round((activeOrders.filter(order => order.netProfit > 0).length / activeOrders.length) * 100) : 0;
+
+    res.status(200).json({
+      success: true,
+      message: 'Trading positions retrieved successfully',
+      data: {
+        activePositions,
+        summary: {
+          totalPositions: userTokens.length, // Same as active tokens count
+          activeTokensCount: userTokens.length, // Same as dashboard
+          totalPnL, // Now consistent with dashboard
+          totalInvestment,
+          winRate,
+          availableCash: Math.max(0, availableCash)
+        }
+      },
+    });
+  } catch (error) {
+    console.error('Error fetching trading positions:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch trading positions',
+    });
+  }
+});
+
 router.get('/orders', requireAuth, async (req, res) => {
   const { user } = req;
 
@@ -244,6 +480,379 @@ router.get('/settings', requireAuth, async (req, res) => {
     return res
       .status(500)
       .json({ success: false, message: 'Failed to fetch settings' });
+  }
+});
+
+// GET /api/user/portfolio
+/**
+ * @swagger
+ * /api/user/portfolio:
+ *   get:
+ *     summary: Get user portfolio data
+ *     tags: [User]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Portfolio data retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     totalValue:
+ *                       type: number
+ *                       description: Total portfolio value
+ *                     totalPnL:
+ *                       type: number
+ *                       description: Total profit/loss
+ *                     totalPnLPercent:
+ *                       type: number
+ *                       description: Total profit/loss percentage
+ *                     activeTokensCount:
+ *                       type: integer
+ *                       description: Number of active tokens
+ *                     availableTokens:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           id:
+ *                             type: integer
+ *                           name:
+ *                             type: string
+ *                           isActive:
+ *                             type: boolean
+ *                     userTokens:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           id:
+ *                             type: integer
+ *                           token:
+ *                             type: object
+ *                             properties:
+ *                               id:
+ *                                 type: integer
+ *                               name:
+ *                                 type: string
+ *                               isActive:
+ *                                 type: boolean
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Failed to fetch portfolio data
+ */
+router.get('/portfolio', requireAuth, async (req, res) => {
+  const { user } = req;
+
+  if (!user) {
+    return res.status(401).json({
+      success: false,
+      message: 'Unauthorized',
+    });
+  }
+
+  try {
+    // Get user's current balance and profit from user record
+    const userData = await prisma.user.findUnique({
+      where: { id: user.id },
+      select: {
+        tradeBalance: true,
+        profit: true
+      }
+    });
+
+    // Get user's active orders to calculate current position values
+    const activeOrders = await prisma.order.findMany({
+      where: { 
+        userId: user.id,
+        status: 'ACTIVE'
+      },
+      include: {
+        token: true,
+        strategy: true
+      }
+    });
+
+    // Calculate current value of active positions
+    let activePositionsValue = 0;
+    let activePositionsPnL = 0;
+    const activeTokensFromOrders = new Set();
+
+    activeOrders.forEach(order => {
+      const currentValue = order.qty * (order.markPrice || order.entryPrice);
+      activePositionsValue += currentValue;
+      activePositionsPnL += order.netProfit;
+      if (order.token) {
+        activeTokensFromOrders.add(order.token.id);
+      }
+    });
+
+    // Total portfolio value = trade balance + current value of active positions
+    const totalValue = (userData?.tradeBalance || 0) + activePositionsValue;
+    
+    // Total P&L = user's historical profit + current active positions P&L
+    const totalPnL = (userData?.profit || 0) + activePositionsPnL;
+    
+    // Calculate P&L percentage based on total value
+    const totalPnLPercent = totalValue > 0 ? (totalPnL / totalValue) * 100 : 0;
+
+    // Get available tokens (all active tokens in the system)
+    const availableTokens = await prisma.token.findMany({
+      where: { isActive: true },
+      select: {
+        id: true,
+        name: true,
+        isActive: true
+      }
+    });
+
+    // Get user's selected tokens (tokens the user has chosen to trade)
+    const userTokens = await prisma.userToken.findMany({
+      where: { userId: user.id },
+      include: {
+        token: {
+          select: {
+            id: true,
+            name: true,
+            isActive: true
+          }
+        }
+      }
+    });
+
+    res.status(200).json({
+      success: true,
+      message: 'Portfolio data retrieved successfully',
+      data: {
+        totalValue,
+        totalPnL,
+        totalPnLPercent,
+        activeTokensCount: userTokens.length, // Number of tokens user has selected
+        availableTokens,
+        userTokens,
+        tradeBalance: userData?.tradeBalance || 0,
+        activePositionsValue,
+        activePositionsPnL
+      },
+    });
+  } catch (error) {
+    console.error('Error fetching portfolio data:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch portfolio data',
+    });
+  }
+});
+
+// GET /api/user/portfolio/performance
+/**
+ * @swagger
+ * /api/user/portfolio/performance:
+ *   get:
+ *     summary: Get user portfolio performance data for charts
+ *     tags: [User]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Portfolio performance data retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       time:
+ *                         type: string
+ *                       value:
+ *                         type: number
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Failed to fetch performance data
+ */
+router.get('/portfolio/performance', requireAuth, async (req, res) => {
+  const { user } = req;
+
+  if (!user) {
+    return res.status(401).json({
+      success: false,
+      message: 'Unauthorized',
+    });
+  }
+
+  try {
+    // Get user's trade balance
+    const userData = await prisma.user.findUnique({
+      where: { id: user.id },
+      select: {
+        tradeBalance: true
+      }
+    });
+
+    // Get user's orders with timestamps for performance chart
+    const orders = await prisma.order.findMany({
+      where: { 
+        userId: user.id,
+        status: 'ACTIVE'
+      },
+      select: {
+        buyDate: true,
+        qty: true,
+        entryPrice: true,
+        markPrice: true,
+        netProfit: true
+      },
+      orderBy: {
+        buyDate: 'asc'
+      }
+    });
+
+    // Generate performance data points (last 2 years)
+    const performanceData = [];
+    const now = new Date();
+    const baseBalance = userData?.tradeBalance || 0;
+    
+    // Generate data for the last 2 years with monthly data points
+    for (let i = 24; i >= 0; i--) {
+      const date = new Date(now);
+      date.setMonth(date.getMonth() - i);
+      date.setDate(1); // First day of the month
+      date.setHours(0, 0, 0, 0);
+      
+      // Calculate portfolio value for this date
+      let dayValue = baseBalance; // Start with trade balance
+      orders.forEach(order => {
+        if (order.buyDate <= date) {
+          const currentPrice = order.markPrice || order.entryPrice;
+          dayValue += order.qty * currentPrice;
+        }
+      });
+      
+      performanceData.push({
+        time: date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' }),
+        year: date.getFullYear().toString(),
+        month: date.getMonth() + 1, // 1-12
+        day: date.getDate(),
+        value: Math.round(dayValue * 100) / 100
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Portfolio performance data retrieved successfully',
+      data: performanceData,
+    });
+  } catch (error) {
+    console.error('Error fetching performance data:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch performance data',
+    });
+  }
+});
+
+// GET /api/user/tokens/available
+/**
+ * @swagger
+ * /api/user/tokens/available:
+ *   get:
+ *     summary: Get all available tokens for trading
+ *     tags: [User]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Available tokens retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: integer
+ *                       name:
+ *                         type: string
+ *                       stable:
+ *                         type: string
+ *                       minQty:
+ *                         type: number
+ *                       leverage:
+ *                         type: number
+ *                       isActive:
+ *                         type: boolean
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Failed to fetch available tokens
+ */
+router.get('/tokens/available', requireAuth, async (req, res) => {
+  const { user } = req;
+
+  if (!user) {
+    return res.status(401).json({
+      success: false,
+      message: 'Unauthorized',
+    });
+  }
+
+  try {
+    // Get all active tokens that admin has enabled
+    const availableTokens = await prisma.token.findMany({
+      where: {
+        isActive: true
+      },
+      select: {
+        id: true,
+        name: true,
+        stable: true,
+        minQty: true,
+        leverage: true,
+        isActive: true
+      },
+      orderBy: {
+        name: 'asc'
+      }
+    });
+
+    res.status(200).json({
+      success: true,
+      message: 'Available tokens retrieved successfully',
+      data: availableTokens,
+    });
+  } catch (error) {
+    console.error('Error fetching available tokens:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch available tokens',
+    });
   }
 });
 
