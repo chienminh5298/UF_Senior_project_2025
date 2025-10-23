@@ -19,10 +19,28 @@ function App() {
   const [currentPage, setCurrentPage] = useState<AppState>('login')
   const [activeTab, setActiveTab] = useState('dashboard')
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false)
+  const [userData, setUserData] = useState<{ fullname: string; username: string; email: string } | null>(null)
   const userMenuRef = useRef<HTMLDivElement>(null)
 
-  const handleLogin = () => { setCurrentPage('dashboard') }
-  const handleSignOut = () => { setCurrentPage('login'); setActiveTab('dashboard') }
+  const handleLogin = () => { 
+    setCurrentPage('dashboard')
+    // Load user data from localStorage
+    try {
+      const auth = localStorage.getItem('auth')
+      if (auth) {
+        const { user } = JSON.parse(auth)
+        setUserData(user)
+      }
+    } catch (e) {
+      console.error('Failed to load user data:', e)
+    }
+  }
+  const handleSignOut = () => { 
+    setCurrentPage('login')
+    setActiveTab('dashboard')
+    setUserData(null)
+    localStorage.removeItem('auth')
+  }
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -94,8 +112,8 @@ function App() {
                     <User className="w-4 h-4 text-white" />
                   </div>
                   <div className="text-left">
-                    <div className="text-sm font-medium text-white">Admin User</div>
-                    <div className="text-xs text-gray-400">ADMIN</div>
+                    <div className="text-sm font-medium text-white">{userData?.fullname || 'Admin User'}</div>
+                    <div className="text-xs text-gray-400">@{userData?.username || 'admin'}</div>
                   </div>
                   <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${isUserMenuOpen ? 'rotate-180' : ''}`} />
                 </button>
@@ -109,8 +127,8 @@ function App() {
                           <User className="w-5 h-5 text-white" />
                         </div>
                         <div>
-                          <div className="font-medium text-white">Admin User</div>
-                          <div className="text-sm text-gray-400">admin@example.com</div>
+                          <div className="font-medium text-white">{userData?.fullname || 'Admin User'}</div>
+                          <div className="text-sm text-gray-400">{userData?.email || 'admin@example.com'}</div>
                         </div>
                       </div>
                     </div>

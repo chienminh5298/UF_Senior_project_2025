@@ -1,96 +1,161 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState, useMemo } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card'
 import { Button } from '../ui/button'
 import { Badge } from '../ui/badge'
 import { 
   Play,
-  TrendingUp,
-  TrendingDown,
-  BarChart3,
-  Clock,
-  Target,
-  Settings,
-  Download,
   RefreshCw,
-  CheckCircle,
+  Activity,
   Zap
 } from 'lucide-react'
+import { useBacktestingEngine } from '../shared/BacktestingEngine'
+import { DailyTradeSummary } from '../shared/DailyTradeSummary'
+import { PerformanceMetrics } from '../shared/PerformanceMetrics'
 
 export function Backtesting() {
   const [isRunning, setIsRunning] = useState(false)
-  const [selectedStrategy, setSelectedStrategy] = useState('BTC Momentum Pro')
-  const [selectedTimeframe, setSelectedTimeframe] = useState('1M')
+  const [hasRun, setHasRun] = useState(false)
+  const [selectedToken, setSelectedToken] = useState('BTC')
+  const [selectedStrategy, setSelectedStrategy] = useState('')
+  const [selectedYear, setSelectedYear] = useState(2024)
+  const [initialCapital, setInitialCapital] = useState(10000)
+  const [renderSpeed, setRenderSpeed] = useState(1)
+  const [backtestResults, setBacktestResults] = useState<any>(null)
+  const [strategies, setStrategies] = useState<any[]>([])
+  const [currentPage, setCurrentPage] = useState(1)
+  const [selectedDate, setSelectedDate] = useState<string | null>(null)
+  const tradesPerPage = 10
 
-  const strategies = [
-    'BTC Momentum Pro',
-    'ETH Scalping Bot',
-    'SOL Swing Trader',
-    'Multi-Pair Arbitrage'
+  const tokens = ['BTC', 'ETH', 'SOL']
+  const years = [2023, 2024, 2025]
+  const renderSpeeds = [
+    { value: 0.5, label: '0.5x' },
+    { value: 1, label: '1x' },
+    { value: 2, label: '2x' },
+    { value: 5, label: '5x' },
+    { value: 10, label: '10x' }
   ]
 
-  const timeframes = ['1W', '1M', '3M', '6M', '1Y', 'Custom']
-  
-  const backtestResults = {
-    totalReturn: '+34.7%',
-    sharpeRatio: '2.18',
-    maxDrawdown: '-8.4%',
-    winRate: '73.2%',
-    totalTrades: 156,
-    profitFactor: '2.47',
-    avgTrade: '+0.89%',
-    bestTrade: '+4.2%',
-    worstTrade: '-2.1%'
+  // Use shared backtesting engine (must be before useMemo that depends on it)
+  const { chartContainerRef, runBacktest, stopAnimation, isAnimating, currentAnimationTime } = useBacktestingEngine({
+    token: selectedToken,
+    year: selectedYear,
+    showChart: true
+  })
+
+  // Calculate trades with capital and group by day
+  const { tradesWithCapital, dailySummaries } = useMemo(() => {
+    if (!backtestResults?.trades) return { tradesWithCapital: [], dailySummaries: [] }
+    
+    // Filter trades based on animation progress (if animating)
+    let relevantTrades = backtestResults.trades
+    if (isAnimating && currentAnimationTime !== null) {
+      relevantTrades = backtestResults.trades.filter((trade: any) => trade.timestamp <= currentAnimationTime)
+    }
+    
+    let runningCapital = initialCapital
+    const trades = relevantTrades.map((trade: any) => {
+      const tradeWithCapital = { ...trade, capitalBefore: runningCapital }
+      if (trade.pnl !== undefined) {
+        runningCapital += trade.pnl
+      }
+      return { ...tradeWithCapital, capitalAfter: runningCapital }
+    })
+
+    // Group trades by day (newest first)
+    const tradesByDay = new Map<string, any[]>()
+    trades.forEach((trade: any) => {
+      const date = new Date(trade.timestamp).toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric'
+      })
+      if (!tradesByDay.has(date)) {
+        tradesByDay.set(date, [])
+      }
+      tradesByDay.get(date)!.push(trade)
+    })
+
+    // Create daily summaries (newest first)
+    const summaries = Array.from(tradesByDay.entries()).map(([date, dayTrades]) => {
+      const totalPnL = dayTrades.reduce((sum, trade) => sum + (trade.pnl || 0), 0)
+      const buyOrders = dayTrades.filter(t => t.side === 'BUY').length
+      const sellOrders = dayTrades.filter(t => t.side === 'SELL').length
+      const openingCapital = dayTrades[0]?.capitalBefore || initialCapital
+      const closingCapital = dayTrades[dayTrades.length - 1]?.capitalAfter || initialCapital
+      
+      return {
+        date,
+        timestamp: dayTrades[0].timestamp,
+        totalOrders: dayTrades.length,
+        buyOrders,
+        sellOrders,
+        totalPnL,
+        openingCapital,
+        closingCapital,
+        trades: dayTrades
+      }
+    }).sort((a, b) => b.timestamp - a.timestamp) // Newest first
+
+    return { tradesWithCapital: trades, dailySummaries: summaries }
+  }, [backtestResults?.trades, initialCapital, isAnimating, currentAnimationTime])
+
+  const finalCapital = tradesWithCapital.length > 0 
+    ? tradesWithCapital[tradesWithCapital.length - 1].capitalAfter 
+    : initialCapital
+
+  // Fetch strategies when token changes
+  useEffect(() => {
+    const fetchStrategies = async () => {
+      try {
+        const res = await fetch(`/api/backtest/strategies?token=${selectedToken}`)
+        const data = await res.json()
+        if (data.success) {
+          setStrategies(data.data)
+          if (data.data.length > 0 && !selectedStrategy) {
+            setSelectedStrategy(data.data[0].id)
+          }
+        }
+      } catch (error) {
+        console.error('Failed to fetch strategies:', error)
+      }
+    }
+    fetchStrategies()
+  }, [selectedToken])
+
+  const handleRunBacktest = async () => {
+    if (!selectedStrategy) {
+      alert('Please select a strategy')
+      return
+    }
+
+    setIsRunning(true)
+    setHasRun(false)
+    try {
+      const results = await runBacktest({
+        token: selectedToken,
+        strategy: selectedStrategy,
+        year: selectedYear,
+        initialCapital,
+        renderSpeed
+      })
+      
+      if (results) {
+        setBacktestResults(results)
+        setHasRun(true)
+        setCurrentPage(1) // Reset to first page when new backtest runs
+        setSelectedDate(null) // Clear selected date
+      }
+    } catch (e) {
+      console.error('Backtest failed:', e)
+      alert('Backtest failed: ' + (e as Error).message)
+    } finally {
+      setIsRunning(false)
+    }
   }
 
-  const recentBacktests = [
-    {
-      id: 1,
-      strategy: 'BTC Momentum Pro',
-      timeframe: '3M',
-      return: '+23.4%',
-      winRate: '71%',
-      trades: 89,
-      status: 'completed',
-      date: '2024-01-15'
-    },
-    {
-      id: 2,
-      strategy: 'ETH Scalping Bot',
-      timeframe: '1M',
-      return: '+12.8%',
-      winRate: '82%',
-      trades: 203,
-      status: 'completed',
-      date: '2024-01-14'
-    },
-    {
-      id: 3,
-      strategy: 'SOL Swing Trader',
-      timeframe: '6M',
-      return: '-3.2%',
-      winRate: '58%',
-      trades: 45,
-      status: 'completed',
-      date: '2024-01-13'
-    },
-    {
-      id: 4,
-      strategy: 'Multi-Pair Arbitrage',
-      timeframe: '1Y',
-      return: '+45.6%',
-      winRate: '91%',
-      trades: 234,
-      status: 'running',
-      date: '2024-01-12'
-    }
-  ]
-
-  const handleRunBacktest = () => {
-    setIsRunning(true)
-    // Simulate backtest running
-    setTimeout(() => {
-      setIsRunning(false)
-    }, 3000)
+  const handleStopAnimation = () => {
+    stopAnimation()
   }
 
   return (
@@ -101,86 +166,133 @@ export function Backtesting() {
           <h1 className="text-3xl font-bold text-white">Strategy Backtesting</h1>
           <p className="text-gray-400">Test your strategies with historical data</p>
         </div>
-        <div className="flex items-center gap-3">
-          <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30">
-            <Zap className="w-3 h-3 mr-1" />
-            Lightning Fast Results
-          </Badge>
-        </div>
+        <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30">
+          <Zap className="w-3 h-3 mr-1" />
+          Lightning Fast Results
+        </Badge>
       </div>
 
-      {/* Backtest Configuration */}
-      <Card className="bg-gray-900 border-gray-800">
-        <CardHeader>
-          <CardTitle className="text-white">Backtest Configuration</CardTitle>
-          <p className="text-sm text-gray-400">Configure your backtest parameters</p>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      {/* Main Layout: Left Config + Right Chart */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Left: Configuration Panel */}
+        <Card className="bg-gray-900 border-gray-800">
+          <CardHeader>
+            <CardTitle className="text-white">Configuration</CardTitle>
+            <p className="text-sm text-gray-400">Setup backtest parameters</p>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {/* Token Selection */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-gray-300">Token</label>
+              <select 
+                value={selectedToken}
+                onChange={(e) => {
+                  setSelectedToken(e.target.value)
+                  setSelectedStrategy('')
+                }}
+                className="w-full p-3 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-blue-500"
+                disabled={isRunning || isAnimating}
+              >
+                {tokens.map((token) => (
+                  <option key={token} value={token}>{token}</option>
+                ))}
+              </select>
+            </div>
+
             {/* Strategy Selection */}
-            <div className="space-y-3">
+            <div className="space-y-2">
               <label className="text-sm font-medium text-gray-300">Strategy</label>
               <select 
                 value={selectedStrategy}
                 onChange={(e) => setSelectedStrategy(e.target.value)}
                 className="w-full p-3 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-blue-500"
+                disabled={isRunning || isAnimating || strategies.length === 0}
               >
-                {strategies.map((strategy) => (
-                  <option key={strategy} value={strategy}>{strategy}</option>
-                ))}
+                {strategies.length === 0 ? (
+                  <option value="">Loading strategies...</option>
+                ) : (
+                  strategies.map((strategy) => (
+                  <option key={strategy.id} value={strategy.id}>{strategy.name}</option>
+                  ))
+                )}
               </select>
+              {/* Always render description container to prevent layout shift */}
+              <div className="min-h-[2.5rem]">
+                {selectedStrategy && strategies.find(s => s.id === selectedStrategy) && (
+                  <p className="text-xs text-gray-400 mt-1">
+                    {strategies.find(s => s.id === selectedStrategy)?.description}
+                  </p>
+                )}
+              </div>
             </div>
 
-            {/* Timeframe Selection */}
-            <div className="space-y-3">
-              <label className="text-sm font-medium text-gray-300">Timeframe</label>
+            {/* Year Selection */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-gray-300">Year</label>
               <div className="grid grid-cols-3 gap-2">
-                {timeframes.map((timeframe) => (
+                {years.map((year) => (
                   <button
-                    key={timeframe}
-                    onClick={() => setSelectedTimeframe(timeframe)}
+                    key={year}
+                    onClick={() => setSelectedYear(year)}
+                    disabled={isRunning || isAnimating}
                     className={`p-2 rounded text-sm font-medium transition-colors ${
-                      selectedTimeframe === timeframe
+                      selectedYear === year
                         ? 'bg-blue-600 text-white'
                         : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
-                    }`}
+                    } disabled:opacity-50 disabled:cursor-not-allowed`}
                   >
-                    {timeframe}
+                    {year}
                   </button>
                 ))}
               </div>
             </div>
 
-            {/* Advanced Settings */}
-            <div className="space-y-3">
-              <label className="text-sm font-medium text-gray-300">Settings</label>
-              <div className="space-y-2">
-                <div className="flex items-center justify-between p-2 bg-gray-800 rounded">
-                  <span className="text-sm text-gray-300">Initial Capital</span>
-                  <span className="text-sm text-white">$10,000</span>
-                </div>
-                <div className="flex items-center justify-between p-2 bg-gray-800 rounded">
-                  <span className="text-sm text-gray-300">Commission</span>
-                  <span className="text-sm text-white">0.1%</span>
-                </div>
-                <Button variant="ghost" size="sm" className="w-full text-blue-400 hover:text-white">
-                  <Settings className="w-4 h-4 mr-2" />
-                  Advanced Settings
-                </Button>
+            {/* Initial Capital */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-gray-300">Initial Capital ($)</label>
+              <input
+                type="number"
+                value={initialCapital}
+                onChange={(e) => setInitialCapital(Number(e.target.value))}
+                className="w-full p-3 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-blue-500"
+                min="100"
+                max="1000000"
+                disabled={isRunning || isAnimating}
+              />
+            </div>
+
+            {/* Render Speed */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-gray-300">Chart Render Speed</label>
+              <div className="grid grid-cols-5 gap-2">
+                {renderSpeeds.map((speed) => (
+                  <button
+                    key={speed.value}
+                    onClick={() => setRenderSpeed(speed.value)}
+                    disabled={isRunning || isAnimating}
+                    className={`p-2 rounded text-sm font-medium transition-colors ${
+                      renderSpeed === speed.value
+                        ? 'bg-green-600 text-white'
+                        : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
+                    } disabled:opacity-50 disabled:cursor-not-allowed`}
+                  >
+                    {speed.label}
+                  </button>
+                ))}
               </div>
             </div>
-          </div>
 
-          <div className="flex items-center gap-4 mt-6">
+            {/* Run Button */}
+            {!isAnimating ? (
             <Button 
               onClick={handleRunBacktest}
-              disabled={isRunning}
-              className="bg-blue-600 hover:bg-blue-700"
+                disabled={isRunning || !selectedStrategy}
+              className="w-full bg-blue-600 hover:bg-blue-700 py-3"
             >
               {isRunning ? (
                 <>
                   <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                  Running Backtest...
+                  Running...
                 </>
               ) : (
                 <>
@@ -189,215 +301,64 @@ export function Backtesting() {
                 </>
               )}
             </Button>
-            <div className="text-sm text-gray-400">
-              Estimated time: &lt;30 seconds
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Results Overview */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <Card className="bg-gray-900 border-gray-800">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm text-gray-400 font-medium">Total Return</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center gap-2">
-              <span className="text-2xl font-bold text-green-400">{backtestResults.totalReturn}</span>
-              <TrendingUp className="w-5 h-5 text-green-400" />
-            </div>
-            <p className="text-sm text-gray-400 mt-1">vs {selectedTimeframe} period</p>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-gray-900 border-gray-800">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm text-gray-400 font-medium">Sharpe Ratio</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center gap-2">
-              <span className="text-2xl font-bold text-white">{backtestResults.sharpeRatio}</span>
-              <BarChart3 className="w-5 h-5 text-blue-400" />
-            </div>
-            <p className="text-sm text-gray-400 mt-1">Risk-adjusted return</p>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-gray-900 border-gray-800">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm text-gray-400 font-medium">Win Rate</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center gap-2">
-              <span className="text-2xl font-bold text-white">{backtestResults.winRate}</span>
-              <Target className="w-5 h-5 text-green-400" />
-            </div>
-            <p className="text-sm text-gray-400 mt-1">{backtestResults.totalTrades} trades</p>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-gray-900 border-gray-800">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm text-gray-400 font-medium">Max Drawdown</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center gap-2">
-              <span className="text-2xl font-bold text-red-400">{backtestResults.maxDrawdown}</span>
-              <TrendingDown className="w-5 h-5 text-red-400" />
-            </div>
-            <p className="text-sm text-gray-400 mt-1">Worst decline</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Detailed Results */}
-        <Card className="bg-gray-900 border-gray-800">
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle className="text-white">Detailed Results</CardTitle>
-            <Button variant="ghost" size="sm">
-              <Download className="w-4 h-4" />
+            ) : (
+              <Button 
+                onClick={handleStopAnimation}
+                className="w-full bg-red-600 hover:bg-red-700 py-3"
+              >
+                Stop Backtest
             </Button>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-3">
-                <div className="flex justify-between">
-                  <span className="text-gray-400">Profit Factor</span>
-                  <span className="text-white font-medium">{backtestResults.profitFactor}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-400">Avg Trade</span>
-                  <span className="text-green-400 font-medium">{backtestResults.avgTrade}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-400">Best Trade</span>
-                  <span className="text-green-400 font-medium">{backtestResults.bestTrade}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-400">Worst Trade</span>
-                  <span className="text-red-400 font-medium">{backtestResults.worstTrade}</span>
-                </div>
-              </div>
-              <div className="space-y-3">
-                <div className="flex justify-between">
-                  <span className="text-gray-400">Total Trades</span>
-                  <span className="text-white font-medium">{backtestResults.totalTrades}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-400">Winning Trades</span>
-                  <span className="text-green-400 font-medium">114</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-400">Losing Trades</span>
-                  <span className="text-red-400 font-medium">42</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-400">Avg Hold Time</span>
-                  <span className="text-white font-medium">2.3h</span>
-                </div>
-              </div>
-            </div>
+            )}
+
           </CardContent>
         </Card>
 
-        {/* Performance Summary */}
-        <Card className="bg-gray-900 border-gray-800">
-          <CardHeader>
-            <CardTitle className="text-white">Performance Summary</CardTitle>
-            <p className="text-sm text-gray-400">
-              Strategy performance overview for {selectedStrategy}
-            </p>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              <div className="flex items-center justify-between p-4 bg-gray-800/50 rounded-lg">
-                <div>
-                  <p className="text-sm text-gray-400">Strategy Type</p>
-                  <p className="text-white font-medium">{selectedStrategy}</p>
-                </div>
-                <div className="text-right">
-                  <p className="text-sm text-gray-400">Timeframe</p>
-                  <p className="text-white font-medium">{selectedTimeframe}</p>
-                </div>
+        {/* Right: Chart (2 columns) */}
+        <Card className="bg-gray-900 border-gray-800 lg:col-span-2">
+          <CardHeader className="pb-3">
+            <div className="flex justify-between items-center">
+              <div>
+                <CardTitle className="text-white">{selectedToken} Price Chart</CardTitle>
+                <p className="text-sm text-gray-400">Year {selectedYear}</p>
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="p-3 bg-green-500/10 border border-green-500/20 rounded-lg">
-                  <p className="text-sm text-green-400 mb-1">Total Profit</p>
-                  <p className="text-xl font-bold text-green-400">+$3,470</p>
-                </div>
-                <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-lg">
-                  <p className="text-sm text-blue-400 mb-1">Risk Score</p>
-                  <p className="text-xl font-bold text-blue-400">Medium</p>
-                </div>
-              </div>
-              <div className="text-center p-4 bg-gray-800/30 rounded-lg">
-                <p className="text-sm text-gray-400 mb-2">Strategy Status</p>
-                <Badge className="bg-green-500/20 text-green-400 border-green-500/30">
-                  <CheckCircle className="w-3 h-3 mr-1" />
-                  Optimized & Ready
+              {isAnimating && (
+                <Badge className="bg-green-500/20 text-green-400 border-green-500/30 animate-pulse">
+                  <RefreshCw className="w-3 h-3 mr-1 animate-spin" />
+                  Animating at {renderSpeed}x speed
                 </Badge>
-              </div>
+              )}
             </div>
+          </CardHeader>
+          <CardContent className="p-0">
+            <div ref={chartContainerRef} className="w-full" style={{ height: 600 }} />
           </CardContent>
         </Card>
       </div>
 
-      {/* Recent Backtests */}
-      <Card className="bg-gray-900 border-gray-800">
-        <CardHeader>
-          <CardTitle className="text-white">Recent Backtests</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-gray-800">
-                  <th className="text-left py-3 text-sm font-medium text-gray-400">Strategy</th>
-                  <th className="text-left py-3 text-sm font-medium text-gray-400">Timeframe</th>
-                  <th className="text-left py-3 text-sm font-medium text-gray-400">Return</th>
-                  <th className="text-left py-3 text-sm font-medium text-gray-400">Win Rate</th>
-                  <th className="text-left py-3 text-sm font-medium text-gray-400">Trades</th>
-                  <th className="text-left py-3 text-sm font-medium text-gray-400">Status</th>
-                  <th className="text-left py-3 text-sm font-medium text-gray-400">Date</th>
-                </tr>
-              </thead>
-              <tbody>
-                {recentBacktests.map((backtest) => (
-                  <tr key={backtest.id} className="border-b border-gray-800/50">
-                    <td className="py-3 text-sm text-white font-medium">{backtest.strategy}</td>
-                    <td className="py-3 text-sm text-gray-300">{backtest.timeframe}</td>
-                    <td className="py-3">
-                      <span className={`text-sm font-medium ${backtest.return.startsWith('+') ? 'text-green-400' : 'text-red-400'}`}>
-                        {backtest.return}
-                      </span>
-                    </td>
-                    <td className="py-3 text-sm text-gray-300">{backtest.winRate}</td>
-                    <td className="py-3 text-sm text-gray-300">{backtest.trades}</td>
-                    <td className="py-3">
-                      <Badge className={`${backtest.status === 'completed' ? 'bg-green-500/20 text-green-400 border-green-500/30' : 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'}`}>
-                        {backtest.status === 'completed' ? (
-                          <>
-                            <CheckCircle className="w-3 h-3 mr-1" />
-                            Completed
-                          </>
-                        ) : (
-                          <>
-                            <Clock className="w-3 h-3 mr-1" />
-                            Running
-                          </>
-                        )}
-                      </Badge>
-                    </td>
-                    <td className="py-3 text-sm text-gray-300">{backtest.date}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </CardContent>
-      </Card>
+      {/* Daily Trade History - Show during and after animation */}
+      {hasRun && backtestResults && backtestResults.trades && backtestResults.trades.length > 0 && (
+        <DailyTradeSummary
+          dailySummaries={dailySummaries}
+          totalTrades={tradesWithCapital.length}
+          currentPage={currentPage}
+          tradesPerPage={tradesPerPage}
+          selectedDate={selectedDate}
+          onSelectDate={setSelectedDate}
+          onPageChange={setCurrentPage}
+        />
+      )}
+
+      {/* Performance Metrics - Only show after animation completes */}
+      {hasRun && backtestResults && !isAnimating && (
+        <PerformanceMetrics
+          results={backtestResults}
+          token={selectedToken}
+          strategy={strategies.find(s => s.id === selectedStrategy)?.name || selectedStrategy}
+          year={selectedYear}
+          initialCapital={initialCapital}
+          finalCapital={finalCapital}
+        />
+      )}
     </div>
   )
 }

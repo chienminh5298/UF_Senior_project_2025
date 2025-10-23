@@ -134,7 +134,7 @@ export function Dashboard() {
 
         <Card className="bg-gray-900 border-gray-800">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-gray-400">Active Strategies</CardTitle>
+            <CardTitle className="text-sm font-medium text-gray-400">Active Tokens</CardTitle>
             <Zap className="h-4 w-4 text-gray-400" />
           </CardHeader>
           <CardContent>
@@ -145,12 +145,12 @@ export function Dashboard() {
 
         <Card className="bg-gray-900 border-gray-800">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-gray-400">Win Rate</CardTitle>
+            <CardTitle className="text-sm font-medium text-gray-400">Available Tokens</CardTitle>
             <TrendingUp className="h-4 w-4 text-gray-400" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-white">68.4%</div>
-            <div className="text-sm text-gray-400">Last 30 days</div>
+            <div className="text-2xl font-bold text-white">12</div>
+            <div className="text-sm text-gray-400">tokens to choose from</div>
           </CardContent>
         </Card>
       </div>
