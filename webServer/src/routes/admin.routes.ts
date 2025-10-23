@@ -2115,4 +2115,201 @@ router.patch('/claims/:id/reject', requireAuth, async (req, res) => {
   }
 });
 
+// GET /api/admin/orders/realtime-pnl
+/**
+ * @swagger
+ * /api/admin/orders/realtime-pnl:
+ *   get:
+ *     summary: Get real-time P&L for all active orders
+ *     tags: [Admin]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Real-time P&L data fetched successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     orders:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           orderId:
+ *                             type: integer
+ *                           tokenName:
+ *                             type: string
+ *                           entryPrice:
+ *                             type: number
+ *                           currentPrice:
+ *                             type: number
+ *                           quantity:
+ *                             type: number
+ *                           side:
+ *                             type: string
+ *                             enum: [BUY, SELL]
+ *                           unrealizedPnL:
+ *                             type: number
+ *                           unrealizedPnLPercent:
+ *                             type: number
+ *                           userId:
+ *                             type: integer
+ *                           userEmail:
+ *                             type: string
+ *                           status:
+ *                             type: string
+ *                           buyDate:
+ *                             type: string
+ *                             format: date-time
+ *                           strategy:
+ *                             type: string
+ *                           lastUpdated:
+ *                             type: string
+ *                             format: date-time
+ *                     summary:
+ *                       type: object
+ *                       properties:
+ *                         totalUnrealizedPnL:
+ *                           type: number
+ *                         totalUnrealizedPnLPercent:
+ *                           type: number
+ *                         orderCount:
+ *                           type: integer
+ *                         lastUpdated:
+ *                           type: string
+ *                           format: date-time
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Failed to fetch real-time P&L data
+ */
+router.get('/orders/realtime-pnl', requireAuth, async (req, res) => {
+  const { user } = req;
+
+  if (!user) {
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
+  }
+
+  try {
+    const { priceService } = await import('../services/priceService');
+    
+    const ordersWithPnL = await priceService.getActiveOrdersWithPnL();
+    const summary = await priceService.getTotalUnrealizedPnL();
+
+    return res.status(200).json({
+      success: true,
+      message: 'Real-time P&L data fetched successfully',
+      data: {
+        orders: ordersWithPnL,
+        summary
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching real-time P&L:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to fetch real-time P&L data'
+    });
+  }
+});
+
+// GET /api/admin/orders/price-data
+/**
+ * @swagger
+ * /api/admin/orders/price-data:
+ *   get:
+ *     summary: Get current token prices
+ *     tags: [Admin]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: tokens
+ *         schema:
+ *           type: array
+ *           items:
+ *             type: string
+ *         description: Comma-separated list of token names
+ *     responses:
+ *       200:
+ *         description: Token prices fetched successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       tokenName:
+ *                         type: string
+ *                       currentPrice:
+ *                         type: number
+ *                       priceChange:
+ *                         type: number
+ *                       priceChangePercent:
+ *                         type: number
+ *                       lastUpdated:
+ *                         type: string
+ *                         format: date-time
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Failed to fetch price data
+ */
+router.get('/orders/price-data', requireAuth, async (req, res) => {
+  const { user } = req;
+
+  if (!user) {
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
+  }
+
+  try {
+    const { priceService } = await import('../services/priceService');
+    
+    const { tokens } = req.query;
+    let tokenNames: string[] = [];
+    
+    if (tokens && typeof tokens === 'string') {
+      tokenNames = tokens.split(',').map(t => t.trim());
+    } else {
+      // Get all active tokens from database
+      const dbTokens = await prisma.token.findMany({
+        where: { isActive: true },
+        select: { name: true }
+      });
+      tokenNames = dbTokens.map(t => t.name);
+    }
+
+    const prices = await priceService.getTokenPrices(tokenNames);
+
+    return res.status(200).json({
+      success: true,
+      message: 'Token prices fetched successfully',
+      data: prices
+    });
+  } catch (error) {
+    console.error('Error fetching price data:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to fetch price data'
+    });
+  }
+});
+
 export default router;

@@ -467,6 +467,46 @@ const updateUserStatus = async (userId: number) => {
   return data
 }
 
+// Real-time P&L API Functions
+const fetchRealtimePnL = async () => {
+  const token = localStorage.getItem('adminToken')
+  
+  const response = await fetch(`${API_BASE}/api/admin/orders/realtime-pnl`, {
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    }
+  })
+  
+  if (!response.ok) {
+    throw new Error('Failed to fetch real-time P&L data')
+  }
+  
+  const data = await response.json()
+  return data.data
+}
+
+const fetchPriceData = async (tokens?: string[]) => {
+  const token = localStorage.getItem('adminToken')
+  const url = tokens 
+    ? `${API_BASE}/api/admin/orders/price-data?tokens=${tokens.join(',')}`
+    : `${API_BASE}/api/admin/orders/price-data`
+  
+  const response = await fetch(url, {
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    }
+  })
+  
+  if (!response.ok) {
+    throw new Error('Failed to fetch price data')
+  }
+  
+  const data = await response.json()
+  return data.data
+}
+
 export function Admin() {
   const [activeTab, setActiveTab] = useState('Analyze')
   const [selectedUser, setSelectedUser] = useState<typeof users[0] | null>(null)
@@ -480,6 +520,13 @@ export function Admin() {
   const [orderStats, setOrderStats] = useState<any>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  
+  // Real-time P&L State
+  const [realtimeOrders, setRealtimeOrders] = useState<any[]>([])
+  const [realtimeSummary, setRealtimeSummary] = useState<any>(null)
+  const [priceData, setPriceData] = useState<any[]>([])
+  const [autoRefresh, setAutoRefresh] = useState(false)
+  const [refreshInterval, setRefreshInterval] = useState<NodeJS.Timeout | null>(null)
   
   // Strategy Form State
   const [showNewStrategyForm, setShowNewStrategyForm] = useState(false)
@@ -497,6 +544,43 @@ export function Admin() {
   const [adminNote, setAdminNote] = useState('')
   const [availableTokens, setAvailableTokens] = useState<ApiToken[]>([])
   const [strategies, setStrategies] = useState<any[]>([])
+
+  // Real-time P&L Functions
+  const loadRealtimeData = async () => {
+    try {
+      const [realtimeData, priceDataResult] = await Promise.all([
+        fetchRealtimePnL(),
+        fetchPriceData()
+      ])
+      
+      setRealtimeOrders(realtimeData.orders || [])
+      setRealtimeSummary(realtimeData.summary || null)
+      setPriceData(priceDataResult || [])
+    } catch (err) {
+      console.error('Error loading real-time data:', err)
+      setError(err instanceof Error ? err.message : 'Failed to load real-time data')
+    }
+  }
+
+  const toggleAutoRefresh = () => {
+    if (autoRefresh) {
+      if (refreshInterval) {
+        clearInterval(refreshInterval)
+        setRefreshInterval(null)
+      }
+      setAutoRefresh(false)
+    } else {
+      const interval = setInterval(loadRealtimeData, 10000) // Refresh every 10 seconds
+      setRefreshInterval(interval)
+      setAutoRefresh(true)
+    }
+  }
+
+  const handleRealtimeRefresh = async () => {
+    setLoading(true)
+    await loadRealtimeData()
+    setLoading(false)
+  }
   const [newStrategyForm, setNewStrategyForm] = useState<NewStrategyForm>({
     description: '',
     contribution: 0,
@@ -717,8 +801,15 @@ export function Admin() {
       
       try {
         if (activeTab === 'Orders') {
-          const ordersData = await fetchOrders()
+          const [ordersData, realtimeData, priceDataResult] = await Promise.all([
+            fetchOrders(),
+            fetchRealtimePnL(),
+            fetchPriceData()
+          ])
           setApiOrders(ordersData)
+          setRealtimeOrders(realtimeData.orders || [])
+          setRealtimeSummary(realtimeData.summary || null)
+          setPriceData(priceDataResult || [])
         } else if (activeTab === 'Users') {
           const usersData = await fetchUsers()
           setApiUsers(usersData)
@@ -726,8 +817,12 @@ export function Admin() {
           const claimsData = await fetchClaims()
           setApiClaims(claimsData)
         } else if (activeTab === 'Analyze') {
-          const statsData = await fetchOrderStats()
+          const [statsData, priceDataResult] = await Promise.all([
+            fetchOrderStats(),
+            fetchPriceData()
+          ])
           setOrderStats(statsData)
+          setPriceData(priceDataResult || [])
         } else if (activeTab === 'Strategies') {
           const [tokensData, strategiesData] = await Promise.all([
             fetchTokens(),
@@ -746,6 +841,15 @@ export function Admin() {
 
     loadData()
   }, [activeTab])
+
+  // Cleanup auto-refresh interval on unmount
+  useEffect(() => {
+    return () => {
+      if (refreshInterval) {
+        clearInterval(refreshInterval)
+      }
+    }
+  }, [refreshInterval])
 
   const renderAnalyzeContent = () => (
     <div className="space-y-6">
@@ -766,6 +870,25 @@ export function Admin() {
             <option value="2023">2023</option>
             <option value="2022">2022</option>
           </select>
+          <Button 
+            onClick={async () => {
+              setLoading(true)
+              try {
+                const priceDataResult = await fetchPriceData()
+                setPriceData(priceDataResult || [])
+              } catch (err) {
+                setError(err instanceof Error ? err.message : 'Failed to refresh prices')
+              } finally {
+                setLoading(false)
+              }
+            }}
+            disabled={loading}
+            variant="outline" 
+            size="sm"
+            className="border-gray-700 hover:bg-gray-800"
+          >
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+          </Button>
         </div>
       </div>
 
@@ -887,6 +1010,42 @@ export function Admin() {
         )}
       </div>
 
+      {/* Crypto Prices Section */}
+      {priceData.length > 0 && (
+        <Card className="bg-gray-900 border-gray-800">
+          <CardHeader>
+            <CardTitle className="text-white flex items-center gap-2">
+              <TrendingUp className="w-5 h-5" />
+              Current Token Prices
+            </CardTitle>
+            <p className="text-sm text-gray-400">Real-time price data for all active tokens</p>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+              {priceData.map((price) => (
+                <div key={price.tokenName} className="bg-gray-800 rounded-lg p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="text-white font-medium text-sm">{price.tokenName}</h3>
+                    <span className={`text-xs ${price.priceChange >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                      {price.priceChange >= 0 ? '+' : ''}{price.priceChangePercent.toFixed(2)}%
+                    </span>
+                  </div>
+                  <div className="text-white font-bold text-lg">
+                    ${price.currentPrice.toLocaleString()}
+                  </div>
+                  <div className={`text-xs ${price.priceChange >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                    {price.priceChange >= 0 ? '+' : ''}${price.priceChange.toFixed(2)}
+                  </div>
+                  <div className="text-xs text-gray-400 mt-1">
+                    {new Date(price.lastUpdated).toLocaleTimeString()}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Performance Chart Placeholder */}
       <Card className="bg-gray-900 border-gray-800">
         <CardHeader>
@@ -905,73 +1064,87 @@ export function Admin() {
   )
 
   const renderOrdersContent = () => {
-    const handleOrderClick = (order: ApiOrder) => {
-      if (selectedOrder?.id === order.id) {
+    const handleOrderClick = (order: any) => {
+      if (selectedOrder?.id === order.orderId) {
         setSelectedOrder(null)
       } else {
-        // Convert API order to display format
+        // Convert real-time order to display format
         const displayOrder = {
-          id: order.id,
-          symbol: order.token.name,
+          id: order.orderId,
+          symbol: order.tokenName,
           type: order.side,
-          amount: order.qty,
+          amount: order.quantity,
           price: order.entryPrice,
+          currentPrice: order.currentPrice,
           status: order.status,
           timestamp: new Date(order.buyDate).toLocaleString(),
-          pnl: order.netProfit,
-          user: order.user.email.split('@')[0], 
-          userId: order.user.id,
-          userEmail: order.user.email,
+          pnl: order.unrealizedPnL,
+          pnlPercent: order.unrealizedPnLPercent,
+          user: order.userEmail.split('@')[0], 
+          userId: order.userId,
+          userEmail: order.userEmail,
           fillPrice: order.entryPrice,
-          fees: order.fee,
-          strategy: order.strategy?.description || 'Unknown Strategy',
-          
-          // TODO: Need to add these fields to the API
-          orderType: 'Market',  
+          strategy: order.strategy || 'Unknown Strategy',
+          orderType: 'Market',
+          lastUpdated: order.lastUpdated,
         }
         setSelectedOrder(displayOrder as any)
       }
     }
 
     const handleRefresh = async () => {
-      setLoading(true)
-      setError(null)
-      try {
-        const ordersData = await fetchOrders()
-        setApiOrders(ordersData)
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to refresh orders')
-      } finally {
-        setLoading(false)
-      }
+      await handleRealtimeRefresh()
     }
 
-    // Calculate total profits from API data
-    const totalPnL = apiOrders.reduce((sum, order) => sum + order.netProfit, 0)
+    // Use real-time data if available, fallback to regular orders
+    const displayOrders = realtimeOrders.length > 0 ? realtimeOrders : apiOrders
+    const totalPnL = realtimeSummary?.totalUnrealizedPnL || apiOrders.reduce((sum, order) => sum + order.netProfit, 0)
 
     return (
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-white">Order Management</h1>
-            <p className="text-gray-400">Monitor current orders and P&L</p>
+            <p className="text-gray-400">Monitor current orders and real-time P&L</p>
+            {realtimeSummary && (
+              <p className="text-xs text-gray-500 mt-1">
+                Last updated: {new Date(realtimeSummary.lastUpdated).toLocaleTimeString()}
+              </p>
+            )}
           </div>
           <div className="flex items-center gap-4">
             <div className="text-right">
-              <p className="text-sm text-gray-400">Total P&L</p>
+              <p className="text-sm text-gray-400">
+                {realtimeSummary ? 'Real-time P&L' : 'Total P&L'}
+              </p>
               <p className={`text-2xl font-bold ${totalPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                 {totalPnL >= 0 ? '+' : ''}${totalPnL.toFixed(2)}
               </p>
+              {realtimeSummary && (
+                <p className="text-xs text-gray-500">
+                  {realtimeSummary.totalUnrealizedPnLPercent >= 0 ? '+' : ''}{realtimeSummary.totalUnrealizedPnLPercent.toFixed(2)}%
+                </p>
+              )}
             </div>
-            <Button 
-              onClick={handleRefresh} 
-              disabled={loading}
-              variant="outline" 
-              size="sm"
-              className="border-gray-700 hover:bg-gray-800"
-            >
-              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button 
+                onClick={toggleAutoRefresh}
+                variant={autoRefresh ? "default" : "outline"}
+                size="sm"
+                className={autoRefresh ? "bg-green-600 hover:bg-green-700" : "border-gray-700 hover:bg-gray-800"}
+              >
+                {autoRefresh ? 'Auto ON' : 'Auto OFF'}
+              </Button>
+              <Button 
+                onClick={handleRefresh} 
+                disabled={loading}
+                variant="outline" 
+                size="sm"
+                className="border-gray-700 hover:bg-gray-800"
+              >
+                <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+              </Button>
+            </div>
           </div>
         </div>
 
@@ -998,62 +1171,97 @@ export function Admin() {
                         <th className="text-left py-3 text-sm font-medium text-gray-400">Symbol</th>
                         <th className="text-left py-3 text-sm font-medium text-gray-400">Type</th>
                         <th className="text-left py-3 text-sm font-medium text-gray-400">Amount</th>
-                        <th className="text-left py-3 text-sm font-medium text-gray-400">Price</th>
+                        <th className="text-left py-3 text-sm font-medium text-gray-400">Entry Price</th>
+                        <th className="text-left py-3 text-sm font-medium text-gray-400">Current Price</th>
                         <th className="text-left py-3 text-sm font-medium text-gray-400">Status</th>
-                        <th className="text-left py-3 text-sm font-medium text-gray-400">P&L</th>
+                        <th className="text-left py-3 text-sm font-medium text-gray-400">Real-time P&L</th>
                       </tr>
                     </thead>
                     <tbody>
                       {loading ? (
                         <tr>
-                          <td colSpan={7} className="py-8 text-center text-gray-400">
+                          <td colSpan={8} className="py-8 text-center text-gray-400">
                             <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2" />
                             Loading orders...
                           </td>
                         </tr>
-                      ) : !apiOrders || apiOrders.length === 0 ? (
+                      ) : !displayOrders || displayOrders.length === 0 ? (
                         <tr>
-                          <td colSpan={7} className="py-8 text-center text-gray-400">
+                          <td colSpan={8} className="py-8 text-center text-gray-400">
                             No orders found
                           </td>
                         </tr>
                       ) : (
-                        (apiOrders || []).map((order) => (
-                          <tr 
-                            key={order.id} 
-                            className={`border-b border-gray-800/50 cursor-pointer transition-colors ${
-                              selectedOrder?.id === order.id 
-                                ? 'bg-blue-600/10 border-blue-600/30' 
-                                : 'hover:bg-gray-800/30'
-                            }`}
-                            onClick={() => handleOrderClick(order)}
-                          >
-                            <td className="py-3">
-                              <div>
-                                <p className="text-white font-medium text-sm">{order.user?.email?.split('@')[0] || 'Unknown'}</p>
-                                <p className="text-gray-400 text-xs">{order.user?.email || 'No email'}</p>
-                              </div>
-                            </td>
-                            <td className="py-3 text-white font-medium">{order.token?.name || 'Unknown Token'}</td>
-                            <td className="py-3">
-                              <Badge className={order.side === 'BUY' ? 'bg-green-600' : 'bg-red-600'}>
-                                {order.side}
-                              </Badge>
-                            </td>
-                            <td className="py-3 text-white">{order.qty}</td>
-                            <td className="py-3 text-white">${order.entryPrice.toLocaleString()}</td>
-                            <td className="py-3">
-                              <Badge className={`${getStatusColor(order.status)} text-white`}>
-                                {order.status}
-                              </Badge>
-                            </td>
-                            <td className="py-3">
-                              <span className={order.netProfit > 0 ? 'text-green-400' : order.netProfit < 0 ? 'text-red-400' : 'text-gray-400'}>
-                                {order.netProfit > 0 ? '+' : ''}${order.netProfit.toFixed(2)}
-                              </span>
-                            </td>
-                          </tr>
-                        ))
+                        (displayOrders || []).map((order) => {
+                          // Handle both real-time and regular orders
+                          const isRealtime = realtimeOrders.length > 0
+                          const orderId = isRealtime ? order.orderId : order.id
+                          const userEmail = isRealtime ? order.userEmail : order.user?.email
+                          const tokenName = isRealtime ? order.tokenName : order.token?.name
+                          const quantity = isRealtime ? order.quantity : order.qty
+                          const entryPrice = isRealtime ? order.entryPrice : order.entryPrice
+                          const currentPrice = isRealtime ? order.currentPrice : null
+                          const pnl = isRealtime ? order.unrealizedPnL : order.netProfit
+                          const pnlPercent = isRealtime ? order.unrealizedPnLPercent : null
+                          
+                          return (
+                            <tr 
+                              key={orderId} 
+                              className={`border-b border-gray-800/50 cursor-pointer transition-colors ${
+                                selectedOrder?.id === orderId 
+                                  ? 'bg-blue-600/10 border-blue-600/30' 
+                                  : 'hover:bg-gray-800/30'
+                              }`}
+                              onClick={() => handleOrderClick(order)}
+                            >
+                              <td className="py-3">
+                                <div>
+                                  <p className="text-white font-medium text-sm">{userEmail?.split('@')[0] || 'Unknown'}</p>
+                                  <p className="text-gray-400 text-xs">{userEmail || 'No email'}</p>
+                                </div>
+                              </td>
+                              <td className="py-3 text-white font-medium">{tokenName || 'Unknown Token'}</td>
+                              <td className="py-3">
+                                <Badge className={order.side === 'BUY' ? 'bg-green-600' : 'bg-red-600'}>
+                                  {order.side}
+                                </Badge>
+                              </td>
+                              <td className="py-3 text-white">{quantity}</td>
+                              <td className="py-3 text-white">${entryPrice.toLocaleString()}</td>
+                              <td className="py-3 text-white">
+                                {currentPrice ? (
+                                  <div>
+                                    <div className="font-medium">${currentPrice.toLocaleString()}</div>
+                                    {isRealtime && (
+                                      <div className="text-xs text-gray-400">
+                                        {new Date(order.lastUpdated).toLocaleTimeString()}
+                                      </div>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <span className="text-gray-400">N/A</span>
+                                )}
+                              </td>
+                              <td className="py-3">
+                                <Badge className={`${getStatusColor(order.status)} text-white`}>
+                                  {order.status}
+                                </Badge>
+                              </td>
+                              <td className="py-3">
+                                <div>
+                                  <span className={pnl > 0 ? 'text-green-400' : pnl < 0 ? 'text-red-400' : 'text-gray-400'}>
+                                    {pnl > 0 ? '+' : ''}${pnl.toFixed(2)}
+                                  </span>
+                                  {pnlPercent !== null && (
+                                    <div className="text-xs text-gray-400">
+                                      {pnlPercent > 0 ? '+' : ''}{pnlPercent.toFixed(2)}%
+                                    </div>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          )
+                        })
                       )}
                     </tbody>
                   </table>
