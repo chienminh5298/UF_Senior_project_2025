@@ -2354,6 +2354,25 @@ router.get('/orders/price-data', requireAuth, async (req, res) => {
  *                     availableTokensCount:
  *                       type: integer
  *                       description: Total number of all tokens in database (regardless of active status)
+ *                     activeStrategies:
+ *                       type: array
+ *                       description: List of active strategies with trade counts and P&L
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           id:
+ *                             type: integer
+ *                           description:
+ *                             type: string
+ *                           trades:
+ *                             type: integer
+ *                             description: Number of trades today for this strategy
+ *                           pnl:
+ *                             type: number
+ *                             description: Total P&L from orders today for this strategy
+ *                           tokenCount:
+ *                             type: integer
+ *                             description: Number of tokens associated with this strategy
  *       401:
  *         description: Unauthorized
  *       500:
@@ -2407,6 +2426,53 @@ router.get('/dashboard/stats', requireAuth, async (req, res) => {
 
     const availableTokensCount = await prisma.token.count();
 
+    const activeStrategiesData = await prisma.strategy.findMany({
+      where: {
+        isActive: true,
+      },
+      select: {
+        id: true,
+        description: true,
+        tokenStrategies: {
+          select: {
+            token: {
+              select: {
+                id: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    const activeStrategies = await Promise.all(
+      activeStrategiesData.map(async (strategy) => {
+        const todayOrders = await prisma.order.findMany({
+          where: {
+            strategyId: strategy.id,
+            createdAt: {
+              gte: today,
+            },
+          },
+          select: {
+            netProfit: true,
+          },
+        });
+
+        const trades = todayOrders.length;
+        const pnl = todayOrders.reduce((sum, order) => sum + (order.netProfit || 0), 0);
+        const tokenCount = strategy.tokenStrategies.length;
+
+        return {
+          id: strategy.id,
+          description: strategy.description,
+          trades,
+          pnl,
+          tokenCount,
+        };
+      })
+    );
+
     return res.status(200).json({
       success: true,
       message: 'Dashboard stats fetched successfully',
@@ -2416,6 +2482,7 @@ router.get('/dashboard/stats', requireAuth, async (req, res) => {
         dailyPnL,
         activeTokensCount,
         availableTokensCount,
+        activeStrategies,
       },
     });
   } catch (error) {

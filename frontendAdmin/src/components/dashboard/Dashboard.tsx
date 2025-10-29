@@ -53,23 +53,6 @@ const fetchDashboardStats = async () => {
   return data.data
 }
 
-const activeStrategies = [
-  { 
-    name: 'Momentum Scalper', 
-    status: 'Active', 
-    trades: 12, 
-    pnl: 234.56,
-    isActive: true 
-  },
-  { 
-    name: 'Mean Reversion', 
-    status: 'Active', 
-    trades: 8, 
-    pnl: 156.78,
-    isActive: true 
-  },
-]
-
 export function Dashboard() {
   const [cryptoPrices, setCryptoPrices] = useState<any[]>([])
   const [dashboardStats, setDashboardStats] = useState<any>(null)
@@ -327,27 +310,43 @@ export function Dashboard() {
           </Button>
         </CardHeader>
         <CardContent>
-          <div className="space-y-3">
-            {activeStrategies.map((strategy, index) => (
-              <div key={index} className="flex items-center justify-between p-3 border border-gray-800 rounded-lg">
-                <div className="flex items-center gap-3">
-                  <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                  <div>
-                    <p className="text-white font-medium">{strategy.name}</p>
-                    <p className="text-sm text-gray-400">{strategy.trades} trades today</p>
+          {loading && !dashboardStats ? (
+            <div className="flex items-center justify-center py-8">
+              <RefreshCw className="w-6 h-6 animate-spin text-gray-400" />
+              <span className="ml-2 text-gray-400">Loading strategies...</span>
+            </div>
+          ) : !dashboardStats?.activeStrategies || dashboardStats.activeStrategies.length === 0 ? (
+            <div className="text-center py-8 text-gray-400">
+              <p>No active strategies</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {dashboardStats.activeStrategies.map((strategy: any) => (
+                <div key={strategy.id} className="flex items-center justify-between p-3 border border-gray-800 rounded-lg">
+                  <div className="flex items-center gap-3">
+                    <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                    <div>
+                      <p className="text-white font-medium">{strategy.description}</p>
+                      <p className="text-sm text-gray-400">{strategy.trades} trades today</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <Badge variant="success">
+                      Active
+                    </Badge>
+                    <div className="text-right">
+                      <div className={`font-medium ${strategy.pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                        {strategy.pnl >= 0 ? '+' : ''}${strategy.pnl.toFixed(2)}
+                      </div>
+                      <div className="text-xs text-gray-400">
+                        {strategy.tokenCount} token{strategy.tokenCount !== 1 ? 's' : ''}
+                      </div>
+                    </div>
                   </div>
                 </div>
-                <div className="flex items-center gap-4">
-                  <Badge variant="success">
-                    {strategy.status}
-                  </Badge>
-                  <div className="text-right text-green-400 font-medium">
-                    +${strategy.pnl.toFixed(2)}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>
