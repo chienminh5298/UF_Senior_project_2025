@@ -2315,4 +2315,116 @@ router.get('/orders/price-data', requireAuth, async (req, res) => {
   }
 });
 
+// GET /api/admin/dashboard/stats
+/**
+ * @swagger
+ * /api/admin/dashboard/stats:
+ *   get:
+ *     summary: Get dashboard statistics (portfolio, P&L, tokens)
+ *     tags: [Admin]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Dashboard stats fetched successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     totalPortfolio:
+ *                       type: number
+ *                       description: Total portfolio value (sum of all order budgets)
+ *                     totalPnL:
+ *                       type: number
+ *                       description: Total profit and loss (sum of netProfit from finished orders)
+ *                     dailyPnL:
+ *                       type: number
+ *                       description: Daily P&L (sum of netProfit from orders created today)
+ *                     activeTokensCount:
+ *                       type: integer
+ *                       description: Number of tokens that are active (isActive: true)
+ *                     availableTokensCount:
+ *                       type: integer
+ *                       description: Total number of all tokens in database (regardless of active status)
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Failed to fetch dashboard stats
+ */
+router.get('/dashboard/stats', requireAuth, async (req, res) => {
+  const { user } = req;
+
+  if (!user) {
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
+  }
+
+  try {
+    const totalPortfolioResult = await prisma.order.aggregate({
+      _sum: {
+        budget: true,
+      },
+    });
+    const totalPortfolio = totalPortfolioResult._sum.budget || 0;
+
+    const totalPnLResult = await prisma.order.aggregate({
+      where: {
+        status: Status.FINISHED,
+      },
+      _sum: {
+        netProfit: true,
+      },
+    });
+    const totalPnL = totalPnLResult._sum.netProfit || 0;
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const dailyPnLResult = await prisma.order.aggregate({
+      where: {
+        status: Status.FINISHED,
+        createdAt: {
+          gte: today,
+        },
+      },
+      _sum: {
+        netProfit: true,
+      },
+    });
+    const dailyPnL = dailyPnLResult._sum.netProfit || 0;
+
+    const activeTokensCount = await prisma.token.count({
+      where: {
+        isActive: true,
+      },
+    });
+
+    const availableTokensCount = await prisma.token.count();
+
+    return res.status(200).json({
+      success: true,
+      message: 'Dashboard stats fetched successfully',
+      data: {
+        totalPortfolio,
+        totalPnL,
+        dailyPnL,
+        activeTokensCount,
+        availableTokensCount,
+      },
+    });
+  } catch (error) {
+    console.error('Error fetching dashboard stats:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to fetch dashboard stats',
+    });
+  }
+});
+
 export default router;
