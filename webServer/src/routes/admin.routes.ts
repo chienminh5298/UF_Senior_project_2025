@@ -2315,4 +2315,394 @@ router.get('/orders/price-data', requireAuth, async (req, res) => {
   }
 });
 
+// GET /api/admin/dashboard/stats
+/**
+ * @swagger
+ * /api/admin/dashboard/stats:
+ *   get:
+ *     summary: Get dashboard statistics (portfolio, P&L, tokens)
+ *     tags: [Admin]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Dashboard stats fetched successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     totalPortfolio:
+ *                       type: number
+ *                       description: Total portfolio value (sum of all order budgets)
+ *                     totalPnL:
+ *                       type: number
+ *                       description: Total profit and loss (sum of netProfit from finished orders)
+ *                     dailyPnL:
+ *                       type: number
+ *                       description: Daily P&L (sum of netProfit from orders created today)
+ *                     activeTokensCount:
+ *                       type: integer
+ *                       description: Number of tokens that are active (isActive: true)
+ *                     availableTokensCount:
+ *                       type: integer
+ *                       description: Total number of all tokens in database (regardless of active status)
+ *                     activeStrategies:
+ *                       type: array
+ *                       description: List of active strategies with trade counts and P&L
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           id:
+ *                             type: integer
+ *                           description:
+ *                             type: string
+ *                           trades:
+ *                             type: integer
+ *                             description: Number of trades today for this strategy
+ *                           pnl:
+ *                             type: number
+ *                             description: Total P&L from orders today for this strategy
+ *                           tokenCount:
+ *                             type: integer
+ *                             description: Number of tokens associated with this strategy
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Failed to fetch dashboard stats
+ */
+router.get('/dashboard/stats', requireAuth, async (req, res) => {
+  const { user } = req;
+
+  if (!user) {
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
+  }
+
+  try {
+    const totalPortfolioResult = await prisma.order.aggregate({
+      _sum: {
+        budget: true,
+      },
+    });
+    const totalPortfolio = totalPortfolioResult._sum.budget || 0;
+
+    const totalPnLResult = await prisma.order.aggregate({
+      where: {
+        status: Status.FINISHED,
+      },
+      _sum: {
+        netProfit: true,
+      },
+    });
+    const totalPnL = totalPnLResult._sum.netProfit || 0;
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const dailyPnLResult = await prisma.order.aggregate({
+      where: {
+        status: Status.FINISHED,
+        createdAt: {
+          gte: today,
+        },
+      },
+      _sum: {
+        netProfit: true,
+      },
+    });
+    const dailyPnL = dailyPnLResult._sum.netProfit || 0;
+
+    const activeTokensCount = await prisma.token.count({
+      where: {
+        isActive: true,
+      },
+    });
+
+    const availableTokensCount = await prisma.token.count();
+
+    const activeStrategiesData = await prisma.strategy.findMany({
+      where: {
+        isActive: true,
+      },
+      select: {
+        id: true,
+        description: true,
+        tokenStrategies: {
+          select: {
+            token: {
+              select: {
+                id: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    const activeStrategies = await Promise.all(
+      activeStrategiesData.map(async (strategy) => {
+        const todayOrders = await prisma.order.findMany({
+          where: {
+            strategyId: strategy.id,
+            createdAt: {
+              gte: today,
+            },
+          },
+          select: {
+            netProfit: true,
+          },
+        });
+
+        const trades = todayOrders.length;
+        const pnl = todayOrders.reduce(
+          (sum, order) => sum + (order.netProfit || 0),
+          0
+        );
+        const tokenCount = strategy.tokenStrategies.length;
+
+        return {
+          id: strategy.id,
+          description: strategy.description,
+          trades,
+          pnl,
+          tokenCount,
+        };
+      })
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: 'Dashboard stats fetched successfully',
+      data: {
+        totalPortfolio,
+        totalPnL,
+        dailyPnL,
+        activeTokensCount,
+        availableTokensCount,
+        activeStrategies,
+      },
+    });
+  } catch (error) {
+    console.error('Error fetching dashboard stats:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to fetch dashboard stats',
+    });
+  }
+});
+
+// GET /api/admin/portfolio
+/**
+ * @swagger
+ * /api/admin/portfolio:
+ *   get:
+ *     summary: Get admin portfolio data (aggregated across all users)
+ *     tags: [Admin]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Portfolio data fetched successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     totalValue:
+ *                       type: number
+ *                       description: Total portfolio value (sum of all budgets)
+ *                     todayChange:
+ *                       type: number
+ *                       description: Change in value today
+ *                     todayChangePercent:
+ *                       type: number
+ *                       description: Percentage change today
+ *                     totalPnL:
+ *                       type: number
+ *                       description: Total profit and loss
+ *                     totalPnLPercent:
+ *                       type: number
+ *                       description: Total P&L percentage
+ *                     assetsCount:
+ *                       type: integer
+ *                       description: Number of different token holdings
+ *                     holdings:
+ *                       type: array
+ *                       description: Token holdings with quantities and values
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           tokenId:
+ *                             type: integer
+ *                           symbol:
+ *                             type: string
+ *                           name:
+ *                             type: string
+ *                           amount:
+ *                             type: number
+ *                             description: Total quantity held
+ *                           value:
+ *                             type: number
+ *                             description: Current value of holdings
+ *                           change:
+ *                             type: number
+ *                             description: 24h price change percentage
+ *                           currentPrice:
+ *                             type: number
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Failed to fetch portfolio data
+ */
+router.get('/portfolio', requireAuth, async (req, res) => {
+  const { user } = req;
+
+  if (!user) {
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
+  }
+
+  try {
+    const { priceService } = await import('../services/priceService');
+
+    const totalPortfolioResult = await prisma.order.aggregate({
+      _sum: {
+        budget: true,
+      },
+    });
+    const totalValue = totalPortfolioResult._sum.budget || 0;
+
+    const totalPnLResult = await prisma.order.aggregate({
+      where: {
+        status: Status.FINISHED,
+      },
+      _sum: {
+        netProfit: true,
+      },
+    });
+    const totalPnL = totalPnLResult._sum.netProfit || 0;
+    const totalPnLPercent = totalValue > 0 ? (totalPnL / totalValue) * 100 : 0;
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const todayOrdersResult = await prisma.order.aggregate({
+      where: {
+        createdAt: {
+          gte: today,
+        },
+        status: Status.FINISHED,
+      },
+      _sum: {
+        netProfit: true,
+      },
+    });
+    const todayChange = todayOrdersResult._sum.netProfit || 0;
+    const todayChangePercent =
+      totalValue > 0 ? (todayChange / totalValue) * 100 : 0;
+
+    const activeOrders = await prisma.order.findMany({
+      where: {
+        status: Status.ACTIVE,
+      },
+      select: {
+        tokenId: true,
+        token: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+        qty: true,
+        entryPrice: true,
+      },
+    });
+
+    const tokenHoldings = new Map<
+      number,
+      { token: any; totalQty: number; totalValue: number }
+    >();
+
+    for (const order of activeOrders) {
+      if (!order.token) continue;
+
+      const tokenId = order.token.id;
+      const currentPrice = order.entryPrice;
+
+      if (!tokenHoldings.has(tokenId)) {
+        tokenHoldings.set(tokenId, {
+          token: order.token,
+          totalQty: 0,
+          totalValue: 0,
+        });
+      }
+
+      const holding = tokenHoldings.get(tokenId)!;
+      holding.totalQty += order.qty;
+      holding.totalValue += order.qty * currentPrice;
+    }
+
+    const tokensList = Array.from(tokenHoldings.values()).map(
+      (h) => h.token.name
+    );
+    const priceData = await priceService.getTokenPrices(tokensList);
+    const priceMap = new Map(priceData.map((p) => [p.tokenName, p]));
+
+    const holdings = Array.from(tokenHoldings.entries()).map(
+      ([tokenId, holding]) => {
+        const tokenPrice = priceMap.get(holding.token.name);
+        const currentPrice =
+          tokenPrice?.currentPrice ||
+          holding.totalValue / holding.totalQty ||
+          0;
+        const currentValue = holding.totalQty * currentPrice;
+        const change = tokenPrice?.priceChangePercent || 0;
+
+        return {
+          tokenId,
+          symbol: holding.token.name.substring(0, 3).toUpperCase(),
+          name: holding.token.name,
+          amount: holding.totalQty,
+          value: currentValue,
+          change,
+          currentPrice,
+        };
+      }
+    );
+
+    holdings.sort((a, b) => b.value - a.value);
+
+    return res.status(200).json({
+      success: true,
+      message: 'Portfolio data fetched successfully',
+      data: {
+        totalValue,
+        todayChange,
+        todayChangePercent,
+        totalPnL,
+        totalPnLPercent,
+        assetsCount: holdings.length,
+        holdings,
+      },
+    });
+  } catch (error) {
+    console.error('Error fetching portfolio data:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to fetch portfolio data',
+    });
+  }
+});
+
 export default router;

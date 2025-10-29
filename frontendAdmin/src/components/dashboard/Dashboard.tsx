@@ -36,39 +36,44 @@ const fetchPriceData = async () => {
   return data.data
 }
 
-const activeStrategies = [
-  { 
-    name: 'Momentum Scalper', 
-    status: 'Active', 
-    trades: 12, 
-    pnl: 234.56,
-    isActive: true 
-  },
-  { 
-    name: 'Mean Reversion', 
-    status: 'Active', 
-    trades: 8, 
-    pnl: 156.78,
-    isActive: true 
-  },
-]
+const fetchDashboardStats = async () => {
+  const token = localStorage.getItem('adminToken')
+  const response = await fetch(`${API_BASE}/api/admin/dashboard/stats`, {
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    }
+  })
+  
+  if (!response.ok) {
+    throw new Error('Failed to fetch dashboard stats')
+  }
+  
+  const data = await response.json()
+  return data.data
+}
 
 export function Dashboard() {
   const [cryptoPrices, setCryptoPrices] = useState<any[]>([])
+  const [dashboardStats, setDashboardStats] = useState<any>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    const loadPriceData = async () => {
+    const loadData = async () => {
       setLoading(true)
       setError(null)
       
       try {
-        const priceData = await fetchPriceData()
+        const [priceData, stats] = await Promise.all([
+          fetchPriceData(),
+          fetchDashboardStats()
+        ])
         setCryptoPrices(priceData || [])
+        setDashboardStats(stats)
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load price data')
-        console.error('Error loading price data:', err)
+        setError(err instanceof Error ? err.message : 'Failed to load data')
+        console.error('Error loading data:', err)
         setCryptoPrices([
           { tokenName: 'Bitcoin', currentPrice: 67845.32, priceChangePercent: 2.45 },
           { tokenName: 'Ethereum', currentPrice: 3456.78, priceChangePercent: -1.23 },
@@ -79,18 +84,22 @@ export function Dashboard() {
       }
     }
 
-    loadPriceData()
+    loadData()
   }, [])
 
-  const handleRefreshPrices = async () => {
+  const handleRefreshData = async () => {
     setLoading(true)
     setError(null)
     
     try {
-      const priceData = await fetchPriceData()
+      const [priceData, stats] = await Promise.all([
+        fetchPriceData(),
+        fetchDashboardStats()
+      ])
       setCryptoPrices(priceData || [])
+      setDashboardStats(stats)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to refresh prices')
+      setError(err instanceof Error ? err.message : 'Failed to refresh data')
     } finally {
       setLoading(false)
     }
@@ -113,22 +122,43 @@ export function Dashboard() {
             <BarChart className="h-4 w-4 text-gray-400" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-white">$24,567.89</div>
-            <div className="flex items-center gap-1 text-sm text-green-400">
-              <TrendingUp className="h-3 w-3" />
-              +2.34% (+$567.89)
-            </div>
+            {loading && !dashboardStats ? (
+              <div className="flex items-center justify-center py-2">
+                <RefreshCw className="w-4 h-4 animate-spin text-gray-400" />
+              </div>
+            ) : (
+              <>
+                <div className="text-2xl font-bold text-white">
+                  ${dashboardStats?.totalPortfolio?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}
+                </div>
+                <div className="flex items-center gap-1 text-sm text-gray-400">
+                  Total order budgets
+                </div>
+              </>
+            )}
           </CardContent>
         </Card>
 
         <Card className="bg-gray-900 border-gray-800">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-gray-400">Daily P&L</CardTitle>
+            <CardTitle className="text-sm font-medium text-gray-400">Total P&L</CardTitle>
             <TrendingUp className="h-4 w-4 text-gray-400" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-green-400">+$234.56</div>
-            <div className="text-sm text-gray-400">+0.96%</div>
+            {loading && !dashboardStats ? (
+              <div className="flex items-center justify-center py-2">
+                <RefreshCw className="w-4 h-4 animate-spin text-gray-400" />
+              </div>
+            ) : (
+              <>
+                <div className={`text-2xl font-bold ${dashboardStats?.totalPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                  {dashboardStats?.totalPnL >= 0 ? '+' : ''}${dashboardStats?.totalPnL?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}
+                </div>
+                <div className="text-sm text-gray-400">
+                  Daily: {dashboardStats?.dailyPnL >= 0 ? '+' : ''}${dashboardStats?.dailyPnL?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}
+                </div>
+              </>
+            )}
           </CardContent>
         </Card>
 
@@ -138,8 +168,16 @@ export function Dashboard() {
             <Zap className="h-4 w-4 text-gray-400" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-white">3</div>
-            <div className="text-sm text-gray-400">2 profitable</div>
+            {loading && !dashboardStats ? (
+              <div className="flex items-center justify-center py-2">
+                <RefreshCw className="w-4 h-4 animate-spin text-gray-400" />
+              </div>
+            ) : (
+              <>
+                <div className="text-2xl font-bold text-white">{dashboardStats?.activeTokensCount || 0}</div>
+                <div className="text-sm text-gray-400">tokens currently active</div>
+              </>
+            )}
           </CardContent>
         </Card>
 
@@ -149,8 +187,16 @@ export function Dashboard() {
             <TrendingUp className="h-4 w-4 text-gray-400" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-white">12</div>
-            <div className="text-sm text-gray-400">tokens to choose from</div>
+            {loading && !dashboardStats ? (
+              <div className="flex items-center justify-center py-2">
+                <RefreshCw className="w-4 h-4 animate-spin text-gray-400" />
+              </div>
+            ) : (
+              <>
+                <div className="text-2xl font-bold text-white">{dashboardStats?.availableTokensCount || 0}</div>
+                <div className="text-sm text-gray-400">tokens to choose from</div>
+              </>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -201,7 +247,7 @@ export function Dashboard() {
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle className="text-white">Crypto Prices</CardTitle>
             <Button 
-              onClick={handleRefreshPrices}
+              onClick={handleRefreshData}
               disabled={loading}
               variant="outline" 
               size="sm"
@@ -264,27 +310,43 @@ export function Dashboard() {
           </Button>
         </CardHeader>
         <CardContent>
-          <div className="space-y-3">
-            {activeStrategies.map((strategy, index) => (
-              <div key={index} className="flex items-center justify-between p-3 border border-gray-800 rounded-lg">
-                <div className="flex items-center gap-3">
-                  <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                  <div>
-                    <p className="text-white font-medium">{strategy.name}</p>
-                    <p className="text-sm text-gray-400">{strategy.trades} trades today</p>
+          {loading && !dashboardStats ? (
+            <div className="flex items-center justify-center py-8">
+              <RefreshCw className="w-6 h-6 animate-spin text-gray-400" />
+              <span className="ml-2 text-gray-400">Loading strategies...</span>
+            </div>
+          ) : !dashboardStats?.activeStrategies || dashboardStats.activeStrategies.length === 0 ? (
+            <div className="text-center py-8 text-gray-400">
+              <p>No active strategies</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {dashboardStats.activeStrategies.map((strategy: any) => (
+                <div key={strategy.id} className="flex items-center justify-between p-3 border border-gray-800 rounded-lg">
+                  <div className="flex items-center gap-3">
+                    <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                    <div>
+                      <p className="text-white font-medium">{strategy.description}</p>
+                      <p className="text-sm text-gray-400">{strategy.trades} trades today</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <Badge variant="success">
+                      Active
+                    </Badge>
+                    <div className="text-right">
+                      <div className={`font-medium ${strategy.pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                        {strategy.pnl >= 0 ? '+' : ''}${strategy.pnl.toFixed(2)}
+                      </div>
+                      <div className="text-xs text-gray-400">
+                        {strategy.tokenCount} token{strategy.tokenCount !== 1 ? 's' : ''}
+                      </div>
+                    </div>
                   </div>
                 </div>
-                <div className="flex items-center gap-4">
-                  <Badge variant="success">
-                    {strategy.status}
-                  </Badge>
-                  <div className="text-right text-green-400 font-medium">
-                    +${strategy.pnl.toFixed(2)}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>
