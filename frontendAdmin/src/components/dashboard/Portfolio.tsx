@@ -1,31 +1,75 @@
+import { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card'
 import { Button } from '../ui/button'
 import { Badge } from '../ui/badge'
 import { 
   TrendingUp,
+  TrendingDown,
   DollarSign,
   Briefcase,
   PieChart,
-  BarChart3,
   RefreshCw,
   Download,
   Eye
 } from 'lucide-react'
 
-export function Portfolio() {
-  const holdings = [
-    { symbol: 'BTC', name: 'Bitcoin', amount: '0.15432', value: '$10,532.45', change: '+2.34%', changeColor: 'text-green-400', allocation: '45.2%' },
-    { symbol: 'ETH', name: 'Ethereum', amount: '3.2156', value: '$11,098.76', change: '+1.87%', changeColor: 'text-green-400', allocation: '47.6%' },
-    { symbol: 'SOL', name: 'Solana', amount: '12.4567', value: '$1,768.95', change: '-0.45%', changeColor: 'text-red-400', allocation: '7.6%' },
-    { symbol: 'USDT', name: 'Tether', amount: '500.00', value: '$500.00', change: '0.00%', changeColor: 'text-gray-400', allocation: '2.1%' },
-  ]
+// API Configuration
+const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3001'
 
-  const portfolioStats = {
-    totalValue: '$23,900.16',
-    todayChange: '+$1,234.56',
-    todayChangePercent: '+5.45%',
-    totalPnL: '+$8,456.78',
-    totalPnLPercent: '+54.8%'
+// API Functions
+const fetchPortfolioData = async () => {
+  const token = localStorage.getItem('adminToken')
+  const response = await fetch(`${API_BASE}/api/admin/portfolio`, {
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    }
+  })
+  
+  if (!response.ok) {
+    throw new Error('Failed to fetch portfolio data')
+  }
+  
+  const data = await response.json()
+  return data.data
+}
+
+export function Portfolio() {
+  const [portfolioData, setPortfolioData] = useState<any>(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    const loadPortfolioData = async () => {
+      setLoading(true)
+      setError(null)
+      
+      try {
+        const data = await fetchPortfolioData()
+        setPortfolioData(data)
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to load portfolio data')
+        console.error('Error loading portfolio data:', err)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    loadPortfolioData()
+  }, [])
+
+  const handleRefresh = async () => {
+    setLoading(true)
+    setError(null)
+    
+    try {
+      const data = await fetchPortfolioData()
+      setPortfolioData(data)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to refresh portfolio data')
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
@@ -45,12 +89,24 @@ export function Portfolio() {
             <Download className="w-4 h-4 mr-2" />
             Export
           </Button>
-          <Button variant="outline" className="border-gray-700 text-gray-300 hover:text-white">
-            <RefreshCw className="w-4 h-4 mr-2" />
+          <Button 
+            variant="outline" 
+            className="border-gray-700 text-gray-300 hover:text-white"
+            onClick={handleRefresh}
+            disabled={loading}
+          >
+            <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
             Refresh
           </Button>
         </div>
       </div>
+
+      {/* Error Display */}
+      {error && (
+        <div className="p-4 bg-red-900/20 border border-red-600 rounded-lg">
+          <p className="text-red-400 text-sm">Error: {error}</p>
+        </div>
+      )}
 
       {/* Portfolio Overview */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
@@ -59,11 +115,23 @@ export function Portfolio() {
             <CardTitle className="text-sm text-gray-400 font-medium">Total Value</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="flex items-center gap-2">
-              <span className="text-2xl font-bold text-white">{portfolioStats.totalValue}</span>
-              <Briefcase className="w-5 h-5 text-blue-400" />
-            </div>
-            <p className="text-sm text-green-400 mt-1">{portfolioStats.todayChange} today</p>
+            {loading && !portfolioData ? (
+              <div className="flex items-center justify-center py-2">
+                <RefreshCw className="w-4 h-4 animate-spin text-gray-400" />
+              </div>
+            ) : (
+              <>
+                <div className="flex items-center gap-2">
+                  <span className="text-2xl font-bold text-white">
+                    ${portfolioData?.totalValue?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}
+                  </span>
+                  <Briefcase className="w-5 h-5 text-blue-400" />
+                </div>
+                <p className={`text-sm mt-1 ${portfolioData?.todayChange >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                  {portfolioData?.todayChange >= 0 ? '+' : ''}${portfolioData?.todayChange?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'} today
+                </p>
+              </>
+            )}
           </CardContent>
         </Card>
 
@@ -72,11 +140,25 @@ export function Portfolio() {
             <CardTitle className="text-sm text-gray-400 font-medium">24h Change</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="flex items-center gap-2">
-              <span className="text-2xl font-bold text-green-400">{portfolioStats.todayChangePercent}</span>
-              <TrendingUp className="w-5 h-5 text-green-400" />
-            </div>
-            <p className="text-sm text-gray-400 mt-1">vs yesterday</p>
+            {loading && !portfolioData ? (
+              <div className="flex items-center justify-center py-2">
+                <RefreshCw className="w-4 h-4 animate-spin text-gray-400" />
+              </div>
+            ) : (
+              <>
+                <div className="flex items-center gap-2">
+                  <span className={`text-2xl font-bold ${portfolioData?.todayChangePercent >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                    {portfolioData?.todayChangePercent >= 0 ? '+' : ''}{portfolioData?.todayChangePercent?.toFixed(2) || '0.00'}%
+                  </span>
+                  {portfolioData?.todayChangePercent >= 0 ? (
+                    <TrendingUp className="w-5 h-5 text-green-400" />
+                  ) : (
+                    <TrendingDown className="w-5 h-5 text-red-400" />
+                  )}
+                </div>
+                <p className="text-sm text-gray-400 mt-1">vs yesterday</p>
+              </>
+            )}
           </CardContent>
         </Card>
 
@@ -85,11 +167,23 @@ export function Portfolio() {
             <CardTitle className="text-sm text-gray-400 font-medium">Total P&L</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="flex items-center gap-2">
-              <span className="text-2xl font-bold text-green-400">{portfolioStats.totalPnL}</span>
-              <DollarSign className="w-5 h-5 text-green-400" />
-            </div>
-            <p className="text-sm text-gray-400 mt-1">{portfolioStats.totalPnLPercent} total gain</p>
+            {loading && !portfolioData ? (
+              <div className="flex items-center justify-center py-2">
+                <RefreshCw className="w-4 h-4 animate-spin text-gray-400" />
+              </div>
+            ) : (
+              <>
+                <div className="flex items-center gap-2">
+                  <span className={`text-2xl font-bold ${portfolioData?.totalPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                    {portfolioData?.totalPnL >= 0 ? '+' : ''}${portfolioData?.totalPnL?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}
+                  </span>
+                  <DollarSign className={`w-5 h-5 ${portfolioData?.totalPnL >= 0 ? 'text-green-400' : 'text-red-400'}`} />
+                </div>
+                <p className="text-sm text-gray-400 mt-1">
+                  {portfolioData?.totalPnLPercent >= 0 ? '+' : ''}{portfolioData?.totalPnLPercent?.toFixed(2) || '0.00'}% total gain
+                </p>
+              </>
+            )}
           </CardContent>
         </Card>
 
@@ -98,82 +192,78 @@ export function Portfolio() {
             <CardTitle className="text-sm text-gray-400 font-medium">Assets</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="flex items-center gap-2">
-              <span className="text-2xl font-bold text-white">{holdings.length}</span>
-              <PieChart className="w-5 h-5 text-purple-400" />
-            </div>
-            <p className="text-sm text-gray-400 mt-1">Different holdings</p>
+            {loading && !portfolioData ? (
+              <div className="flex items-center justify-center py-2">
+                <RefreshCw className="w-4 h-4 animate-spin text-gray-400" />
+              </div>
+            ) : (
+              <>
+                <div className="flex items-center gap-2">
+                  <span className="text-2xl font-bold text-white">{portfolioData?.assetsCount || 0}</span>
+                  <PieChart className="w-5 h-5 text-purple-400" />
+                </div>
+                <p className="text-sm text-gray-400 mt-1">Different holdings</p>
+              </>
+            )}
           </CardContent>
         </Card>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 gap-6">
         {/* Holdings */}
-        <div className="lg:col-span-2">
-          <Card className="bg-gray-900 border-gray-800">
-            <CardHeader>
-              <CardTitle className="text-white">Your Holdings</CardTitle>
-            </CardHeader>
-            <CardContent>
+        <Card className="bg-gray-900 border-gray-800">
+          <CardHeader>
+            <CardTitle className="text-white">Your Holdings</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {loading && !portfolioData ? (
+              <div className="flex items-center justify-center py-8">
+                <RefreshCw className="w-6 h-6 animate-spin text-gray-400" />
+                <span className="ml-2 text-gray-400">Loading holdings...</span>
+              </div>
+            ) : !portfolioData?.holdings || portfolioData.holdings.length === 0 ? (
+              <div className="text-center py-8 text-gray-400">
+                <p>No active holdings</p>
+              </div>
+            ) : (
               <div className="space-y-4">
-                {holdings.map((holding) => (
-                  <div key={holding.symbol} className="flex items-center justify-between p-4 rounded-lg bg-gray-800/50">
-                    <div className="flex items-center gap-4">
-                      <div className="w-10 h-10 rounded-full bg-gray-700 flex items-center justify-center">
-                        <span className="text-sm font-bold text-white">{holding.symbol.slice(0, 2)}</span>
+                {portfolioData.holdings.map((holding: any) => {
+                  const changeColor = holding.change >= 0 ? 'text-green-400' : 'text-red-400'
+                  const allocation = portfolioData.totalValue > 0 
+                    ? ((holding.value / portfolioData.totalValue) * 100).toFixed(1) + '%'
+                    : '0%'
+                  
+                  return (
+                    <div key={holding.tokenId} className="flex items-center justify-between p-4 rounded-lg bg-gray-800/50">
+                      <div className="flex items-center gap-4">
+                        <div className="w-10 h-10 rounded-full bg-gray-700 flex items-center justify-center">
+                          <span className="text-sm font-bold text-white">{holding.symbol.slice(0, 2)}</span>
+                        </div>
+                        <div>
+                          <h3 className="font-semibold text-white">{holding.name}</h3>
+                          <p className="text-sm text-gray-400">{holding.amount.toLocaleString(undefined, { maximumFractionDigits: 4 })} {holding.symbol}</p>
+                        </div>
                       </div>
-                      <div>
-                        <h3 className="font-semibold text-white">{holding.name}</h3>
-                        <p className="text-sm text-gray-400">{holding.amount} {holding.symbol}</p>
+                      <div className="text-right">
+                        <div className="font-bold text-white">
+                          ${holding.value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </div>
+                        <div className={`text-sm ${changeColor}`}>
+                          {holding.change >= 0 ? '+' : ''}{holding.change.toFixed(2)}%
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <Badge className="bg-gray-700 text-gray-300">
+                          {allocation}
+                        </Badge>
                       </div>
                     </div>
-                    <div className="text-right">
-                      <div className="font-bold text-white">{holding.value}</div>
-                      <div className={`text-sm ${holding.changeColor}`}>{holding.change}</div>
-                    </div>
-                    <div className="text-right">
-                      <Badge className="bg-gray-700 text-gray-300">
-                        {holding.allocation}
-                      </Badge>
-                    </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Allocation Chart */}
-        <div>
-          <Card className="bg-gray-900 border-gray-800">
-            <CardHeader>
-              <CardTitle className="text-white">Asset Allocation</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="h-64 bg-gray-800/50 rounded-lg flex items-center justify-center">
-                <div className="text-center">
-                  <PieChart className="w-12 h-12 text-gray-600 mx-auto mb-2" />
-                  <p className="text-gray-400">Allocation chart</p>
-                  <p className="text-sm text-gray-500">Visual breakdown of holdings</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="bg-gray-900 border-gray-800 mt-6">
-            <CardHeader>
-              <CardTitle className="text-white">Performance</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="h-32 bg-gray-800/50 rounded-lg flex items-center justify-center">
-                <div className="text-center">
-                  <BarChart3 className="w-8 h-8 text-gray-600 mx-auto mb-1" />
-                  <p className="text-sm text-gray-400">Performance chart</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+            )}
+          </CardContent>
+        </Card>
       </div>
     </div>
   )
