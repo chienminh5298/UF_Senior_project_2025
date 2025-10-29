@@ -2460,7 +2460,10 @@ router.get('/dashboard/stats', requireAuth, async (req, res) => {
         });
 
         const trades = todayOrders.length;
-        const pnl = todayOrders.reduce((sum, order) => sum + (order.netProfit || 0), 0);
+        const pnl = todayOrders.reduce(
+          (sum, order) => sum + (order.netProfit || 0),
+          0
+        );
         const tokenCount = strategy.tokenStrategies.length;
 
         return {
@@ -2574,7 +2577,6 @@ router.get('/portfolio', requireAuth, async (req, res) => {
   try {
     const { priceService } = await import('../services/priceService');
 
-    // Calculate total portfolio value (sum of all order budgets)
     const totalPortfolioResult = await prisma.order.aggregate({
       _sum: {
         budget: true,
@@ -2582,7 +2584,6 @@ router.get('/portfolio', requireAuth, async (req, res) => {
     });
     const totalValue = totalPortfolioResult._sum.budget || 0;
 
-    // Calculate total P&L (sum of netProfit from finished orders)
     const totalPnLResult = await prisma.order.aggregate({
       where: {
         status: Status.FINISHED,
@@ -2594,7 +2595,6 @@ router.get('/portfolio', requireAuth, async (req, res) => {
     const totalPnL = totalPnLResult._sum.netProfit || 0;
     const totalPnLPercent = totalValue > 0 ? (totalPnL / totalValue) * 100 : 0;
 
-    // Calculate today's change (orders created today)
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const todayOrdersResult = await prisma.order.aggregate({
@@ -2609,9 +2609,9 @@ router.get('/portfolio', requireAuth, async (req, res) => {
       },
     });
     const todayChange = todayOrdersResult._sum.netProfit || 0;
-    const todayChangePercent = totalValue > 0 ? (todayChange / totalValue) * 100 : 0;
+    const todayChangePercent =
+      totalValue > 0 ? (todayChange / totalValue) * 100 : 0;
 
-    // Get holdings by aggregating orders by token
     const activeOrders = await prisma.order.findMany({
       where: {
         status: Status.ACTIVE,
@@ -2629,15 +2629,17 @@ router.get('/portfolio', requireAuth, async (req, res) => {
       },
     });
 
-    // Group orders by token
-    const tokenHoldings = new Map<number, { token: any; totalQty: number; totalValue: number }>();
-    
+    const tokenHoldings = new Map<
+      number,
+      { token: any; totalQty: number; totalValue: number }
+    >();
+
     for (const order of activeOrders) {
       if (!order.token) continue;
-      
+
       const tokenId = order.token.id;
-      const currentPrice = order.entryPrice; // Use entry price for now, could use real-time price
-      
+      const currentPrice = order.entryPrice;
+
       if (!tokenHoldings.has(tokenId)) {
         tokenHoldings.set(tokenId, {
           token: order.token,
@@ -2645,36 +2647,40 @@ router.get('/portfolio', requireAuth, async (req, res) => {
           totalValue: 0,
         });
       }
-      
+
       const holding = tokenHoldings.get(tokenId)!;
       holding.totalQty += order.qty;
       holding.totalValue += order.qty * currentPrice;
     }
 
-    // Get current prices for all tokens
-    const tokensList = Array.from(tokenHoldings.values()).map(h => h.token.name);
+    const tokensList = Array.from(tokenHoldings.values()).map(
+      (h) => h.token.name
+    );
     const priceData = await priceService.getTokenPrices(tokensList);
-    const priceMap = new Map(priceData.map(p => [p.tokenName, p]));
+    const priceMap = new Map(priceData.map((p) => [p.tokenName, p]));
 
-    // Format holdings with current prices
-    const holdings = Array.from(tokenHoldings.entries()).map(([tokenId, holding]) => {
-      const tokenPrice = priceMap.get(holding.token.name);
-      const currentPrice = tokenPrice?.currentPrice || holding.totalValue / holding.totalQty || 0;
-      const currentValue = holding.totalQty * currentPrice;
-      const change = tokenPrice?.priceChangePercent || 0;
+    const holdings = Array.from(tokenHoldings.entries()).map(
+      ([tokenId, holding]) => {
+        const tokenPrice = priceMap.get(holding.token.name);
+        const currentPrice =
+          tokenPrice?.currentPrice ||
+          holding.totalValue / holding.totalQty ||
+          0;
+        const currentValue = holding.totalQty * currentPrice;
+        const change = tokenPrice?.priceChangePercent || 0;
 
-      return {
-        tokenId,
-        symbol: holding.token.name.substring(0, 3).toUpperCase(),
-        name: holding.token.name,
-        amount: holding.totalQty,
-        value: currentValue,
-        change,
-        currentPrice,
-      };
-    });
+        return {
+          tokenId,
+          symbol: holding.token.name.substring(0, 3).toUpperCase(),
+          name: holding.token.name,
+          amount: holding.totalQty,
+          value: currentValue,
+          change,
+          currentPrice,
+        };
+      }
+    );
 
-    // Sort holdings by value (descending)
     holdings.sort((a, b) => b.value - a.value);
 
     return res.status(200).json({
