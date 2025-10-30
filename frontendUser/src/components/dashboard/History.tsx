@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card'
 import { Button } from '../ui/button'
 import { Badge } from '../ui/badge'
@@ -17,6 +17,37 @@ import {
 
 export function History() {
   const [filter, setFilter] = useState('all')
+  const [orders, setOrders] = useState<any[]>([])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    const fetchOrders = async () => {
+      try {
+        setLoading(true)
+        setError(null)
+        const authRaw = localStorage.getItem('auth')
+        const auth = authRaw ? JSON.parse(authRaw) : null
+        const token = auth?.token
+        const res = await fetch('/api/user/orders', {
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+        })
+        const data = await res.json()
+        if (!res.ok || !data?.success) {
+          throw new Error(data?.message || 'Failed to fetch orders')
+        }
+        setOrders(Array.isArray(data.data) ? data.data : [])
+      } catch (e: any) {
+        setError(e?.message || 'Failed to load orders')
+      } finally {
+        setLoading(false)
+      }
+    }
+    fetchOrders()
+  }, [])
   
   const filters = [
     { id: 'all', label: 'All Trades' },
@@ -25,93 +56,64 @@ export function History() {
     { id: 'cancelled', label: 'Cancelled' }
   ]
 
-  const tradeHistory = [
-    {
-      id: 1,
-      date: '2024-01-15 14:32',
-      pair: 'BTC/USDT',
-      type: 'Buy',
-      side: 'Long',
-      amount: '0.02 BTC',
-      price: '$68,100',
-      value: '$1,362.00',
-      fee: '$1.36',
-      pnl: '+$234.56',
-      pnlColor: 'text-green-400',
-      status: 'Completed',
-      statusColor: 'bg-green-500/20 text-green-400 border-green-500/30'
-    },
-    {
-      id: 2,
-      date: '2024-01-15 14:28',
-      pair: 'ETH/USDT',
-      type: 'Sell',
-      side: 'Short',
-      amount: '1.0 ETH',
-      price: '$3,445',
-      value: '$3,445.00',
-      fee: '$3.45',
-      pnl: '-$156.78',
-      pnlColor: 'text-red-400',
-      status: 'Completed',
-      statusColor: 'bg-green-500/20 text-green-400 border-green-500/30'
-    },
-    {
-      id: 3,
-      date: '2024-01-15 14:25',
-      pair: 'SOL/USDT',
-      type: 'Buy',
-      side: 'Long',
-      amount: '10 SOL',
-      price: '$141.50',
-      value: '$1,415.00',
-      fee: '$1.42',
-      pnl: '+$89.23',
-      pnlColor: 'text-green-400',
-      status: 'Completed',
-      statusColor: 'bg-green-500/20 text-green-400 border-green-500/30'
-    },
-    {
-      id: 4,
-      date: '2024-01-15 14:20',
-      pair: 'BTC/USDT',
-      type: 'Sell',
-      side: 'Long',
-      amount: '0.01 BTC',
-      price: '$68,200',
-      value: '$682.00',
-      fee: '$0.68',
-      pnl: '+$45.67',
-      pnlColor: 'text-green-400',
-      status: 'Pending',
-      statusColor: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'
-    },
-    {
-      id: 5,
-      date: '2024-01-15 13:15',
-      pair: 'ETH/USDT',
-      type: 'Buy',
-      side: 'Long',
-      amount: '0.5 ETH',
-      price: '$3,456',
-      value: '$1,728.00',
-      fee: '$1.73',
-      pnl: '$0.00',
-      pnlColor: 'text-gray-400',
-      status: 'Cancelled',
-      statusColor: 'bg-red-500/20 text-red-400 border-red-500/30'
-    }
-  ]
+  const tradeHistory = useMemo(() => {
+    return orders.map((o) => {
+      const finished = o.status === 'FINISHED'
+      const pending = o.status === 'ACTIVE'
+      const cancelled = o.status === 'EXPIRED'
+      const status = finished ? 'Completed' : pending ? 'Pending' : cancelled ? 'Cancelled' : o.status
+      const statusColor = finished
+        ? 'bg-green-500/20 text-green-400 border-green-500/30'
+        : pending
+        ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'
+        : 'bg-red-500/20 text-red-400 border-red-500/30'
+      const tokenName = o.token?.name || 'TOKEN'
+      const stable = o.token?.stable || 'USDT'
+      const pair = `${tokenName}/${stable}`
+      const type = o.side === 'BUY' ? 'Buy' : 'Sell'
+      const amount = `${o.qty} ${tokenName}`
+      const price = `$${Number(o.entryPrice).toLocaleString()}`
+      const value = `$${Number(o.budget).toLocaleString()}`
+      const pnlNum = typeof o.netProfit === 'number' ? o.netProfit : 0
+      const pnl = `${pnlNum >= 0 ? '+' : ''}$${pnlNum.toFixed(2)}`
+      const pnlColor = pnlNum > 0 ? 'text-green-400' : pnlNum < 0 ? 'text-red-400' : 'text-gray-400'
+      const date = new Date(o.timestamp).toLocaleString()
+      return {
+        id: o.id,
+        date,
+        pair,
+        type,
+        side: o.side === 'BUY' ? 'Long' : 'Short',
+        amount,
+        price,
+        value,
+        fee: `$${(Number(o.fee) || 0).toFixed(2)}`,
+        pnl,
+        pnlColor,
+        status,
+        statusColor,
+      }
+    })
+  }, [orders])
 
-  const stats = {
-    totalTrades: 156,
-    completedTrades: 142,
-    pendingTrades: 3,
-    cancelledTrades: 11,
-    totalVolume: '$48,234.56',
-    totalPnL: '+$2,847.32',
-    avgTrade: '+$18.25'
-  }
+  const stats = useMemo(() => {
+    const totalTrades = orders.length
+    const completedTrades = orders.filter((o) => o.status === 'FINISHED').length
+    const pendingTrades = orders.filter((o) => o.status === 'ACTIVE').length
+    const cancelledTrades = orders.filter((o) => o.status === 'EXPIRED').length
+    const totalVolumeNum = orders.reduce((s, o) => s + Number(o.budget || 0), 0)
+    const totalPnLNum = orders.reduce((s, o) => s + Number(o.netProfit || 0), 0)
+    const avgTradeNum = totalTrades ? totalPnLNum / totalTrades : 0
+    return {
+      totalTrades,
+      completedTrades,
+      pendingTrades,
+      cancelledTrades,
+      totalVolume: `$${totalVolumeNum.toLocaleString()}`,
+      totalPnL: `${totalPnLNum >= 0 ? '+' : ''}$${totalPnLNum.toFixed(2)}`,
+      avgTrade: `${avgTradeNum >= 0 ? '+' : ''}$${avgTradeNum.toFixed(2)}`,
+    }
+  }, [orders])
 
   const filteredTrades = filter === 'all' 
     ? tradeHistory 
@@ -216,6 +218,12 @@ export function History() {
           </div>
         </CardHeader>
         <CardContent>
+          {loading && <div className="text-gray-400 text-sm">Loading orders…</div>}
+          {error && (
+            <div className="mb-4 p-3 bg-red-900/20 border border-red-800 rounded-lg text-sm text-red-400" role="alert">
+              {error}
+            </div>
+          )}
           {/* Filter Tabs */}
           <div className="flex gap-2 mb-6">
             {filters.map((filterOption) => (

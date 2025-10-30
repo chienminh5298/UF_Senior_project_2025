@@ -103,6 +103,128 @@ router.get('/profile', requireAuth, async (req, res) => {
   });
 });
 
+// PUT /api/user/profile
+/**
+ * @swagger
+ * /api/user/profile:
+ *   put:
+ *     summary: Update user profile
+ *     tags: [User]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               fullname: { type: string }
+ *               username: { type: string }
+ *               email: { type: string }
+ *     responses:
+ *       200:
+ *         description: Profile updated successfully
+ *       400:
+ *         description: Invalid payload
+ *       401:
+ *         description: Unauthorized
+ *       409:
+ *         description: Username or email already in use
+ *       500:
+ *         description: Failed to update profile
+ */
+router.put('/profile', requireAuth, async (req, res) => {
+  const { user } = req;
+
+  if (!user) {
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
+  }
+
+  try {
+    let { fullname, username, email } = req.body ?? {};
+
+    const data: any = {};
+    if (typeof fullname === 'string') {
+      fullname = String(fullname).trim();
+      if (fullname.length < 2) {
+        return res
+          .status(400)
+          .json({ success: false, message: 'fullname is too short' });
+      }
+      data.fullname = fullname;
+    }
+    if (typeof username === 'string') {
+      username = String(username).trim().toLowerCase();
+      if (!/^[a-z0-9_\.\-]{3,32}$/.test(username)) {
+        return res.status(400).json({
+          success: false,
+          message:
+            'username must be 3-32 chars and contain only letters, numbers, _ . -',
+        });
+      }
+      // Ensure unique username if changed
+      const exists = await prisma.user.findFirst({
+        where: { username, NOT: { id: user.id } },
+        select: { id: true },
+      });
+      if (exists) {
+        return res
+          .status(409)
+          .json({ success: false, message: 'Username already in use' });
+      }
+      data.username = username;
+    }
+    if (typeof email === 'string') {
+      email = String(email).trim().toLowerCase();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        return res
+          .status(400)
+          .json({ success: false, message: 'Invalid email address' });
+      }
+      // Ensure unique email if changed
+      const existsEmail = await prisma.user.findFirst({
+        where: { email, NOT: { id: user.id } },
+        select: { id: true },
+      });
+      if (existsEmail) {
+        return res
+          .status(409)
+          .json({ success: false, message: 'Email already in use' });
+      }
+      data.email = email;
+    }
+
+    if (Object.keys(data).length === 0) {
+      return res
+        .status(400)
+        .json({ success: false, message: 'No fields to update' });
+    }
+
+    const updated = await prisma.user.update({
+      where: { id: user.id },
+      data,
+      select: {
+        id: true,
+        fullname: true,
+        username: true,
+        email: true,
+        isVerified: true,
+      },
+    });
+
+    return res.json({
+      success: true,
+      message: 'Profile updated successfully',
+      data: updated,
+    });
+  } catch (error) {
+    return res
+      .status(500)
+      .json({ success: false, message: 'Failed to update profile' });
+  }
+});
+
 // GET  /api/user/orders
 /**
  * @swagger
@@ -417,16 +539,15 @@ router.get('/orders', requireAuth, async (req, res) => {
   try {
     const orders = await prisma.order.findMany({
       where: { userId: user.id },
-      select: {
-        id: true,
-        orderId: true,
-        side: true,
-        timestamp: true,
-        entryPrice: true,
-        qty: true,
-        budget: true,
-        status: true,
+      include: {
+        token: {
+          select: { id: true, name: true, stable: true },
+        },
+        strategy: {
+          select: { id: true, description: true },
+        },
       },
+      orderBy: { timestamp: 'desc' },
     });
 
     res.status(200).json({

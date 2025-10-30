@@ -93,12 +93,15 @@ export function LoginPage({ onNavigateToLanding, onLogin }: LoginPageProps) {
       
       console.log('Demo login: Attempting to login with John Doe credentials...');
       
+      const DEMO_EMAIL = (import.meta as any).env?.VITE_DEMO_EMAIL ?? 'john@example.com';
+      const DEMO_PASSWORD = (import.meta as any).env?.VITE_DEMO_PASSWORD ?? 'password123';
+
       const loginRes = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          email: 'john@example.com',
-          password: 'password123'
+          email: DEMO_EMAIL,
+          password: DEMO_PASSWORD
         })
       });
       
