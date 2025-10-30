@@ -13,7 +13,10 @@ import {
   Calendar,
   BarChart3,
   RefreshCw,
-  Trash2
+  Trash2,
+  Clock,
+  AlertCircle,
+  Copy
 } from 'lucide-react'
 
 // API Configuration
@@ -133,12 +136,6 @@ const users = [
 ]
 
 
-const transactions = [
-  { id: 1, user: 'John Thompson', type: 'DEPOSIT', amount: 15000, status: 'PENDING', timestamp: '2024-09-18 12:00:00' },
-  { id: 2, user: 'Sarah Chen', type: 'WITHDRAW', amount: 5000, status: 'PENDING', timestamp: '2024-09-18 11:30:00' },
-  { id: 3, user: 'Emily Watson', type: 'DEPOSIT', amount: 25000, status: 'APPROVED', timestamp: '2024-09-18 10:15:00' },
-  { id: 4, user: 'Michael Rodriguez', type: 'WITHDRAW', amount: 2000, status: 'REJECTED', timestamp: '2024-09-18 09:45:00' }
-]
 
 
 const getStatusColor = (status: string) => {
@@ -211,6 +208,82 @@ const fetchOrderStats = async () => {
   
   const data = await response.json()
   return data.data
+}
+
+const fetchClaims = async () => {
+  const token = localStorage.getItem('adminToken')
+  
+  const response = await fetch(`${API_BASE}/api/admin/claims`, {
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    }
+  })
+  
+  if (!response.ok) {
+    throw new Error('Failed to fetch claims')
+  }
+  
+  const data = await response.json()
+  return data.data.claims
+}
+
+const fetchClaimDetails = async (claimId: number) => {
+  const token = localStorage.getItem('adminToken')
+  
+  const response = await fetch(`${API_BASE}/api/admin/claims/${claimId}`, {
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    }
+  })
+  
+  if (!response.ok) {
+    throw new Error('Failed to fetch claim details')
+  }
+  
+  const data = await response.json()
+  return data.data.claim
+}
+
+const approveClaim = async (claimId: number, note: string) => {
+  const token = localStorage.getItem('adminToken')
+  
+  const response = await fetch(`${API_BASE}/api/admin/claims/${claimId}/approve`, {
+    method: 'PATCH',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ note })
+  })
+  
+  if (!response.ok) {
+    throw new Error('Failed to approve claim')
+  }
+  
+  const data = await response.json()
+  return data.data.claim
+}
+
+const rejectClaim = async (claimId: number, note: string) => {
+  const token = localStorage.getItem('adminToken')
+  
+  const response = await fetch(`${API_BASE}/api/admin/claims/${claimId}/reject`, {
+    method: 'PATCH',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ note })
+  })
+  
+  if (!response.ok) {
+    throw new Error('Failed to reject claim')
+  }
+  
+  const data = await response.json()
+  return data.data.claim
 }
 
 const fetchTokens = async (): Promise<ApiToken[]> => {
@@ -394,6 +467,46 @@ const updateUserStatus = async (userId: number) => {
   return data
 }
 
+// Real-time P&L API Functions
+const fetchRealtimePnL = async () => {
+  const token = localStorage.getItem('adminToken')
+  
+  const response = await fetch(`${API_BASE}/api/admin/orders/realtime-pnl`, {
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    }
+  })
+  
+  if (!response.ok) {
+    throw new Error('Failed to fetch real-time P&L data')
+  }
+  
+  const data = await response.json()
+  return data.data
+}
+
+const fetchPriceData = async (tokens?: string[]) => {
+  const token = localStorage.getItem('adminToken')
+  const url = tokens 
+    ? `${API_BASE}/api/admin/orders/price-data?tokens=${tokens.join(',')}`
+    : `${API_BASE}/api/admin/orders/price-data`
+  
+  const response = await fetch(url, {
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    }
+  })
+  
+  if (!response.ok) {
+    throw new Error('Failed to fetch price data')
+  }
+  
+  const data = await response.json()
+  return data.data
+}
+
 export function Admin() {
   const [activeTab, setActiveTab] = useState('Analyze')
   const [selectedUser, setSelectedUser] = useState<typeof users[0] | null>(null)
@@ -403,16 +516,71 @@ export function Admin() {
   // API Data State
   const [apiOrders, setApiOrders] = useState<ApiOrder[]>([])
   const [apiUsers, setApiUsers] = useState<ApiUser[]>([])
+  const [apiClaims, setApiClaims] = useState<any[]>([])
   const [orderStats, setOrderStats] = useState<any>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  
+  // Real-time P&L State
+  const [realtimeOrders, setRealtimeOrders] = useState<any[]>([])
+  const [realtimeSummary, setRealtimeSummary] = useState<any>(null)
+  const [priceData, setPriceData] = useState<any[]>([])
+  const [autoRefresh, setAutoRefresh] = useState(false)
+  const [refreshInterval, setRefreshInterval] = useState<NodeJS.Timeout | null>(null)
   
   // Strategy Form State
   const [showNewStrategyForm, setShowNewStrategyForm] = useState(false)
   const [showConfigureStrategy, setShowConfigureStrategy] = useState(false)
   const [selectedStrategy, setSelectedStrategy] = useState<any>(null)
+  
+  // Claim Details Modal State
+  const [showClaimDetails, setShowClaimDetails] = useState(false)
+  const [claimDetails, setClaimDetails] = useState<any>(null)
+  
+  // Approve/Reject Modal State
+  const [showApproveModal, setShowApproveModal] = useState(false)
+  const [showRejectModal, setShowRejectModal] = useState(false)
+  const [selectedClaimForAction, setSelectedClaimForAction] = useState<any>(null)
+  const [adminNote, setAdminNote] = useState('')
   const [availableTokens, setAvailableTokens] = useState<ApiToken[]>([])
   const [strategies, setStrategies] = useState<any[]>([])
+
+  // Real-time P&L Functions
+  const loadRealtimeData = async () => {
+    try {
+      const [realtimeData, priceDataResult] = await Promise.all([
+        fetchRealtimePnL(),
+        fetchPriceData()
+      ])
+      
+      setRealtimeOrders(realtimeData.orders || [])
+      setRealtimeSummary(realtimeData.summary || null)
+      setPriceData(priceDataResult || [])
+    } catch (err) {
+      console.error('Error loading real-time data:', err)
+      setError(err instanceof Error ? err.message : 'Failed to load real-time data')
+    }
+  }
+
+  const toggleAutoRefresh = () => {
+    if (autoRefresh) {
+      if (refreshInterval) {
+        clearInterval(refreshInterval)
+        setRefreshInterval(null)
+      }
+      setAutoRefresh(false)
+    } else {
+      const interval = setInterval(loadRealtimeData, 10000) // Refresh every 10 seconds
+      setRefreshInterval(interval)
+      setAutoRefresh(true)
+    }
+  }
+
+  const handleRealtimeRefresh = async () => {
+    setLoading(true)
+    await loadRealtimeData()
+    setLoading(false)
+  }
   const [newStrategyForm, setNewStrategyForm] = useState<NewStrategyForm>({
     description: '',
     contribution: 0,
@@ -539,6 +707,90 @@ export function Admin() {
       setLoading(false)
     }
   }
+
+  const handleViewClaimDetails = async (claim: any) => {
+    setLoading(true)
+    setError(null)
+    
+    try {
+      const details = await fetchClaimDetails(claim.id)
+      setClaimDetails(details)
+      setShowClaimDetails(true)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load claim details')
+      console.error('Failed to load claim details:', err)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleApproveClaim = (claim: any) => {
+    setSelectedClaimForAction(claim)
+    setAdminNote('')
+    setShowApproveModal(true)
+  }
+
+  const handleRejectClaim = (claim: any) => {
+    setSelectedClaimForAction(claim)
+    setAdminNote('')
+    setShowRejectModal(true)
+  }
+
+  const confirmApproveClaim = async () => {
+    if (!selectedClaimForAction) return
+    
+    setLoading(true)
+    setError(null)
+    
+    try {
+      await approveClaim(selectedClaimForAction.id, adminNote)
+      
+      // Refresh claims list
+      const claimsData = await fetchClaims()
+      setApiClaims(claimsData)
+      
+      // Close modal and reset state
+      setShowApproveModal(false)
+      setSelectedClaimForAction(null)
+      setAdminNote('')
+      
+      // Show success message (you could add a toast notification here)
+      console.log('Claim approved successfully')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to approve claim')
+      console.error('Failed to approve claim:', err)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const confirmRejectClaim = async () => {
+    if (!selectedClaimForAction) return
+    
+    setLoading(true)
+    setError(null)
+    
+    try {
+      await rejectClaim(selectedClaimForAction.id, adminNote)
+      
+      // Refresh claims list
+      const claimsData = await fetchClaims()
+      setApiClaims(claimsData)
+      
+      // Close modal and reset state
+      setShowRejectModal(false)
+      setSelectedClaimForAction(null)
+      setAdminNote('')
+      
+      // Show success message (you could add a toast notification here)
+      console.log('Claim rejected successfully')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to reject claim')
+      console.error('Failed to reject claim:', err)
+    } finally {
+      setLoading(false)
+    }
+  }
   
   const tabs = ['Analyze', 'Orders', 'Transactions', 'Strategies', 'Users']
 
@@ -549,14 +801,28 @@ export function Admin() {
       
       try {
         if (activeTab === 'Orders') {
-          const ordersData = await fetchOrders()
+          const [ordersData, realtimeData, priceDataResult] = await Promise.all([
+            fetchOrders(),
+            fetchRealtimePnL(),
+            fetchPriceData()
+          ])
           setApiOrders(ordersData)
+          setRealtimeOrders(realtimeData.orders || [])
+          setRealtimeSummary(realtimeData.summary || null)
+          setPriceData(priceDataResult || [])
         } else if (activeTab === 'Users') {
           const usersData = await fetchUsers()
           setApiUsers(usersData)
+        } else if (activeTab === 'Transactions') {
+          const claimsData = await fetchClaims()
+          setApiClaims(claimsData)
         } else if (activeTab === 'Analyze') {
-          const statsData = await fetchOrderStats()
+          const [statsData, priceDataResult] = await Promise.all([
+            fetchOrderStats(),
+            fetchPriceData()
+          ])
           setOrderStats(statsData)
+          setPriceData(priceDataResult || [])
         } else if (activeTab === 'Strategies') {
           const [tokensData, strategiesData] = await Promise.all([
             fetchTokens(),
@@ -575,6 +841,15 @@ export function Admin() {
 
     loadData()
   }, [activeTab])
+
+  // Cleanup auto-refresh interval on unmount
+  useEffect(() => {
+    return () => {
+      if (refreshInterval) {
+        clearInterval(refreshInterval)
+      }
+    }
+  }, [refreshInterval])
 
   const renderAnalyzeContent = () => (
     <div className="space-y-6">
@@ -595,6 +870,25 @@ export function Admin() {
             <option value="2023">2023</option>
             <option value="2022">2022</option>
           </select>
+          <Button 
+            onClick={async () => {
+              setLoading(true)
+              try {
+                const priceDataResult = await fetchPriceData()
+                setPriceData(priceDataResult || [])
+              } catch (err) {
+                setError(err instanceof Error ? err.message : 'Failed to refresh prices')
+              } finally {
+                setLoading(false)
+              }
+            }}
+            disabled={loading}
+            variant="outline" 
+            size="sm"
+            className="border-gray-700 hover:bg-gray-800"
+          >
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+          </Button>
         </div>
       </div>
 
@@ -716,6 +1010,42 @@ export function Admin() {
         )}
       </div>
 
+      {/* Crypto Prices Section */}
+      {priceData.length > 0 && (
+        <Card className="bg-gray-900 border-gray-800">
+          <CardHeader>
+            <CardTitle className="text-white flex items-center gap-2">
+              <TrendingUp className="w-5 h-5" />
+              Current Token Prices
+            </CardTitle>
+            <p className="text-sm text-gray-400">Real-time price data for all active tokens</p>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+              {priceData.map((price) => (
+                <div key={price.tokenName} className="bg-gray-800 rounded-lg p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="text-white font-medium text-sm">{price.tokenName}</h3>
+                    <span className={`text-xs ${price.priceChange >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                      {price.priceChange >= 0 ? '+' : ''}{price.priceChangePercent.toFixed(2)}%
+                    </span>
+                  </div>
+                  <div className="text-white font-bold text-lg">
+                    ${price.currentPrice.toLocaleString()}
+                  </div>
+                  <div className={`text-xs ${price.priceChange >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                    {price.priceChange >= 0 ? '+' : ''}${price.priceChange.toFixed(2)}
+                  </div>
+                  <div className="text-xs text-gray-400 mt-1">
+                    {new Date(price.lastUpdated).toLocaleTimeString()}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Performance Chart Placeholder */}
       <Card className="bg-gray-900 border-gray-800">
         <CardHeader>
@@ -734,73 +1064,87 @@ export function Admin() {
   )
 
   const renderOrdersContent = () => {
-    const handleOrderClick = (order: ApiOrder) => {
-      if (selectedOrder?.id === order.id) {
+    const handleOrderClick = (order: any) => {
+      if (selectedOrder?.id === order.orderId) {
         setSelectedOrder(null)
       } else {
-        // Convert API order to display format
+        // Convert real-time order to display format
         const displayOrder = {
-          id: order.id,
-          symbol: order.token.name,
+          id: order.orderId,
+          symbol: order.tokenName,
           type: order.side,
-          amount: order.qty,
+          amount: order.quantity,
           price: order.entryPrice,
+          currentPrice: order.currentPrice,
           status: order.status,
           timestamp: new Date(order.buyDate).toLocaleString(),
-          pnl: order.netProfit,
-          user: order.user.email.split('@')[0], 
-          userId: order.user.id,
-          userEmail: order.user.email,
+          pnl: order.unrealizedPnL,
+          pnlPercent: order.unrealizedPnLPercent,
+          user: order.userEmail.split('@')[0], 
+          userId: order.userId,
+          userEmail: order.userEmail,
           fillPrice: order.entryPrice,
-          fees: order.fee,
-          strategy: order.strategy?.description || 'Unknown Strategy',
-          
-          // TODO: Need to add these fields to the API
-          orderType: 'Market',  
+          strategy: order.strategy || 'Unknown Strategy',
+          orderType: 'Market',
+          lastUpdated: order.lastUpdated,
         }
         setSelectedOrder(displayOrder as any)
       }
     }
 
     const handleRefresh = async () => {
-      setLoading(true)
-      setError(null)
-      try {
-        const ordersData = await fetchOrders()
-        setApiOrders(ordersData)
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to refresh orders')
-      } finally {
-        setLoading(false)
-      }
+      await handleRealtimeRefresh()
     }
 
-    // Calculate total profits from API data
-    const totalPnL = apiOrders.reduce((sum, order) => sum + order.netProfit, 0)
+    // Use real-time data if available, fallback to regular orders
+    const displayOrders = realtimeOrders.length > 0 ? realtimeOrders : apiOrders
+    const totalPnL = realtimeSummary?.totalUnrealizedPnL || apiOrders.reduce((sum, order) => sum + order.netProfit, 0)
 
     return (
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-white">Order Management</h1>
-            <p className="text-gray-400">Monitor current orders and P&L</p>
+            <p className="text-gray-400">Monitor current orders and real-time P&L</p>
+            {realtimeSummary && (
+              <p className="text-xs text-gray-500 mt-1">
+                Last updated: {new Date(realtimeSummary.lastUpdated).toLocaleTimeString()}
+              </p>
+            )}
           </div>
           <div className="flex items-center gap-4">
             <div className="text-right">
-              <p className="text-sm text-gray-400">Total P&L</p>
+              <p className="text-sm text-gray-400">
+                {realtimeSummary ? 'Real-time P&L' : 'Total P&L'}
+              </p>
               <p className={`text-2xl font-bold ${totalPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                 {totalPnL >= 0 ? '+' : ''}${totalPnL.toFixed(2)}
               </p>
+              {realtimeSummary && (
+                <p className="text-xs text-gray-500">
+                  {realtimeSummary.totalUnrealizedPnLPercent >= 0 ? '+' : ''}{realtimeSummary.totalUnrealizedPnLPercent.toFixed(2)}%
+                </p>
+              )}
             </div>
-            <Button 
-              onClick={handleRefresh} 
-              disabled={loading}
-              variant="outline" 
-              size="sm"
-              className="border-gray-700 hover:bg-gray-800"
-            >
-              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button 
+                onClick={toggleAutoRefresh}
+                variant={autoRefresh ? "default" : "outline"}
+                size="sm"
+                className={autoRefresh ? "bg-green-600 hover:bg-green-700" : "border-gray-700 hover:bg-gray-800"}
+              >
+                {autoRefresh ? 'Auto ON' : 'Auto OFF'}
+              </Button>
+              <Button 
+                onClick={handleRefresh} 
+                disabled={loading}
+                variant="outline" 
+                size="sm"
+                className="border-gray-700 hover:bg-gray-800"
+              >
+                <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+              </Button>
+            </div>
           </div>
         </div>
 
@@ -827,62 +1171,97 @@ export function Admin() {
                         <th className="text-left py-3 text-sm font-medium text-gray-400">Symbol</th>
                         <th className="text-left py-3 text-sm font-medium text-gray-400">Type</th>
                         <th className="text-left py-3 text-sm font-medium text-gray-400">Amount</th>
-                        <th className="text-left py-3 text-sm font-medium text-gray-400">Price</th>
+                        <th className="text-left py-3 text-sm font-medium text-gray-400">Entry Price</th>
+                        <th className="text-left py-3 text-sm font-medium text-gray-400">Current Price</th>
                         <th className="text-left py-3 text-sm font-medium text-gray-400">Status</th>
-                        <th className="text-left py-3 text-sm font-medium text-gray-400">P&L</th>
+                        <th className="text-left py-3 text-sm font-medium text-gray-400">Real-time P&L</th>
                       </tr>
                     </thead>
                     <tbody>
                       {loading ? (
                         <tr>
-                          <td colSpan={7} className="py-8 text-center text-gray-400">
+                          <td colSpan={8} className="py-8 text-center text-gray-400">
                             <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2" />
                             Loading orders...
                           </td>
                         </tr>
-                      ) : !apiOrders || apiOrders.length === 0 ? (
+                      ) : !displayOrders || displayOrders.length === 0 ? (
                         <tr>
-                          <td colSpan={7} className="py-8 text-center text-gray-400">
+                          <td colSpan={8} className="py-8 text-center text-gray-400">
                             No orders found
                           </td>
                         </tr>
                       ) : (
-                        (apiOrders || []).map((order) => (
-                          <tr 
-                            key={order.id} 
-                            className={`border-b border-gray-800/50 cursor-pointer transition-colors ${
-                              selectedOrder?.id === order.id 
-                                ? 'bg-blue-600/10 border-blue-600/30' 
-                                : 'hover:bg-gray-800/30'
-                            }`}
-                            onClick={() => handleOrderClick(order)}
-                          >
-                            <td className="py-3">
-                              <div>
-                                <p className="text-white font-medium text-sm">{order.user?.email?.split('@')[0] || 'Unknown'}</p>
-                                <p className="text-gray-400 text-xs">{order.user?.email || 'No email'}</p>
-                              </div>
-                            </td>
-                            <td className="py-3 text-white font-medium">{order.token?.name || 'Unknown Token'}</td>
-                            <td className="py-3">
-                              <Badge className={order.side === 'BUY' ? 'bg-green-600' : 'bg-red-600'}>
-                                {order.side}
-                              </Badge>
-                            </td>
-                            <td className="py-3 text-white">{order.qty}</td>
-                            <td className="py-3 text-white">${order.entryPrice.toLocaleString()}</td>
-                            <td className="py-3">
-                              <Badge className={`${getStatusColor(order.status)} text-white`}>
-                                {order.status}
-                              </Badge>
-                            </td>
-                            <td className="py-3">
-                              <span className={order.netProfit > 0 ? 'text-green-400' : order.netProfit < 0 ? 'text-red-400' : 'text-gray-400'}>
-                                {order.netProfit > 0 ? '+' : ''}${order.netProfit.toFixed(2)}
-                              </span>
-                            </td>
-                          </tr>
-                        ))
+                        (displayOrders || []).map((order) => {
+                          // Handle both real-time and regular orders
+                          const isRealtime = realtimeOrders.length > 0
+                          const orderId = isRealtime ? order.orderId : order.id
+                          const userEmail = isRealtime ? order.userEmail : order.user?.email
+                          const tokenName = isRealtime ? order.tokenName : order.token?.name
+                          const quantity = isRealtime ? order.quantity : order.qty
+                          const entryPrice = isRealtime ? order.entryPrice : order.entryPrice
+                          const currentPrice = isRealtime ? order.currentPrice : null
+                          const pnl = isRealtime ? order.unrealizedPnL : order.netProfit
+                          const pnlPercent = isRealtime ? order.unrealizedPnLPercent : null
+                          
+                          return (
+                            <tr 
+                              key={orderId} 
+                              className={`border-b border-gray-800/50 cursor-pointer transition-colors ${
+                                selectedOrder?.id === orderId 
+                                  ? 'bg-blue-600/10 border-blue-600/30' 
+                                  : 'hover:bg-gray-800/30'
+                              }`}
+                              onClick={() => handleOrderClick(order)}
+                            >
+                              <td className="py-3">
+                                <div>
+                                  <p className="text-white font-medium text-sm">{userEmail?.split('@')[0] || 'Unknown'}</p>
+                                  <p className="text-gray-400 text-xs">{userEmail || 'No email'}</p>
+                                </div>
+                              </td>
+                              <td className="py-3 text-white font-medium">{tokenName || 'Unknown Token'}</td>
+                              <td className="py-3">
+                                <Badge className={order.side === 'BUY' ? 'bg-green-600' : 'bg-red-600'}>
+                                  {order.side}
+                                </Badge>
+                              </td>
+                              <td className="py-3 text-white">{quantity}</td>
+                              <td className="py-3 text-white">${entryPrice.toLocaleString()}</td>
+                              <td className="py-3 text-white">
+                                {currentPrice ? (
+                                  <div>
+                                    <div className="font-medium">${currentPrice.toLocaleString()}</div>
+                                    {isRealtime && (
+                                      <div className="text-xs text-gray-400">
+                                        {new Date(order.lastUpdated).toLocaleTimeString()}
+                                      </div>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <span className="text-gray-400">N/A</span>
+                                )}
+                              </td>
+                              <td className="py-3">
+                                <Badge className={`${getStatusColor(order.status)} text-white`}>
+                                  {order.status}
+                                </Badge>
+                              </td>
+                              <td className="py-3">
+                                <div>
+                                  <span className={pnl > 0 ? 'text-green-400' : pnl < 0 ? 'text-red-400' : 'text-gray-400'}>
+                                    {pnl > 0 ? '+' : ''}${pnl.toFixed(2)}
+                                  </span>
+                                  {pnlPercent !== null && (
+                                    <div className="text-xs text-gray-400">
+                                      {pnlPercent > 0 ? '+' : ''}{pnlPercent.toFixed(2)}%
+                                    </div>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          )
+                        })
                       )}
                     </tbody>
                   </table>
@@ -1016,60 +1395,180 @@ export function Admin() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-white">Transaction Management</h1>
-          <p className="text-gray-400">Approve or reject investor deposits and withdrawals</p>
+          <h1 className="text-2xl font-bold text-white">Transaction Claims</h1>
+          <p className="text-gray-400">Manage user withdrawal claims and transactions</p>
         </div>
         <div className="text-right">
-          <p className="text-sm text-gray-400">Pending Requests</p>
-          <p className="text-2xl font-bold text-yellow-400">2</p>
+          <p className="text-sm text-gray-400">Pending Claims</p>
+          <p className="text-2xl font-bold text-yellow-400">
+            {loading ? '...' : (apiClaims?.filter(c => c.status === 'NEW').length || 0)}
+          </p>
         </div>
+      </div>
+
+      {/* Claims Overview Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <Card className="bg-gray-900 border-gray-800">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm text-gray-400 font-medium">Total Claims</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center gap-2">
+              <span className="text-2xl font-bold text-white">
+                {loading ? '...' : (apiClaims?.length || 0)}
+              </span>
+              <DollarSign className="w-5 h-5 text-blue-400" />
+            </div>
+            <p className="text-sm text-gray-400 mt-1">All time</p>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-gray-900 border-gray-800">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm text-gray-400 font-medium">New Claims</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center gap-2">
+              <span className="text-2xl font-bold text-blue-400">
+                {loading ? '...' : (apiClaims?.filter(c => c.status === 'NEW').length || 0)}
+              </span>
+              <Clock className="w-5 h-5 text-blue-400" />
+            </div>
+            <p className="text-sm text-gray-400 mt-1">Pending review</p>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-gray-900 border-gray-800">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm text-gray-400 font-medium">Processing</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center gap-2">
+              <span className="text-2xl font-bold text-yellow-400">
+                {loading ? '...' : (apiClaims?.filter(c => c.status === 'PROCESSING').length || 0)}
+              </span>
+              <AlertCircle className="w-5 h-5 text-yellow-400" />
+            </div>
+            <p className="text-sm text-gray-400 mt-1">In progress</p>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-gray-900 border-gray-800">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm text-gray-400 font-medium">Completed</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center gap-2">
+              <span className="text-2xl font-bold text-green-400">
+                {loading ? '...' : (apiClaims?.filter(c => c.status === 'COMPLETED').length || 0)}
+              </span>
+              <CheckCircle className="w-5 h-5 text-green-400" />
+            </div>
+            <p className="text-sm text-gray-400 mt-1">Successfully processed</p>
+          </CardContent>
+        </Card>
       </div>
 
       <Card className="bg-gray-900 border-gray-800">
         <CardHeader>
-          <CardTitle className="text-white">Transaction Requests</CardTitle>
+          <CardTitle className="text-white">Claims Management</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="space-y-4">
-            {transactions.map((transaction) => (
-              <div key={transaction.id} className="flex items-center justify-between p-4 bg-gray-800 rounded-lg">
-                <div className="flex items-center gap-4">
-                  <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                    transaction.type === 'DEPOSIT' ? 'bg-green-600/20' : 'bg-red-600/20'
-                  }`}>
-                    {transaction.type === 'DEPOSIT' ? 
-                      <TrendingUp className="w-5 h-5 text-green-400" /> : 
-                      <TrendingDown className="w-5 h-5 text-red-400" />
-                    }
-                  </div>
-                  <div>
-                    <p className="text-white font-medium">{transaction.user}</p>
-                    <p className="text-gray-400 text-sm">
-                      {transaction.type} - ${transaction.amount.toLocaleString()}
-                    </p>
-                    <p className="text-gray-500 text-xs">{transaction.timestamp}</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3">
-                  <Badge className={`${getStatusColor(transaction.status)} text-white`}>
-                    {transaction.status}
-                  </Badge>
-                  {transaction.status === 'PENDING' && (
-                    <div className="flex gap-2">
-                      <Button size="sm" className="bg-green-600 hover:bg-green-700">
-                        <CheckCircle className="w-4 h-4 mr-1" />
-                        Approve
-                      </Button>
-                      <Button size="sm" variant="outline" className="border-red-600 text-red-400 hover:bg-red-600 hover:text-white">
-                        <X className="w-4 h-4 mr-1" />
-                        Reject
-                      </Button>
+          {loading ? (
+            <div className="py-8 text-center text-gray-400">
+              Loading claims...
+            </div>
+          ) : error ? (
+            <div className="py-8 text-center text-red-400">
+              Error: {error}
+            </div>
+          ) : !apiClaims || apiClaims.length === 0 ? (
+            <div className="py-8 text-center text-gray-400">
+              No claims found
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {apiClaims.map((claim) => (
+                <div key={claim.id} className="flex items-center justify-between p-4 bg-gray-800 rounded-lg">
+                  <div className="flex items-center gap-4">
+                    <div className="w-10 h-10 rounded-full flex items-center justify-center bg-blue-600/20">
+                      <Users className="w-5 h-5 text-blue-400" />
                     </div>
-                  )}
+                    <div>
+                      <p className="text-white font-medium">{claim.user?.username || 'Unknown User'}</p>
+                      <p className="text-gray-400 text-sm">
+                        ${claim.amount.toLocaleString()} • {claim.network}
+                      </p>
+                      <div className="flex items-center gap-4 mt-1">
+                        <span className="text-gray-500 text-xs">
+                          {claim.billsCount} bills
+                        </span>
+                        <span className="text-gray-500 text-xs">
+                          {new Date(claim.createdAt).toLocaleDateString()}
+                        </span>
+                        {claim.hashId && (
+                          <span className="text-blue-400 text-xs">
+                            Has Transaction
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="text-right">
+                      <p className="text-gray-400 text-xs">Address</p>
+                      <p className="text-white text-sm font-mono">
+                        {claim.address.slice(0, 8)}...{claim.address.slice(-6)}
+                      </p>
+                      {claim.hashId && (
+                        <>
+                          <p className="text-gray-400 text-xs mt-1">Hash ID</p>
+                          <p className="text-white text-sm font-mono">
+                            {claim.hashId.slice(0, 8)}...{claim.hashId.slice(-6)}
+                          </p>
+                        </>
+                      )}
+                    </div>
+                    <Badge className={`${getStatusColor(claim.status)} text-white`}>
+                      {claim.status}
+                    </Badge>
+                    <div className="flex gap-2">
+                      <Button 
+                        size="sm" 
+                        variant="outline" 
+                        onClick={() => handleViewClaimDetails(claim)}
+                        className="border-blue-600 text-blue-400 hover:bg-blue-600 hover:text-white"
+                      >
+                        <Users className="w-4 h-4 mr-1" />
+                        View Details
+                      </Button>
+                      {claim.status === 'NEW' && (
+                        <>
+                          <Button 
+                            size="sm" 
+                            onClick={() => handleApproveClaim(claim)}
+                            className="bg-green-600 hover:bg-green-700"
+                          >
+                            <CheckCircle className="w-4 h-4 mr-1" />
+                            Approve
+                          </Button>
+                          <Button 
+                            size="sm" 
+                            variant="outline" 
+                            onClick={() => handleRejectClaim(claim)}
+                            className="border-red-600 text-red-400 hover:bg-red-600 hover:text-white"
+                          >
+                            <X className="w-4 h-4 mr-1" />
+                            Reject
+                          </Button>
+                        </>
+                      )}
+                    </div>
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>
@@ -2154,6 +2653,437 @@ export function Admin() {
       <div className="px-6 pt-4">
         {renderTabContent()}
       </div>
+
+      {/* Claim Details Modal */}
+      {showClaimDetails && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-900 border border-gray-800 rounded-lg w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+            <div className="p-6">
+              {/* Modal Header */}
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h2 className="text-2xl font-bold text-white">Claim Details</h2>
+                  <p className="text-gray-400">Comprehensive claim information and bills breakdown</p>
+                </div>
+                <Button
+                  onClick={() => {
+                    setShowClaimDetails(false)
+                    setClaimDetails(null)
+                  }}
+                  variant="outline"
+                  className="border-gray-600 text-gray-300 hover:bg-gray-700"
+                >
+                  <X className="w-4 h-4" />
+                </Button>
+              </div>
+
+              {loading ? (
+                <div className="py-8 text-center text-gray-400">
+                  Loading claim details...
+                </div>
+              ) : error ? (
+                <div className="py-8 text-center text-red-400">
+                  Error: {error}
+                </div>
+              ) : claimDetails ? (
+                <div className="space-y-6">
+                  {/* Claim Overview */}
+                  <Card className="bg-gray-800 border-gray-700">
+                    <CardHeader>
+                      <CardTitle className="text-white flex items-center gap-3">
+                        <Users className="w-5 h-5" />
+                        Claim Information
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="space-y-4">
+                          <div>
+                            <label className="text-sm text-gray-400">Claim ID</label>
+                            <p className="text-white font-mono">#{claimDetails.id}</p>
+                          </div>
+                          <div>
+                            <label className="text-sm text-gray-400">Amount</label>
+                            <p className="text-white text-xl font-bold">${claimDetails.amount.toLocaleString()}</p>
+                          </div>
+                          <div>
+                            <label className="text-sm text-gray-400">Status</label>
+                            <Badge className={`${getStatusColor(claimDetails.status)} text-white`}>
+                              {claimDetails.status}
+                            </Badge>
+                          </div>
+                          <div>
+                            <label className="text-sm text-gray-400">Network</label>
+                            <p className="text-white">{claimDetails.network}</p>
+                          </div>
+                        </div>
+                        <div className="space-y-4">
+                          <div>
+                            <label className="text-sm text-gray-400">User</label>
+                            <p className="text-white">{claimDetails.user?.username || 'Unknown'}</p>
+                            <p className="text-gray-400 text-sm">{claimDetails.user?.email}</p>
+                          </div>
+                          <div>
+                            <label className="text-sm text-gray-400">Wallet Address</label>
+                            <div className="flex items-center gap-2">
+                              <p className="text-white font-mono text-sm break-all">{claimDetails.address}</p>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => navigator.clipboard.writeText(claimDetails.address)}
+                                className="p-1 h-6 w-6 text-gray-400 hover:text-white"
+                              >
+                                <Copy className="w-3 h-3" />
+                              </Button>
+                            </div>
+                          </div>
+                          {claimDetails.hashId && (
+                            <div>
+                              <label className="text-sm text-gray-400">
+                                {claimDetails.status === 'FINISHED' ? 'Admin Note' : 'Transaction Hash'}
+                              </label>
+                              <div className="flex items-center gap-2">
+                                <p className="text-white font-mono text-sm break-all">{claimDetails.hashId}</p>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => navigator.clipboard.writeText(claimDetails.hashId)}
+                                  className="p-1 h-6 w-6 text-gray-400 hover:text-white"
+                                >
+                                  <Copy className="w-3 h-3" />
+                                </Button>
+                              </div>
+                            </div>
+                          )}
+                          <div>
+                            <label className="text-sm text-gray-400">Created</label>
+                            <p className="text-white">{new Date(claimDetails.createdAt).toLocaleString()}</p>
+                          </div>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* Bills Breakdown */}
+                  <Card className="bg-gray-800 border-gray-700">
+                    <CardHeader>
+                      <div className="flex items-center justify-between">
+                        <CardTitle className="text-white flex items-center gap-3">
+                          <DollarSign className="w-5 h-5" />
+                          Bills Breakdown ({claimDetails.bills?.length || 0} bills)
+                        </CardTitle>
+                        {claimDetails.bills && claimDetails.bills.length > 0 && (
+                          <div className="text-right">
+                            <p className="text-sm text-gray-400">Total Bills Value</p>
+                            <p className="text-xl font-bold text-white">
+                              ${claimDetails.bills.reduce((sum: number, bill: any) => sum + (bill.netProfit || 0), 0).toLocaleString()}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    </CardHeader>
+                    <CardContent>
+                      {claimDetails.bills && claimDetails.bills.length > 0 ? (
+                        <div className="space-y-6">
+                          {/* Bills Summary */}
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                            <div className="bg-gray-700 rounded-lg p-4">
+                              <div className="flex items-center gap-2 mb-2">
+                                <DollarSign className="w-4 h-4 text-blue-400" />
+                                <span className="text-sm text-gray-400">Total Bills Net Profit</span>
+                              </div>
+                              <p className="text-xl font-bold text-white">
+                                ${claimDetails.bills.reduce((sum: number, bill: any) => sum + (bill.netProfit || 0), 0).toLocaleString()}
+                              </p>
+                            </div>
+                            <div className="bg-gray-700 rounded-lg p-4">
+                              <div className="flex items-center gap-2 mb-2">
+                                <BarChart3 className="w-4 h-4 text-green-400" />
+                                <span className="text-sm text-gray-400">Claim Amount (After 30% Commission)</span>
+                              </div>
+                              <p className="text-xl font-bold text-green-400">
+                                ${claimDetails.amount.toLocaleString()}
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* Individual Bills */}
+                          {claimDetails.bills.map((bill: any) => (
+                            <div key={bill.id} className="bg-gray-700 rounded-lg p-6">
+                              <div className="flex items-center justify-between mb-4">
+                                <div className="flex items-center gap-4">
+                                  <div className="bg-gray-600 rounded-lg p-3">
+                                    <DollarSign className="w-6 h-6 text-blue-400" />
+                                  </div>
+                                  <div>
+                                    <h4 className="text-white font-medium text-lg">Bill #{bill.id}</h4>
+                                    <div className="flex items-center gap-4 mt-1">
+                                      <span className="text-gray-400 text-sm">
+                                        {bill.from && bill.to ? 
+                                          `${new Date(bill.from).toLocaleDateString()} - ${new Date(bill.to).toLocaleDateString()}` :
+                                          'Date range not available'
+                                        }
+                                      </span>
+                                      <Badge className={`${getStatusColor(bill.status)} text-white`}>
+                                        {bill.status}
+                                      </Badge>
+                                    </div>
+                                  </div>
+                                </div>
+                                <div className="text-right">
+                                  <p className="text-sm text-gray-400">Net Profit</p>
+                                  <p className={`text-xl font-bold ${
+                                    bill.netProfit >= 0 ? 'text-green-400' : 'text-red-400'
+                                  }`}>
+                                    ${bill.netProfit.toLocaleString()}
+                                  </p>
+                                </div>
+                              </div>
+                              
+                              {/* Orders in this bill */}
+                              {bill.orders && bill.orders.length > 0 ? (
+                                <div className="mt-6">
+                                  <div className="flex items-center justify-between mb-4">
+                                    <h5 className="text-gray-300 font-medium">Orders ({bill.orders.length})</h5>
+                                    <div className="text-sm text-gray-400">
+                                      Total Orders Value: ${bill.orders.reduce((sum: number, order: any) => sum + (order.netProfit || 0), 0).toLocaleString()}
+                                    </div>
+                                  </div>
+                                  <div className="grid gap-3">
+                                    {bill.orders.map((order: any) => (
+                                      <div key={order.id} className="bg-gray-600 rounded-lg p-4 border border-gray-500/30">
+                                        <div className="flex items-center justify-between mb-3">
+                                          <div className="flex items-center gap-3">
+                                            <div className={`w-3 h-3 rounded-full ${
+                                              order.side === 'BUY' ? 'bg-green-500' : 'bg-red-500'
+                                            }`}></div>
+                                            <div>
+                                              <p className="text-white font-mono text-sm">{order.orderId}</p>
+                                              <p className="text-gray-400 text-xs">{order.token?.name || 'Unknown Token'}</p>
+                                            </div>
+                                          </div>
+                                          <div className="text-right">
+                                            <p className={`font-bold ${
+                                              order.netProfit >= 0 ? 'text-green-400' : 'text-red-400'
+                                            }`}>
+                                              ${order.netProfit.toLocaleString()}
+                                            </p>
+                                            <p className="text-gray-400 text-xs">{order.side}</p>
+                                          </div>
+                                        </div>
+                                        
+                                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                                          <div>
+                                            <span className="text-gray-400">Entry Price:</span>
+                                            <p className="text-white">${order.entryPrice}</p>
+                                          </div>
+                                          <div>
+                                            <span className="text-gray-400">Quantity:</span>
+                                            <p className="text-white">{order.qty}</p>
+                                          </div>
+                                          <div>
+                                            <span className="text-gray-400">Budget:</span>
+                                            <p className="text-white">${order.budget?.toLocaleString() || 'N/A'}</p>
+                                          </div>
+                                          <div>
+                                            <span className="text-gray-400">Date:</span>
+                                            <p className="text-white">{new Date(order.buyDate).toLocaleDateString()}</p>
+                                          </div>
+                                        </div>
+                                        
+                                        {order.note && (
+                                          <div className="mt-3 pt-3 border-t border-gray-500/30">
+                                            <span className="text-gray-400 text-xs">Note:</span>
+                                            <p className="text-gray-300 text-sm">{order.note}</p>
+                                          </div>
+                                        )}
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="text-center py-4 text-gray-400">
+                                  No orders in this bill
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="text-center py-8 text-gray-400">
+                          <DollarSign className="w-12 h-12 mx-auto mb-4 text-gray-500" />
+                          <p className="text-lg">No bills associated with this claim</p>
+                          <p className="text-sm">This claim has no associated billing information</p>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+
+                  {/* Action Buttons */}
+                  {claimDetails.status === 'NEW' && (
+                    <div className="flex gap-3 justify-end">
+                      <Button
+                        variant="outline"
+                        onClick={() => handleRejectClaim(claimDetails)}
+                        className="border-red-600 text-red-400 hover:bg-red-600 hover:text-white"
+                      >
+                        <X className="w-4 h-4 mr-2" />
+                        Reject Claim
+                      </Button>
+                      <Button 
+                        onClick={() => handleApproveClaim(claimDetails)}
+                        className="bg-green-600 hover:bg-green-700"
+                      >
+                        <CheckCircle className="w-4 h-4 mr-2" />
+                        Approve Claim
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="py-8 text-center text-gray-400">
+                  No claim details available
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Approve Claim Modal */}
+      {showApproveModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-900 border border-gray-800 rounded-lg w-full max-w-md">
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-xl font-bold text-white">Approve Claim</h3>
+                <Button
+                  onClick={() => {
+                    setShowApproveModal(false)
+                    setSelectedClaimForAction(null)
+                    setAdminNote('')
+                  }}
+                  variant="outline"
+                  className="border-gray-600 text-gray-300 hover:bg-gray-700"
+                >
+                  <X className="w-4 h-4" />
+                </Button>
+              </div>
+              
+              <div className="mb-4">
+                <p className="text-gray-300 mb-2">
+                  Approving claim #{selectedClaimForAction?.id} for ${selectedClaimForAction?.amount?.toLocaleString()}
+                </p>
+                <p className="text-gray-400 text-sm">
+                  User: {selectedClaimForAction?.user?.username}
+                </p>
+              </div>
+
+              <div className="mb-6">
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Admin Note (Optional)
+                </label>
+                <textarea
+                  value={adminNote}
+                  onChange={(e) => setAdminNote(e.target.value)}
+                  placeholder="Add a note for the user"
+                  className="w-full p-3 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-green-500 resize-none"
+                  rows={3}
+                />
+              </div>
+
+              <div className="flex gap-3 justify-end">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setShowApproveModal(false)
+                    setSelectedClaimForAction(null)
+                    setAdminNote('')
+                  }}
+                  className="border-gray-600 text-gray-300 hover:bg-gray-700"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={confirmApproveClaim}
+                  disabled={loading}
+                  className="bg-green-600 hover:bg-green-700 disabled:opacity-50"
+                >
+                  {loading ? 'Approving...' : 'Approve Claim'}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reject Claim Modal */}
+      {showRejectModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-gray-900 border border-gray-800 rounded-lg w-full max-w-md">
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-xl font-bold text-white">Reject Claim</h3>
+                <Button
+                  onClick={() => {
+                    setShowRejectModal(false)
+                    setSelectedClaimForAction(null)
+                    setAdminNote('')
+                  }}
+                  variant="outline"
+                  className="border-gray-600 text-gray-300 hover:bg-gray-700"
+                >
+                  <X className="w-4 h-4" />
+                </Button>
+              </div>
+              
+              <div className="mb-4">
+                <p className="text-gray-300 mb-2">
+                  Rejecting claim #{selectedClaimForAction?.id} for ${selectedClaimForAction?.amount?.toLocaleString()}
+                </p>
+                <p className="text-gray-400 text-sm">
+                  User: {selectedClaimForAction?.user?.username}
+                </p>
+              </div>
+
+              <div className="mb-6">
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Rejection Reason (Required)
+                </label>
+                <textarea
+                  value={adminNote}
+                  onChange={(e) => setAdminNote(e.target.value)}
+                  placeholder="Explain why the claim is being rejected (e.g., 'Insufficient trading activity' or 'Invalid documentation')"
+                  className="w-full p-3 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-red-500 resize-none"
+                  rows={3}
+                  required
+                />
+              </div>
+
+              <div className="flex gap-3 justify-end">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setShowRejectModal(false)
+                    setSelectedClaimForAction(null)
+                    setAdminNote('')
+                  }}
+                  className="border-gray-600 text-gray-300 hover:bg-gray-700"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={confirmRejectClaim}
+                  disabled={loading || !adminNote.trim()}
+                  className="bg-red-600 hover:bg-red-700 disabled:opacity-50"
+                >
+                  {loading ? 'Rejecting...' : 'Reject Claim'}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
