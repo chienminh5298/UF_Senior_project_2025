@@ -9,7 +9,7 @@ JWT_SECRET="your-secret-key-here"
 
 ### 3. Start Database
 ```bash
-docker-compose up -d database
+docker-compose up -d ufdatabase
 ```
 
 ### 4. Install Dependencies
