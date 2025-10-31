@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../ui/card'
 import { Badge } from '../ui/badge'
 import { Button } from '../ui/button'
 import { AreaChart, Area, XAxis, YAxis, ResponsiveContainer } from 'recharts'
-import { TrendingUp, TrendingDown, Zap, BarChart, RefreshCw } from 'lucide-react'
+import { TrendingUp, TrendingDown, Zap, BarChart, RefreshCw, CheckCircle, Settings, X } from 'lucide-react'
 
 // API Configuration
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3001'
@@ -53,11 +53,54 @@ const fetchDashboardStats = async () => {
   return data.data
 }
 
+const fetchTokens = async () => {
+  const token = localStorage.getItem('adminToken')
+  const response = await fetch(`${API_BASE}/api/admin/tokens`, {
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    }
+  })
+  
+  if (!response.ok) {
+    throw new Error('Failed to fetch tokens')
+  }
+  
+  const result = await response.json()
+  // API returns { success, message, data: { tokens } }
+  return result.data?.tokens || []
+}
+
+const updateTokensBulk = async (tokenIds: number[]) => {
+  const token = localStorage.getItem('adminToken')
+  const response = await fetch(`${API_BASE}/api/admin/tokens/bulk`, {
+    method: 'PATCH',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ tokens: tokenIds })
+  })
+  
+  if (!response.ok) {
+    const errorData = await response.json()
+    throw new Error(errorData.message || 'Failed to update tokens')
+  }
+  
+  return response.json()
+}
+
 export function Dashboard() {
   const [cryptoPrices, setCryptoPrices] = useState<any[]>([])
   const [dashboardStats, setDashboardStats] = useState<any>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  
+  // Token Selection Modal State
+  const [showTokenSelector, setShowTokenSelector] = useState(false)
+  const [availableTokens, setAvailableTokens] = useState<any[]>([])
+  const [selectedTokenIds, setSelectedTokenIds] = useState<number[]>([])
+  const [tokenSelectorLoading, setTokenSelectorLoading] = useState(false)
 
   useEffect(() => {
     const loadData = async () => {
@@ -102,6 +145,56 @@ export function Dashboard() {
       setError(err instanceof Error ? err.message : 'Failed to refresh data')
     } finally {
       setLoading(false)
+    }
+  }
+
+  // Token Selection Handlers
+  const handleOpenTokenSelector = async () => {
+    setShowTokenSelector(true)
+    setTokenSelectorLoading(true)
+    
+    try {
+      const tokens = await fetchTokens()
+      setAvailableTokens(tokens)
+      // Pre-select currently active tokens
+      const activeTokenIds = tokens
+        .filter((token: any) => token.isActive)
+        .map((token: any) => token.id)
+      setSelectedTokenIds(activeTokenIds)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load tokens')
+    } finally {
+      setTokenSelectorLoading(false)
+    }
+  }
+
+  const handleCloseTokenSelector = () => {
+    setShowTokenSelector(false)
+    setSelectedTokenIds([])
+  }
+
+  const toggleToken = (tokenId: number) => {
+    setSelectedTokenIds(prev => 
+      prev.includes(tokenId)
+        ? prev.filter(id => id !== tokenId)
+        : [...prev, tokenId]
+    )
+  }
+
+  const handleSaveTokenSelection = async () => {
+    setTokenSelectorLoading(true)
+    setError(null)
+    
+    try {
+      await updateTokensBulk(selectedTokenIds)
+      // Refresh dashboard stats to reflect changes
+      const stats = await fetchDashboardStats()
+      setDashboardStats(stats)
+      setShowTokenSelector(false)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update tokens')
+    } finally {
+      setTokenSelectorLoading(false)
     }
   }
 
@@ -175,7 +268,16 @@ export function Dashboard() {
             ) : (
               <>
                 <div className="text-2xl font-bold text-white">{dashboardStats?.activeTokensCount || 0}</div>
-                <div className="text-sm text-gray-400">tokens currently active</div>
+                <div className="text-sm text-gray-400 mb-2">tokens currently active</div>
+                <Button
+                  onClick={handleOpenTokenSelector}
+                  variant="outline"
+                  size="sm"
+                  className="w-full border-gray-700 text-gray-300 hover:text-white hover:bg-gray-800"
+                >
+                  <Settings className="w-4 h-4 mr-2" />
+                  Manage Tokens
+                </Button>
               </>
             )}
           </CardContent>
@@ -349,6 +451,88 @@ export function Dashboard() {
           )}
         </CardContent>
       </Card>
+
+      {/* Token Selection Modal */}
+      {showTokenSelector && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <Card className="bg-gray-900 border-gray-800 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            <CardHeader className="flex flex-row items-center justify-between border-b border-gray-800">
+              <CardTitle className="text-white">Select Active Tokens</CardTitle>
+              <Button
+                onClick={handleCloseTokenSelector}
+                variant="ghost"
+                size="sm"
+                className="text-gray-400 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </Button>
+            </CardHeader>
+            <CardContent className="p-6">
+              {tokenSelectorLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <RefreshCw className="w-6 h-6 animate-spin text-gray-400" />
+                  <span className="ml-2 text-gray-400">Loading tokens...</span>
+                </div>
+              ) : (
+                <>
+                  <p className="text-sm text-gray-400 mb-4">
+                    Select tokens to activate. Only selected tokens will be active.
+                  </p>
+                  <div className="grid grid-cols-2 gap-2 mb-6">
+                    {Array.isArray(availableTokens) && availableTokens.length > 0 ? (
+                      availableTokens.map((token) => (
+                      <div
+                        key={token.id}
+                        className={`p-3 rounded-lg border cursor-pointer transition-colors ${
+                          selectedTokenIds.includes(token.id)
+                            ? 'bg-blue-600/20 border-blue-600 text-blue-400'
+                            : 'bg-gray-800 border-gray-700 hover:bg-gray-700'
+                        }`}
+                        onClick={() => toggleToken(token.id)}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-white font-medium">{token.name}</span>
+                          {selectedTokenIds.includes(token.id) && (
+                            <CheckCircle className="w-4 h-4 text-blue-400" />
+                          )}
+                        </div>
+                      </div>
+                      ))
+                    ) : (
+                      <div className="col-span-2 text-center py-8 text-gray-400">
+                        <p>No tokens available</p>
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-800">
+                    <Button
+                      onClick={handleCloseTokenSelector}
+                      variant="outline"
+                      className="border-gray-700 text-gray-300 hover:text-white"
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      onClick={handleSaveTokenSelection}
+                      disabled={tokenSelectorLoading}
+                      className="bg-blue-600 hover:bg-blue-700 text-white"
+                    >
+                      {tokenSelectorLoading ? (
+                        <>
+                          <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                          Saving...
+                        </>
+                      ) : (
+                        'Save Changes'
+                      )}
+                    </Button>
+                  </div>
+                </>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
     </div>
   )
 }
