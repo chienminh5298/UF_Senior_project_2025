@@ -2991,9 +2991,6 @@ export function Admin() {
               </div>
               
               <div className="mb-4">
-                <p className="text-gray-300 mb-2">
-                  Approving claim #{selectedClaimForAction?.id} for ${selectedClaimForAction?.amount?.toLocaleString()}
-                </p>
                 <p className="text-gray-400 text-sm">
                   User: {selectedClaimForAction?.user?.username}
                 </p>
@@ -3058,9 +3055,6 @@ export function Admin() {
               </div>
               
               <div className="mb-4">
-                <p className="text-gray-300 mb-2">
-                  Rejecting claim #{selectedClaimForAction?.id} for ${selectedClaimForAction?.amount?.toLocaleString()}
-                </p>
                 <p className="text-gray-400 text-sm">
                   User: {selectedClaimForAction?.user?.username}
                 </p>
@@ -3073,7 +3067,7 @@ export function Admin() {
                 <textarea
                   value={adminNote}
                   onChange={(e) => setAdminNote(e.target.value)}
-                  placeholder="Explain why the claim is being rejected (e.g., 'Insufficient trading activity' or 'Invalid documentation')"
+                  placeholder="Explain why the claim is being rejected"
                   className="w-full p-3 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-red-500 resize-none"
                   rows={3}
                   required

@@ -1504,6 +1504,15 @@ router.patch('/tokens/bulk', requireAuth, async (req, res) => {
       });
     }
 
+    // Refresh active tokens in WebSocket service
+    try {
+      const { binanceWebSocketService } = await import('../services/binanceWebSocket');
+      await binanceWebSocketService.refreshActiveTokens();
+    } catch (wsError) {
+      console.error('Error refreshing WebSocket active tokens:', wsError);
+      // Don't fail the request if WebSocket refresh fails
+    }
+
     return res.status(200).json({
       success: true,
       message: 'Tokens updated successfully',
@@ -2422,7 +2431,7 @@ router.get('/orders/price-data', requireAuth, async (req, res) => {
  *                       description: Daily P&L (sum of netProfit from orders created today)
  *                     activeTokensCount:
  *                       type: integer
- *                       description: Number of tokens that are active (isActive: true)
+ *                       description: Number of tokens that are active (isActive equals true)
  *                     availableTokensCount:
  *                       type: integer
  *                       description: Total number of all tokens in database (regardless of active status)
