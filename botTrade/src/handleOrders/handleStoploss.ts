@@ -41,10 +41,11 @@ const setStoploss = async ({ token, order, target }: SetStoplossType): Promise<s
         return null;
     }
 
+    console.log(`setStoploss function. Order side: ${order.side}`); 
     const payload: __payloadNewStoplossType = {
         symbol: token.name + token.stable,
         qty: roundQtyToNDecimal(order.qty, token.minQty),
-        side: order.side === "short" ? "BUY" : ("SELL" as "SELL" | "BUY"),
+        side: order.side === "BUY" ? "SELL" : "BUY",
         stopPrice: roundStopPriceTo2Decimals(calculateMarkPrice(target.stoplossPercent, order.entryPrice, order.side)),
     };
 

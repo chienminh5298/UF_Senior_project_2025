@@ -56,6 +56,8 @@ export const openRootOrder = async ({ token, strategy, side, forSpecifyUserId = 
                     // Doesn't match condition => ghi nhận nhưng vẫn fulfilled
                     return { status: 204, userId: user.id }; // 204: skipped
                 }
+
+                console.log(`Open root order for userId ${user.id} - token ${token.name} - qty ${qty} - price ${price} - strategyId ${strategy.id}`);
                 return handleOpenOrder({
                     strategyId,
                     token,
@@ -243,6 +245,7 @@ export const calculateOrderQty = async ({ token, strategy, price, user, strategy
         }
 
         const qty = roundQtyToNDecimal(budget / price, token.minQty) * token.leverage; //Calculate qty per order
+        console.log(`budget: ${budget} - price: ${price} - qty: ${qty} - minQty: ${token.minQty}`);
         if (qty >= token.minQty) {
             return qty;
         }
