@@ -16,7 +16,10 @@ const TOKEN_TO_SYMBOL: Record<string, string> = {
 
 // Reverse map: Binance symbol (lowercase) to token name
 const SYMBOL_TO_TOKEN: Record<string, string> = Object.fromEntries(
-  Object.entries(TOKEN_TO_SYMBOL).map(([token, symbol]) => [symbol.toLowerCase(), token])
+  Object.entries(TOKEN_TO_SYMBOL).map(([token, symbol]) => [
+    symbol.toLowerCase(),
+    token,
+  ])
 );
 
 interface BinanceTickerData {
@@ -83,7 +86,6 @@ class BinanceWebSocketService {
    */
   async connect(): Promise<void> {
     try {
-
       this.activeTokenSymbols = await this.getActiveTokenSymbols();
 
       if (this.activeTokenSymbols.size === 0) {
@@ -98,25 +100,25 @@ class BinanceWebSocketService {
       const wsUrl = 'wss://fstream.binance.com/ws/!ticker@arr';
 
       this.ws = new WebSocket(wsUrl);
-      
+
       this.connectionStartTime = new Date();
 
       this.ws.on('open', () => {
         if (!this.ws) return;
-        
+
         console.log('Connected to Binance WebSocket stream');
         this.isConnected = true;
         this.reconnectAttempts = 0;
         this.connectionStartTime = new Date();
-        
+
         this.setupPingPong();
-        
+
         this.scheduleReconnectBeforeExpiry();
       });
 
       this.ws.on('message', (data: WebSocket.Data) => {
         if (!this.ws) return;
-        
+
         try {
           if (data.toString() === 'ping') {
             if (this.ws.readyState === WebSocket.OPEN) {
@@ -131,11 +133,10 @@ class BinanceWebSocketService {
           console.error('Error parsing WebSocket message:', error);
         }
       });
-      
+
       this.ws.on('ping', () => {
         if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-          this.ws.pong(() => {
-          });
+          this.ws.pong(() => {});
         }
       });
 
@@ -161,7 +162,7 @@ class BinanceWebSocketService {
   private handleTickerUpdate(tickers: BinanceTickerData[]): void {
     for (const ticker of tickers) {
       const symbolLower = ticker.s.toLowerCase();
-      
+
       if (!this.activeTokenSymbols.has(symbolLower)) {
         continue;
       }
@@ -186,7 +187,7 @@ class BinanceWebSocketService {
       priceService.updatePrice(tokenPrice);
     }
   }
-  
+
   /**
    * Setup ping/pong handling
    * Binance sends ping every 3 minutes, client must respond with pong
@@ -196,14 +197,16 @@ class BinanceWebSocketService {
       clearInterval(this.pingInterval);
     }
 
-    this.pingInterval = setInterval(() => {
-      if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-        this.ws.pong(() => {
-        });
-      }
-    }, 5 * 60 * 1000);
+    this.pingInterval = setInterval(
+      () => {
+        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+          this.ws.pong(() => {});
+        }
+      },
+      5 * 60 * 1000
+    );
   }
-  
+
   /**
    * Schedule reconnection before 24-hour expiry
    */
@@ -312,4 +315,3 @@ class BinanceWebSocketService {
 
 export const binanceWebSocketService = new BinanceWebSocketService();
 export default binanceWebSocketService;
-

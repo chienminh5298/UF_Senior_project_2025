@@ -50,8 +50,10 @@ class PriceService {
     const cached = this.priceCache.get(tokenName);
     const now = new Date();
 
-
-    if (cached && now.getTime() - cached.lastUpdated.getTime() < 5 * 60 * 1000) {
+    if (
+      cached &&
+      now.getTime() - cached.lastUpdated.getTime() < 5 * 60 * 1000
+    ) {
       return cached;
     }
 
@@ -75,7 +77,7 @@ class PriceService {
     if (!cached) {
       this.priceCache.set(tokenName, tokenPrice);
     }
-    
+
     return tokenPrice;
   }
 

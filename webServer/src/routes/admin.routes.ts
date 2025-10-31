@@ -1506,7 +1506,9 @@ router.patch('/tokens/bulk', requireAuth, async (req, res) => {
 
     // Refresh active tokens in WebSocket service
     try {
-      const { binanceWebSocketService } = await import('../services/binanceWebSocket');
+      const { binanceWebSocketService } = await import(
+        '../services/binanceWebSocket'
+      );
       await binanceWebSocketService.refreshActiveTokens();
     } catch (wsError) {
       console.error('Error refreshing WebSocket active tokens:', wsError);

@@ -1007,7 +1007,7 @@ router.post('/claim', requireAuth, async (req, res) => {
     const bills = await prisma.bill.findMany({
       where: { id: { in: billIds }, userId: user.id }, // Ensure bills belong to user
     });
-    
+
     if (bills.length === 0) {
       return res.status(400).json({
         success: false,
@@ -1021,30 +1021,35 @@ router.post('/claim', requireAuth, async (req, res) => {
 
     let totalNetProfit = 0;
     let totalCommission = 0;
-    
+
     // Calculate total netProfit and commission using each bill's stored commission rate
     for (const bill of bills) {
       totalNetProfit += bill.netProfit;
-      
+
       // Bill commission is stored as percentage (30) in DB, convert to decimal (0.3) if needed
       // Check if commission is stored as percentage (> 1) or decimal (<= 1)
-      const billCommissionPercent = bill.adminCommissionPercent > 1 
-        ? bill.adminCommissionPercent / 100 
-        : bill.adminCommissionPercent;
-      const billReferralCommissionPercent = bill.referralCommissionPercent > 1 
-        ? bill.referralCommissionPercent / 100 
-        : bill.referralCommissionPercent;
-      
+      const billCommissionPercent =
+        bill.adminCommissionPercent > 1
+          ? bill.adminCommissionPercent / 100
+          : bill.adminCommissionPercent;
+      const billReferralCommissionPercent =
+        bill.referralCommissionPercent > 1
+          ? bill.referralCommissionPercent / 100
+          : bill.referralCommissionPercent;
+
       // Only calculate commission if bill has positive netProfit
       if (bill.netProfit > 0) {
-        totalCommission += bill.netProfit * (billCommissionPercent + billReferralCommissionPercent);
+        totalCommission +=
+          bill.netProfit *
+          (billCommissionPercent + billReferralCommissionPercent);
       }
     }
 
     // If voucher is active, no commission (user gets full amount)
-    const amount = voucher && voucher.status === VoucherStatus.inuse
-      ? totalNetProfit
-      : totalNetProfit - totalCommission;
+    const amount =
+      voucher && voucher.status === VoucherStatus.inuse
+        ? totalNetProfit
+        : totalNetProfit - totalCommission;
 
     if (!amount) {
       return res
