@@ -111,9 +111,9 @@ export function Trading() {
   }
 
   return (
-    <div className="p-4 sm:p-6 space-y-4 sm:space-y-6 min-h-screen">
+    <div className="h-full flex flex-col p-4 sm:p-6 overflow-hidden">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 flex-shrink-0 mb-4 sm:mb-6">
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold text-white">Trading</h1>
           <p className="text-sm sm:text-base text-gray-400">Place orders for any available token</p>
@@ -135,34 +135,11 @@ export function Trading() {
       </div>
 
       {/* Place Orders Section */}
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 sm:gap-6">
+      <div className="flex-1 grid grid-cols-1 xl:grid-cols-3 gap-4 sm:gap-6 min-h-0 overflow-hidden items-stretch">
         {/* Left Column - Account Balance & Order Form */}
-        <div className="xl:col-span-2 space-y-4 sm:space-y-6">
-          {/* Account Summary */}
-          <Card className="bg-gray-900 border-gray-800">
-            <CardHeader>
-              <CardTitle className="text-white">Account Balance</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="flex justify-between">
-                <span className="text-gray-400">Available Balance</span>
-                <span className="text-white font-bold">${(summary?.availableCash ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                      </div>
-              <div className="flex justify-between">
-                <span className="text-gray-400">Invested in Strategies</span>
-                <span className="text-white font-medium">${(summary?.totalInvestment ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-400">Total P&L</span>
-                <span className={`font-medium ${(summary?.totalPnL ?? 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                  {(summary?.totalPnL ?? 0) >= 0 ? '+' : ''}${(summary?.totalPnL ?? 0).toFixed(2)}
-                </span>
-              </div>
-            </CardContent>
-          </Card>
-
-            {/* Order Placement Form */}
-              <Card className="bg-gray-900 border-gray-800">
+        <div className="xl:col-span-2 flex flex-col gap-4 sm:gap-6 h-full">
+          {/* Order Placement Form */}
+          <Card className="bg-gray-900 border-gray-800 flex-shrink-0">
                 <CardHeader>
               <CardTitle className="text-white">Place Token Order</CardTitle>
               <p className="text-sm text-gray-400">Choose a token and investment amount to start trading</p>
@@ -260,18 +237,41 @@ export function Trading() {
               </div>
             </CardContent>
           </Card>
-            </div>
+
+          {/* Account Summary */}
+          <Card className="bg-gray-900 border-gray-800 flex-1 flex flex-col">
+            <CardHeader>
+              <CardTitle className="text-white">Account Balance</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3 flex-1 flex flex-col justify-center">
+              <div className="flex justify-between">
+                <span className="text-gray-400">Available Balance</span>
+                <span className="text-white font-bold">${(summary?.availableCash ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                      </div>
+              <div className="flex justify-between">
+                <span className="text-gray-400">Invested in Strategies</span>
+                <span className="text-white font-medium">${(summary?.totalInvestment ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-400">Total P&L</span>
+                <span className={`font-medium ${(summary?.totalPnL ?? 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                  {(summary?.totalPnL ?? 0) >= 0 ? '+' : ''}${(summary?.totalPnL ?? 0).toFixed(2)}
+                </span>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
 
         {/* Right Column - Available Tokens */}
-        <div className="space-y-6">
+        <div className="flex flex-col h-full">
           {/* Available Tokens */}
-          <Card className="bg-gray-900 border-gray-800 h-full">
-            <CardHeader>
+          <Card className="bg-gray-900 border-gray-800 h-full flex flex-col">
+            <CardHeader className="flex-shrink-0">
               <CardTitle className="text-white">Available Tokens</CardTitle>
               <p className="text-sm text-gray-400">All tokens available for trading</p>
             </CardHeader>
-            <CardContent className="h-full flex flex-col">
-              <div className="space-y-3 flex-1">
+            <CardContent className="flex-1 overflow-y-auto min-h-0">
+              <div className="space-y-3">
                 {availableTokens.map((token, index) => (
                   <div key={`card-${token.id}-${index}`} className="p-3 rounded-lg bg-gray-800/50 border border-gray-700">
                     <div className="flex items-center justify-between mb-2">

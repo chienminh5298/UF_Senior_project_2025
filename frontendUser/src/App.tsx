@@ -39,9 +39,24 @@ function App() {
     try {
       setLoading(true)
       const authData = localStorage.getItem('auth')
-      const token = authData ? JSON.parse(authData).token : null
+      if (!authData) {
+        console.error('No auth data in localStorage')
+        return
+      }
       
-      if (!token) return
+      let parsedAuth
+      try {
+        parsedAuth = JSON.parse(authData)
+      } catch (parseError) {
+        console.error('Failed to parse auth data:', parseError)
+        return
+      }
+      
+      const token = parsedAuth?.token
+      if (!token || token === 'null' || token === 'undefined') {
+        console.error('Invalid or missing token')
+        return
+      }
       
       const response = await fetch('/api/user/portfolio', {
         headers: {
@@ -54,7 +69,8 @@ function App() {
         const data = await response.json()
         setPortfolioValue(data.data.totalValue || 0)
       } else {
-        console.error('Failed to fetch portfolio value')
+        const errorData = await response.json().catch(() => ({ message: 'Failed to parse error response' }))
+        console.error('Failed to fetch portfolio value:', errorData)
       }
     } catch (error) {
       console.error('Error fetching portfolio value:', error)

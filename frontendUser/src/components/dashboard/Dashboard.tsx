@@ -35,7 +35,25 @@ export function Dashboard() {
   const fetchPortfolioData = async () => {
     try {
       const authData = localStorage.getItem('auth');
-      const token = authData ? JSON.parse(authData).token : null;
+      if (!authData) {
+        console.error('No auth data in localStorage');
+        return;
+      }
+      
+      let parsedAuth;
+      try {
+        parsedAuth = JSON.parse(authData);
+      } catch (parseError) {
+        console.error('Failed to parse auth data:', parseError);
+        return;
+      }
+      
+      const token = parsedAuth?.token;
+      if (!token || token === 'null' || token === 'undefined') {
+        console.error('Invalid or missing token');
+        return;
+      }
+      
       console.log('Fetching portfolio data with token:', token ? 'Present' : 'Missing');
       
       const response = await fetch('/api/user/portfolio', {
@@ -52,7 +70,7 @@ export function Dashboard() {
         console.log('Portfolio data received:', data);
         setPortfolioData(data.data);
       } else {
-        const errorData = await response.json();
+        const errorData = await response.json().catch(() => ({ message: 'Failed to parse error response' }));
         console.error('Portfolio API error:', errorData);
       }
     } catch (error) {
@@ -63,7 +81,25 @@ export function Dashboard() {
   const fetchPerformanceData = async () => {
     try {
       const authData = localStorage.getItem('auth');
-      const token = authData ? JSON.parse(authData).token : null;
+      if (!authData) {
+        console.error('No auth data in localStorage');
+        return;
+      }
+      
+      let parsedAuth;
+      try {
+        parsedAuth = JSON.parse(authData);
+      } catch (parseError) {
+        console.error('Failed to parse auth data:', parseError);
+        return;
+      }
+      
+      const token = parsedAuth?.token;
+      if (!token || token === 'null' || token === 'undefined') {
+        console.error('Invalid or missing token');
+        return;
+      }
+      
       console.log('Fetching performance data with token:', token ? 'Present' : 'Missing');
       
       const response = await fetch('/api/user/portfolio/performance', {
@@ -80,7 +116,7 @@ export function Dashboard() {
         console.log('Performance data received:', data);
         setPerformanceData(data.data);
       } else {
-        const errorData = await response.json();
+        const errorData = await response.json().catch(() => ({ message: 'Failed to parse error response' }));
         console.error('Performance API error:', errorData);
       }
     } catch (error) {
@@ -91,7 +127,24 @@ export function Dashboard() {
   const fetchAvailableTokens = async () => {
     try {
       const authData = localStorage.getItem('auth');
-      const token = authData ? JSON.parse(authData).token : null;
+      if (!authData) {
+        console.error('No auth data in localStorage');
+        return;
+      }
+      
+      let parsedAuth;
+      try {
+        parsedAuth = JSON.parse(authData);
+      } catch (parseError) {
+        console.error('Failed to parse auth data:', parseError);
+        return;
+      }
+      
+      const token = parsedAuth?.token;
+      if (!token || token === 'null' || token === 'undefined') {
+        console.error('Invalid or missing token');
+        return;
+      }
       
       const response = await fetch('/api/user/tokens/available', {
         headers: {
@@ -104,7 +157,8 @@ export function Dashboard() {
         const data = await response.json();
         setAvailableTokens(data.data);
       } else {
-        console.error('Failed to fetch available tokens');
+        const errorData = await response.json().catch(() => ({ message: 'Failed to parse error response' }));
+        console.error('Failed to fetch available tokens:', errorData);
       }
     } catch (error) {
       console.error('Error fetching available tokens:', error);
