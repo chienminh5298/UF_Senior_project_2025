@@ -2786,26 +2786,46 @@ export function Admin() {
                       {claimDetails.bills && claimDetails.bills.length > 0 ? (
                         <div className="space-y-6">
                           {/* Bills Summary */}
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-                            <div className="bg-gray-700 rounded-lg p-4">
-                              <div className="flex items-center gap-2 mb-2">
-                                <DollarSign className="w-4 h-4 text-blue-400" />
-                                <span className="text-sm text-gray-400">Total Bills Net Profit</span>
+                          {(() => {
+                            const totalNetProfit = claimDetails.bills.reduce((sum: number, bill: any) => sum + (bill.netProfit || 0), 0);
+                            const totalCommission = claimDetails.bills.reduce((sum: number, bill: any) => {
+                              if (bill.netProfit <= 0) return sum;
+                              // Handle both decimal (0.3) and percentage (30) formats
+                              const adminCommissionPercent = bill.adminCommissionPercent > 1 
+                                ? bill.adminCommissionPercent / 100 
+                                : bill.adminCommissionPercent;
+                              const referralCommissionPercent = bill.referralCommissionPercent > 1 
+                                ? bill.referralCommissionPercent / 100 
+                                : bill.referralCommissionPercent;
+                              return sum + (bill.netProfit * (adminCommissionPercent + referralCommissionPercent));
+                            }, 0);
+                            const commissionPercent = totalNetProfit > 0 
+                              ? ((totalCommission / totalNetProfit) * 100).toFixed(1)
+                              : '0';
+                            
+                            return (
+                              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                                <div className="bg-gray-700 rounded-lg p-4">
+                                  <div className="flex items-center gap-2 mb-2">
+                                    <DollarSign className="w-4 h-4 text-blue-400" />
+                                    <span className="text-sm text-gray-400">Total Bills Net Profit</span>
+                                  </div>
+                                  <p className="text-xl font-bold text-white">
+                                    ${totalNetProfit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                  </p>
+                                </div>
+                                <div className="bg-gray-700 rounded-lg p-4">
+                                  <div className="flex items-center gap-2 mb-2">
+                                    <BarChart3 className="w-4 h-4 text-yellow-400" />
+                                    <span className="text-sm text-gray-400">Total Commission ({commissionPercent}%)</span>
+                                  </div>
+                                  <p className="text-xl font-bold text-yellow-400">
+                                    ${totalCommission.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                  </p>
+                                </div>
                               </div>
-                              <p className="text-xl font-bold text-white">
-                                ${claimDetails.bills.reduce((sum: number, bill: any) => sum + (bill.netProfit || 0), 0).toLocaleString()}
-                              </p>
-                            </div>
-                            <div className="bg-gray-700 rounded-lg p-4">
-                              <div className="flex items-center gap-2 mb-2">
-                                <BarChart3 className="w-4 h-4 text-green-400" />
-                                <span className="text-sm text-gray-400">Claim Amount (After 30% Commission)</span>
-                              </div>
-                              <p className="text-xl font-bold text-green-400">
-                                ${claimDetails.amount.toLocaleString()}
-                              </p>
-                            </div>
-                          </div>
+                            );
+                          })()}
 
                           {/* Individual Bills */}
                           {claimDetails.bills.map((bill: any) => (

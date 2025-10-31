@@ -1003,31 +1003,48 @@ router.post('/claim', requireAuth, async (req, res) => {
   try {
     const { billIds = [], network, address, hashId } = req.body;
 
-    let amount = 0;
+    // Fetch bills with their stored commission rates
     const bills = await prisma.bill.findMany({
-      where: { id: { in: billIds } },
+      where: { id: { in: billIds }, userId: user.id }, // Ensure bills belong to user
     });
-    for (const bill of bills) {
-      amount += bill.netProfit;
+    
+    if (bills.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'No valid bills found for claim',
+      });
     }
-
-    const userData = await prisma.user.findUnique({
-      where: { id: user.id },
-      select: {
-        adminCommissionPercent: true,
-        referralCommissionPercent: true,
-      },
-    });
 
     const voucher = await prisma.voucher.findFirst({
-      where: { userId: user.id },
+      where: { userId: user.id, status: VoucherStatus.inuse },
     });
 
-    if (voucher && voucher.status === VoucherStatus.inuse) {
-      amount = 0;
-    } else {
-      amount = amount * (userData?.adminCommissionPercent ?? 0);
+    let totalNetProfit = 0;
+    let totalCommission = 0;
+    
+    // Calculate total netProfit and commission using each bill's stored commission rate
+    for (const bill of bills) {
+      totalNetProfit += bill.netProfit;
+      
+      // Bill commission is stored as percentage (30) in DB, convert to decimal (0.3) if needed
+      // Check if commission is stored as percentage (> 1) or decimal (<= 1)
+      const billCommissionPercent = bill.adminCommissionPercent > 1 
+        ? bill.adminCommissionPercent / 100 
+        : bill.adminCommissionPercent;
+      const billReferralCommissionPercent = bill.referralCommissionPercent > 1 
+        ? bill.referralCommissionPercent / 100 
+        : bill.referralCommissionPercent;
+      
+      // Only calculate commission if bill has positive netProfit
+      if (bill.netProfit > 0) {
+        totalCommission += bill.netProfit * (billCommissionPercent + billReferralCommissionPercent);
+      }
     }
+
+    // If voucher is active, no commission (user gets full amount)
+    const amount = voucher && voucher.status === VoucherStatus.inuse
+      ? totalNetProfit
+      : totalNetProfit - totalCommission;
 
     if (!amount) {
       return res
