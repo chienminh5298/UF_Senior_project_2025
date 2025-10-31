@@ -173,8 +173,8 @@ export function TestAlgorithm({ onNavigateToLogin, onLogin }: TestAlgorithmProps
 
             const data = await response.json()
             
-            if (data.success && data.data?.results) {
-        setBacktestResults(data.data.results)
+            if (response.ok && data.message === 'Backtest done' && data.result) {
+        setBacktestResults(data.result)
             } else {
         setError(data.message || 'Backtest failed')
       }

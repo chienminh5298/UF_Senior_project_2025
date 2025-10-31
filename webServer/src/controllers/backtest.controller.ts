@@ -3,6 +3,7 @@ import {
   backtestingService,
   BacktestConfig,
 } from '../services/backtesting.service';
+import prisma from '../models/prismaClient';
 
 export class BacktestController {
   /**
@@ -103,19 +104,26 @@ export class BacktestController {
       // Execute backtest
       const results = await backtestingService.executeBacktest(config);
 
-      res.json({
-        success: true,
-        data: {
-          config: {
-            token,
-            strategy,
-            year,
-            initialCapital,
-            renderSpeed,
-          },
-          results,
+      // Query token from database to get minQty and leverage
+      const queryToken = await prisma.token.findUnique({
+        where: { name: token === 'BTC' ? 'Bitcoin' : token === 'ETH' ? 'Ethereum' : token === 'SOL' ? 'Solana' : token },
+        select: {
+          minQty: true,
+          leverage: true,
         },
       });
+
+      const response = {
+        success: true,
+        message: 'Backtest done',
+        result: results,
+        minQty: queryToken?.minQty,
+        leverage: queryToken?.leverage,
+      };
+
+      console.log('Backtest response:', JSON.stringify(response, null, 2));
+
+      res.json(response);
     } catch (error) {
       console.error('Error executing backtest:', error);
       res.status(500).json({

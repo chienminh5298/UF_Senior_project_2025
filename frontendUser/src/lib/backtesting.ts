@@ -93,11 +93,11 @@ export class BacktestingAPI {
 
       const data = await response.json();
       
-      if (!data.success) {
+      if (!response.ok || data.message !== 'Backtest done' || !data.result) {
         throw new Error(data.message || 'Backtest execution failed');
       }
       
-      return data.data.results;
+      return data.result;
     } catch (error) {
       console.error('Error executing backtest:', error);
       throw error;
