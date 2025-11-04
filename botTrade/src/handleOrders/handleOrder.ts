@@ -57,7 +57,6 @@ export const openRootOrder = async ({ token, strategy, side, forSpecifyUserId = 
                     return { status: 204, userId: user.id }; // 204: skipped
                 }
 
-                console.log(`Open root order for userId ${user.id} - token ${token.name} - qty ${qty} - price ${price} - strategyId ${strategy.id}`);
                 return handleOpenOrder({
                     strategyId,
                     token,
@@ -245,7 +244,6 @@ export const calculateOrderQty = async ({ token, strategy, price, user, strategy
         }
 
         const qty = roundQtyToNDecimal(budget / price, token.minQty) * token.leverage; //Calculate qty per order
-        console.log(`budget: ${budget} - price: ${price} - qty: ${qty} - minQty: ${token.minQty}`);
         if (qty >= token.minQty) {
             return qty;
         }
@@ -262,7 +260,12 @@ export const calculateOrderQty = async ({ token, strategy, price, user, strategy
 const countUserTokenStrategies = async (user: User, strategyId: number): Promise<number> => {
     // Step 1: Get all tokens associated with the user
     const userTokens = await prisma.userToken.findMany({
-        where: { userId: user.id },
+        where: {
+            userId: user.id,
+            token: {
+                isActive: true,
+            },
+        },
         select: {
             tokenId: true,
         },
