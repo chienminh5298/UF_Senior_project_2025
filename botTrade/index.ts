@@ -7,9 +7,9 @@ import { loadTargetToStorage } from "@src/handleOrders/handleTarget";
 import express, { NextFunction, Request, Response } from "express";
 import brokerInstancePool from "@src/classes/brokerInstancePool";
 import prisma, { connectDatabase } from "@root/prisma/database";
-import handleBacktestRoute from "@src/routes/backtest/backtest";
+import handleBacktestRoute, { backtestLogic } from "@src/routes/backtest/backtest";
 import handleOrderRoute from "@src/routes/handleOrder";
-import { mutationUpdateData } from "@root/src/API/ultil";
+import { getData1YearCandle, mutationUpdateData } from "@root/src/API/ultil";
 import { isAuthorization } from "@src/middleware";
 import { logging } from "@src/utils/log";
 // import { loadDEK } from "@src/utils/aws";
@@ -81,6 +81,20 @@ const startServer = async () => {
         }, 1000);
     }
 };
+
+// const test = async () => {
+//     let yearData;
+//     const queryData = await getData1YearCandle("SOL", "2025");
+
+//     if (queryData.status === 200) {
+//         console.log("Data fetched successfully");
+//         yearData = queryData.data;
+//         const result = await backtestLogic({ strategyId: 1, data: yearData, token: "SOL", timeFrame: "1d" });
+//         console.log(result);
+//     }
+//     console.log("Done" );
+// };
+// test();
 
 startServer();
 

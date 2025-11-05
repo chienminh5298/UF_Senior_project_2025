@@ -1,6 +1,4 @@
-import brokerInstancePool from "@root/src/classes/brokerInstancePool";
 import express, { NextFunction, Response } from "express";
-import { roundQtyToNDecimal } from "@root/src/utils";
 import { getData1YearCandle } from "@root/src/API/ultil";
 import { CustomRequest } from "@src/middleware";
 import { Target, Token } from "@prisma/client";
@@ -133,7 +131,7 @@ const getMarkPRice = (percent: number, side: "BUY" | "SELL", entryPrice: number)
 
 const randomId = () => Math.floor(100000000 + Math.random() * 900000000);
 
-const backtestLogic = async ({ strategyId, data, token, timeFrame }: BacktestLogicType) => {
+export const backtestLogic = async ({ strategyId, data, token, timeFrame }: BacktestLogicType) => {
     const allCandles = prepareCandles(data);
 
     let chartData = aggregateToMap(allCandles, timeFrame);
