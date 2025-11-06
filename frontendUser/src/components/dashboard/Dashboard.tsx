@@ -315,7 +315,7 @@ export function Dashboard() {
           </CardHeader>
           <CardContent className="flex-1">
             <div className="h-full min-h-[180px] sm:min-h-[200px]">
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer width="100%" height="90%">
                 <AreaChart data={performanceData}>
                   <XAxis 
                     dataKey="time" 

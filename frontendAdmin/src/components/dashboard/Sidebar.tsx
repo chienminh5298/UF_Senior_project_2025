@@ -26,7 +26,7 @@ const menuItems = [
 
 export function Sidebar({ activeTab, onTabChange }: SidebarProps) {
   return (
-    <div className="w-16 sm:w-64 bg-gray-900 border-r border-gray-800 flex flex-col">
+    <div className="w-16 sm:w-64 bg-gray-900 border-r border-gray-800 flex flex-col flex-shrink-0">
       {/* Logo */}
       <div className="p-3 sm:p-6">
         <div className="flex items-center gap-2 sm:gap-3">

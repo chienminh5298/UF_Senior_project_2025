@@ -264,12 +264,12 @@ export function Dashboard() {
   }
 
   return (
-    <div className="p-4 sm:p-6 space-y-4 sm:space-y-6 flex flex-col h-full overflow-hidden">
+    <div className="p-4 sm:p-6 pb-8 sm:pb-12 space-y-4 sm:space-y-6 flex flex-col h-full overflow-y-auto">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold text-white">Dashboard</h1>
-          <p className="text-sm sm:text-base text-gray-400">Overview of trading performance and portfolio</p>
+          <p className="text-sm sm:text-base text-gray-400">Overview of your trading performance and portfolio</p>
         </div>
       </div>
 
@@ -305,20 +305,20 @@ export function Dashboard() {
             <CardTitle className="text-sm text-gray-400 font-medium">Total P&L</CardTitle>
           </CardHeader>
           <CardContent>
-            {loading && !dashboardStats ? (
+            {loading && !portfolioData ? (
               <div className="flex items-center justify-center py-2">
                 <RefreshCw className="w-4 h-4 animate-spin text-gray-400" />
               </div>
             ) : (
               <>
                 <div className="flex items-center gap-2">
-                  <span className={`text-2xl font-bold ${dashboardStats?.totalPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                    {dashboardStats?.totalPnL >= 0 ? '+' : ''}${dashboardStats?.totalPnL?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}
+                  <span className={`text-2xl font-bold ${(portfolioData?.totalPnL ?? 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                    {(portfolioData?.totalPnL ?? 0) >= 0 ? '+' : ''}${(portfolioData?.totalPnL ?? 0).toFixed(2)}
                   </span>
-                  <TrendingUp className={`w-5 h-5 ${dashboardStats?.totalPnL >= 0 ? 'text-green-400' : 'text-red-400'}`} />
+                  <TrendingUp className={`w-5 h-5 ${(portfolioData?.totalPnL ?? 0) >= 0 ? 'text-green-400' : 'text-red-400'}`} />
                 </div>
                 <p className="text-sm text-gray-400 mt-1">
-                  Daily: {dashboardStats?.dailyPnL >= 0 ? '+' : ''}${dashboardStats?.dailyPnL?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}
+                  {(portfolioData?.totalPnLPercent ?? 0) >= 0 ? '+' : ''}{(portfolioData?.totalPnLPercent ?? 0).toFixed(2)}% total gain
                 </p>
               </>
             )}
@@ -326,13 +326,13 @@ export function Dashboard() {
         </Card>
 
         <Card className="bg-gray-900 border-gray-800">
-          <CardHeader className="pb-3 flex flex-row items-center justify-between">
+          <CardHeader className="pb-3 relative pr-10">
             <CardTitle className="text-sm text-gray-400 font-medium">Active Tokens</CardTitle>
             <Button
               onClick={handleOpenTokenSelector}
               variant="outline"
               size="sm"
-              className="h-7 px-2 border-gray-700 text-gray-300 hover:text-white hover:bg-gray-800"
+              className="absolute top-3 right-3 h-6 w-6 p-0 border-gray-700 text-gray-300 hover:text-white hover:bg-gray-800 flex items-center justify-center"
             >
               <Settings className="w-3 h-3" />
             </Button>
@@ -377,61 +377,50 @@ export function Dashboard() {
       </div>
 
       {/* Charts Section */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6 flex-1 min-h-0">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6 flex-1 min-h-0 mb-4 sm:mb-6">
         {/* Portfolio Chart */}
         <Card className="bg-gray-900 border-gray-800 flex flex-col lg:col-span-2">
           <CardHeader>
             <CardTitle className="text-white text-xl sm:text-2xl">Portfolio Chart</CardTitle>
           </CardHeader>
           <CardContent className="flex-1">
-            <div className="h-full min-h-[180px] sm:min-h-[200px]">
-              {loading && performanceData.length === 0 ? (
-                <div className="flex items-center justify-center h-full">
-                  <RefreshCw className="w-6 h-6 animate-spin text-gray-400" />
-                  <span className="ml-2 text-gray-400">Loading chart data...</span>
-                </div>
-              ) : performanceData.length > 0 ? (
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={performanceData}>
-                    <XAxis 
-                      dataKey="time" 
-                      axisLine={false}
-                      tickLine={false}
-                      tick={{ fill: '#9CA3AF', fontSize: 12 }}
-                      tickFormatter={(_, index) => {
-                        // Only show year labels on January 1st of each year
-                        const dataPoint = performanceData[index];
-                        if (!dataPoint) return '';
-                        
-                        // Show year label only if it's January 1st (month = 1, day = 1)
-                        return (dataPoint.month === 1 && dataPoint.day === 1) ? dataPoint.year : '';
-                      }}
-                    />
-                    <YAxis 
-                      axisLine={false}
-                      tickLine={false}
-                      tick={{ fill: '#9CA3AF', fontSize: 10 }}
-                    />
-                    <Area 
-                      type="monotone" 
-                      dataKey="value" 
-                      stroke="#3B82F6" 
-                      fill="url(#gradient)"
-                      strokeWidth={2}
-                    />
-                    <defs>
-                      <linearGradient id="gradient" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.3} />
-                        <stop offset="95%" stopColor="#3B82F6" stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
-                  </AreaChart>
-                </ResponsiveContainer>
-              ) : (
-                <div className="flex items-center justify-center h-full text-gray-400">
-                  <p>No portfolio data available</p>
-                </div>
-              )}
+            <div className="h-full min-h-[160px] sm:min-h-[180px]">
+              <ResponsiveContainer width="100%" height="90%">
+                <AreaChart data={performanceData}>
+                  <XAxis 
+                    dataKey="time" 
+                    axisLine={false}
+                    tickLine={false}
+                    tick={{ fill: '#9CA3AF', fontSize: 12 }}
+                    tickFormatter={(_, index) => {
+                      // Only show year labels on January 1st of each year
+                      const dataPoint = performanceData[index];
+                      if (!dataPoint) return '';
+                      
+                      // Show year label only if it's January 1st (month = 1, day = 1)
+                      return (dataPoint.month === 1 && dataPoint.day === 1) ? dataPoint.year : '';
+                    }}
+                  />
+                  <YAxis 
+                    axisLine={false}
+                    tickLine={false}
+                    tick={{ fill: '#9CA3AF', fontSize: 10 }}
+                  />
+                  <Area 
+                    type="monotone" 
+                    dataKey="value" 
+                    stroke="#3B82F6" 
+                    fill="url(#gradient)"
+                    strokeWidth={2}
+                  />
+                  <defs>
+                    <linearGradient id="gradient" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="#3B82F6" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                </AreaChart>
+              </ResponsiveContainer>
             </div>
           </CardContent>
         </Card>

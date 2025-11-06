@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { LandingPage } from './components/landing/LandingPage'
 import { LoginPage } from './components/landing/LoginPage'
 import { Dashboard } from './components/dashboard/Dashboard'
@@ -21,7 +21,50 @@ function App() {
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false)
   const [portfolioValue, setPortfolioValue] = useState<number>(0)
   const [loading, setLoading] = useState(false)
+  const [cryptoPrices, setCryptoPrices] = useState<any[]>([])
   const userMenuRef = useRef<HTMLDivElement>(null)
+
+  const fetchPriceData = useCallback(async () => {
+    try {
+      const authData = localStorage.getItem('auth')
+      if (!authData) return []
+      
+      let parsedAuth
+      try {
+        parsedAuth = JSON.parse(authData)
+      } catch (parseError) {
+        console.error('Failed to parse auth data:', parseError)
+        return []
+      }
+      
+      const token = parsedAuth?.token
+      if (!token || token === 'null' || token === 'undefined') {
+        return []
+      }
+      
+      const response = await fetch('/api/user/orders/price-data', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      })
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch price data')
+      }
+      
+      const data = await response.json()
+      return data.data || []
+    } catch (error) {
+      console.error('Error fetching price data:', error)
+      return []
+    }
+  }, [])
+
+  const loadPriceData = useCallback(async () => {
+    const priceData = await fetchPriceData()
+    setCryptoPrices(priceData)
+  }, [fetchPriceData])
 
   const handleNavigateToLogin = () => { setCurrentPage('login') }
   const handleNavigateToLanding = () => { setCurrentPage('landing') }
@@ -99,6 +142,20 @@ function App() {
     }
   }, [activeTab])
 
+  useEffect(() => {
+    if (currentPage === 'dashboard') {
+      loadPriceData()
+      // Set up automatic price updates every 2 seconds
+      const priceInterval = setInterval(() => {
+        loadPriceData()
+      }, 2000)
+
+      return () => {
+        clearInterval(priceInterval)
+      }
+    }
+  }, [currentPage, loadPriceData])
+
   // Landing Page
   if (currentPage === 'landing') {
     return <LandingPage onNavigateToLogin={handleNavigateToLogin} onLogin={handleLogin} />
@@ -131,26 +188,72 @@ function App() {
       <Sidebar activeTab={activeTab} onTabChange={setActiveTab} />
       <div className="flex-1 flex flex-col min-w-0">
         {/* Top Navigation Bar */}
-        <header className="bg-gray-950 border-t border-r border-b border-gray-800 px-4 sm:px-6 py-3">
-          <div className="flex items-center justify-between">
-            {/* Live Trading Status */}
-            <div className="flex items-center gap-2">
-              <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-              <span className="text-xs sm:text-sm text-gray-300">Live Trading Active</span>
+        <header className="bg-gray-950 border-t border-r border-b border-gray-800 px-4 sm:px-6 py-4">
+          <div className="flex items-center justify-between gap-4 min-w-0">
+            {/* Crypto Prices Ticker */}
+            <div className="flex-1 min-w-0 overflow-hidden relative h-full flex items-center">
+              <div className="flex items-center gap-4 animate-scroll" style={{ width: 'max-content' }}>
+                {cryptoPrices.length > 0 ? (
+                  <>
+                    {cryptoPrices.map((crypto, index) => {
+                      const symbol = crypto.tokenName?.substring(0, 3).toUpperCase() || 'N/A'
+                      const priceChange = crypto.priceChangePercent || 0
+                      const isPositive = priceChange >= 0
+                      
+                      return (
+                        <div key={`${crypto.tokenName}-${index}`} className="flex items-center gap-4 whitespace-nowrap px-6 py-2">
+                          <span className="text-lg font-semibold text-white">{symbol}</span>
+                          <span className="text-lg text-gray-300">${(crypto.currentPrice || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                          <span className={`text-base font-semibold ${isPositive ? 'text-green-400' : 'text-red-400'}`}>
+                            {isPositive ? '+' : ''}{priceChange.toFixed(2)}%
+                          </span>
+                          {index < cryptoPrices.length - 1 && (
+                            <div className="w-px h-6 bg-gray-700"></div>
+                          )}
+                        </div>
+                      )
+                    })}
+                    {/* Duplicate for seamless loop */}
+                    {cryptoPrices.map((crypto, index) => {
+                      const symbol = crypto.tokenName?.substring(0, 3).toUpperCase() || 'N/A'
+                      const priceChange = crypto.priceChangePercent || 0
+                      const isPositive = priceChange >= 0
+                      
+                      return (
+                        <div key={`${crypto.tokenName}-dup-${index}`} className="flex items-center gap-4 whitespace-nowrap px-6 py-2">
+                          <span className="text-lg font-semibold text-white">{symbol}</span>
+                          <span className="text-lg text-gray-300">${(crypto.currentPrice || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                          <span className={`text-base font-semibold ${isPositive ? 'text-green-400' : 'text-red-400'}`}>
+                            {isPositive ? '+' : ''}{priceChange.toFixed(2)}%
+                          </span>
+                          {index < cryptoPrices.length - 1 && (
+                            <div className="w-px h-6 bg-gray-700"></div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                    <span className="text-base text-gray-400">Loading prices...</span>
+                  </div>
+                )}
+              </div>
             </div>
 
-            <div className="flex items-center gap-3 sm:gap-6">
+            <div className="flex items-center gap-6 flex-shrink-0">
               {/* Notifications */}
               <Button variant="ghost" size="sm" className="text-gray-400 hover:text-white">
-                <Bell className="w-4 h-4 sm:w-5 sm:h-5" />
+                <Bell className="w-5 h-5" />
               </Button>
 
               {/* Portfolio Value - Non-clickable */}
               <div className="text-right">
-                <div className="text-xs sm:text-sm text-gray-400">Portfolio Value</div>
-                <div className="text-sm sm:text-lg font-semibold text-white">
+                <div className="text-sm text-gray-400">Portfolio Value</div>
+                <div className="text-lg font-semibold text-white">
                   {loading ? (
-                    <div className="w-16 sm:w-20 h-4 sm:h-6 bg-gray-700 rounded animate-pulse"></div>
+                    <div className="w-20 h-6 bg-gray-700 rounded animate-pulse"></div>
                   ) : (
                     `$${portfolioValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
                   )}

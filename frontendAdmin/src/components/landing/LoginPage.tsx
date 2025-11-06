@@ -50,14 +50,11 @@ export function LoginPage({ onLogin }: LoginPageProps) {
     }
   }
 
-  const handleDemoLogin = () => {
-    onLogin()
-  }
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white">
+    <div className="min-h-screen bg-gray-950 text-white flex items-center justify-center">
       {/* Main Content */}
-      <div className="pt-32 pb-20 px-6">
+      <div className="w-full px-6">
         <div className="container mx-auto max-w-md">
           <Card className="bg-gray-900 border-gray-800">
             <CardHeader className="text-center pb-4">
@@ -93,25 +90,6 @@ export function LoginPage({ onLogin }: LoginPageProps) {
                   {isLoading ? 'Signing In...' : 'Access Admin Panel'}
                 </Button>
               </form>
-
-              <div className="mt-6 text-center">
-                <div className="relative">
-                  <div className="absolute inset-0 flex items-center">
-                    <div className="w-full border-t border-gray-700" />
-                  </div>
-                  <div className="relative flex justify-center text-sm">
-                    <span className="px-2 bg-gray-900 text-gray-400">Or</span>
-                  </div>
-                </div>
-
-                <Button
-                  variant="outline"
-                  onClick={handleDemoLogin}
-                  className="w-full mt-4 border-gray-700 text-gray-300 hover:text-white"
-                >
-                  Demo Admin Access
-                </Button>
-              </div>
 
               {/* Admin Badge */}
               <div className="mt-6 flex justify-center">
