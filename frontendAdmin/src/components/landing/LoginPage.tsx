@@ -15,7 +15,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3001'
+  const API_BASE = import.meta.env.VITE_API_BASE_URL ?? ''
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -26,8 +26,10 @@ export function LoginPage({ onLogin }: LoginPageProps) {
     
     try {
       // Admin Login - no credentials needed, uses environment variables
-      console.log(`${API_BASE}/api/auth/login/admin`)
-      const response = await fetch(`${API_BASE}/api/auth/login/admin`, {
+      const loginUrl = API_BASE
+        ? `${API_BASE.replace(/\/$/, '')}/api/auth/login/admin`
+        : '/api/auth/login/admin'
+      const response = await fetch(loginUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' }
       })

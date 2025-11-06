@@ -20,7 +20,43 @@ function App() {
   const [activeTab, setActiveTab] = useState('dashboard')
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false)
   const [userData, setUserData] = useState<{ fullname: string; username: string; email: string } | null>(null)
+  const [portfolioValue, setPortfolioValue] = useState<number>(0)
+  const [loading, setLoading] = useState(false)
   const userMenuRef = useRef<HTMLDivElement>(null)
+
+  const fetchPortfolioValue = async () => {
+    try {
+      setLoading(true)
+      const token = localStorage.getItem('adminToken')
+      if (!token) return
+      
+      const API_BASE = import.meta.env.VITE_API_BASE_URL ?? ''
+      const getApiUrl = (path: string) => {
+        if (API_BASE) {
+          const base = API_BASE.replace(/\/$/, '')
+          const apiPath = path.startsWith('/') ? path : `/${path}`
+          return `${base}${apiPath}`
+        }
+        return path.startsWith('/') ? path : `/${path}`
+      }
+      
+      const response = await fetch(getApiUrl('/api/admin/portfolio'), {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      })
+      
+      if (response.ok) {
+        const data = await response.json()
+        setPortfolioValue(data.data?.totalValue || 0)
+      }
+    } catch (error) {
+      console.error('Error fetching portfolio value:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const handleLogin = () => { 
     setCurrentPage('dashboard')
@@ -34,6 +70,7 @@ function App() {
     } catch (e) {
       console.error('Failed to load user data:', e)
     }
+    fetchPortfolioValue()
   }
   const handleSignOut = () => { 
     setCurrentPage('login')
@@ -52,6 +89,25 @@ function App() {
     document.addEventListener('mousedown', handleClickOutside)
     return () => {
       document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [])
+
+  useEffect(() => {
+    // Listen for portfolio value updates from Dashboard
+    const handlePortfolioUpdate = (event: CustomEvent) => {
+      setPortfolioValue(event.detail)
+    }
+    
+    window.addEventListener('portfolioValueUpdate', handlePortfolioUpdate as EventListener)
+    
+    // Also check localStorage on mount
+    const storedValue = localStorage.getItem('adminPortfolioValue')
+    if (storedValue) {
+      setPortfolioValue(parseFloat(storedValue))
+    }
+    
+    return () => {
+      window.removeEventListener('portfolioValueUpdate', handlePortfolioUpdate as EventListener)
     }
   }, [])
 
@@ -99,7 +155,13 @@ function App() {
               {/* Portfolio Value - Non-clickable */}
               <div className="text-right">
                 <div className="text-sm text-gray-400">Portfolio Value</div>
-                <div className="text-lg font-semibold text-white">$24,567.89</div>
+                <div className="text-lg font-semibold text-white">
+                  {loading ? (
+                    <div className="w-20 h-6 bg-gray-700 rounded animate-pulse"></div>
+                  ) : (
+                    `$${portfolioValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                  )}
+                </div>
               </div>
 
               {/* User Menu - Clickable */}

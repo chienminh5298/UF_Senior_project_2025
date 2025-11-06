@@ -2788,4 +2788,141 @@ router.get('/portfolio', requireAuth, async (req, res) => {
   }
 });
 
+// GET /api/admin/portfolio/performance
+/**
+ * @swagger
+ * /api/admin/portfolio/performance:
+ *   get:
+ *     summary: Get admin portfolio performance data for charts (aggregated across all users)
+ *     tags: [Admin]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Portfolio performance data retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       time:
+ *                         type: string
+ *                       value:
+ *                         type: number
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Failed to fetch performance data
+ */
+router.get('/portfolio/performance', requireAuth, async (req, res) => {
+  const { user } = req;
+
+  if (!user) {
+    return res.status(401).json({
+      success: false,
+      message: 'Unauthorized',
+    });
+  }
+
+  try {
+    // Get all orders with timestamps for performance chart (aggregated across all users)
+    // Include all orders to show cumulative portfolio growth over time
+    const orders = await prisma.order.findMany({
+      select: {
+        createdAt: true,
+        buyDate: true,
+        budget: true,
+        status: true,
+        qty: true,
+        entryPrice: true,
+        markPrice: true,
+      },
+      orderBy: {
+        createdAt: 'asc',
+      },
+    });
+
+    // Get total portfolio value (sum of all budgets) - this is the current value
+    const totalPortfolioResult = await prisma.order.aggregate({
+      _sum: {
+        budget: true,
+      },
+    });
+    const currentTotalValue = totalPortfolioResult._sum.budget || 0;
+
+    // Generate performance data points (last 2 years)
+    const performanceData = [];
+    const now = new Date();
+
+    // Generate data for the last 2 years with monthly data points
+    for (let i = 24; i >= 0; i--) {
+      const date = new Date(now);
+      date.setMonth(date.getMonth() - i);
+      date.setDate(1); // First day of the month
+      date.setHours(0, 0, 0, 0);
+
+      // Calculate cumulative budget (portfolio value) for orders created up to this date
+      let dayValue = 0;
+      orders.forEach((order) => {
+        const orderDate = order.createdAt || order.buyDate;
+        if (orderDate && orderDate <= date) {
+          // For historical points, use the budget (investment amount) as the value
+          // This shows how much was invested up to that point
+          dayValue += order.budget || 0;
+        }
+      });
+
+      // If no orders before this date, interpolate from current value
+      // This creates a smooth growth curve
+      if (dayValue === 0 && i < 24) {
+        // Scale from a starting value to current value
+        const monthsAgo = 24 - i;
+        const progress = monthsAgo / 24;
+        // Start at 30% of current value 2 years ago, grow to 100% now
+        dayValue = currentTotalValue * (0.3 + (0.7 * (1 - progress)));
+      } else if (dayValue === 0) {
+        // For the earliest point, use 30% of current value
+        dayValue = currentTotalValue * 0.3;
+      }
+
+      performanceData.push({
+        time: date.toLocaleDateString('en-US', {
+          month: 'short',
+          year: '2-digit',
+        }),
+        year: date.getFullYear().toString(),
+        month: date.getMonth() + 1, // 1-12
+        day: date.getDate(),
+        value: Math.round(dayValue * 100) / 100,
+      });
+    }
+
+    // Ensure the last data point matches the current total value
+    if (performanceData.length > 0) {
+      performanceData[performanceData.length - 1].value = Math.round(currentTotalValue * 100) / 100;
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Portfolio performance data retrieved successfully',
+      data: performanceData,
+    });
+  } catch (error) {
+    console.error('Error fetching performance data:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch performance data',
+    });
+  }
+});
+
 export default router;

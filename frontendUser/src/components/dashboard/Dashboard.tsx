@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card'
 import { AreaChart, Area, XAxis, YAxis, ResponsiveContainer } from 'recharts'
-import { TrendingUp, TrendingDown, Zap, BarChart } from 'lucide-react'
+import { TrendingUp, TrendingDown, Zap, BarChart, RefreshCw } from 'lucide-react'
 
 
 interface PortfolioData {
@@ -21,16 +21,83 @@ interface PerformanceData {
   value: number;
 }
 
+// API Functions
+const fetchPriceData = async () => {
+  const authData = localStorage.getItem('auth');
+  if (!authData) {
+    throw new Error('No auth data in localStorage');
+  }
+  
+  let parsedAuth;
+  try {
+    parsedAuth = JSON.parse(authData);
+  } catch (parseError) {
+    throw new Error('Failed to parse auth data');
+  }
+  
+  const token = parsedAuth?.token;
+  if (!token || token === 'null' || token === 'undefined') {
+    throw new Error('Invalid or missing token');
+  }
+  
+  const response = await fetch('/api/user/orders/price-data', {
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    }
+  })
+  
+  if (!response.ok) {
+    throw new Error('Failed to fetch price data')
+  }
+  
+  const data = await response.json()
+  return data.data
+}
+
 export function Dashboard() {
   const [portfolioData, setPortfolioData] = useState<PortfolioData | null>(null);
   const [performanceData, setPerformanceData] = useState<PerformanceData[]>([]);
   const [availableTokens, setAvailableTokens] = useState<any[]>([]);
+  const [cryptoPrices, setCryptoPrices] = useState<any[]>([]);
+  const [priceLoading, setPriceLoading] = useState(false);
+  const [priceError, setPriceError] = useState<string | null>(null);
+
+  const loadPriceData = useCallback(async (showLoading = false) => {
+    if (showLoading) {
+      setPriceLoading(true);
+    }
+    setPriceError(null);
+    
+    try {
+      const priceData = await fetchPriceData();
+      setCryptoPrices(priceData || []);
+    } catch (err) {
+      setPriceError(err instanceof Error ? err.message : 'Failed to load price data');
+      console.error('Error loading price data:', err);
+    } finally {
+      if (showLoading) {
+        setPriceLoading(false);
+      }
+    }
+  }, []);
 
   useEffect(() => {
     fetchPortfolioData();
     fetchPerformanceData();
     fetchAvailableTokens();
-  }, []);
+    loadPriceData(true); // Show loading on initial load
+
+    // Set up automatic price updates every 5 seconds
+    const priceInterval = setInterval(() => {
+      loadPriceData(false); // Don't show loading spinner on auto-updates
+    }, 2000);
+
+    // Cleanup interval on component unmount
+    return () => {
+      clearInterval(priceInterval);
+    };
+  }, [loadPriceData]);
 
   const fetchPortfolioData = async () => {
     try {
@@ -294,67 +361,55 @@ export function Dashboard() {
             <CardTitle className="text-white text-xl sm:text-2xl">Crypto Prices</CardTitle>
           </CardHeader>
           <CardContent className="flex-1">
+            {priceError && (
+              <div className="mb-4 p-3 bg-red-900/20 border border-red-600 rounded-lg">
+                <p className="text-red-400 text-sm">Error: {priceError}</p>
+              </div>
+            )}
             <div className="space-y-3 sm:space-y-4 h-full overflow-y-auto scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-gray-800">
-              {availableTokens.map((token, index) => {
-                // Hardcoded prices for demo - will be replaced with API calls later
-                const prices: { [key: string]: { price: number; change: number; volume: string } } = {
-                  'Bitcoin': { price: 67845.32, change: 2.45, volume: '1.2B' },
-                  'Ethereum': { price: 3456.78, change: -1.23, volume: '890M' },
-                  'Solana': { price: 145.67, change: 5.67, volume: '245M' },
-                  'Cardano': { price: 0.45, change: 3.21, volume: '180M' },
-                  'Polygon': { price: 0.89, change: -2.15, volume: '95M' },
-                  'Chainlink': { price: 12.34, change: 1.56, volume: '120M' },
-                };
-                
-                // Try exact match first, then fallback to partial match
-                let tokenData = prices[token.name];
-                if (!tokenData) {
-                  // Try to match by partial name (e.g., "Bitcoin" matches "BTC")
-                  const partialMatch = Object.keys(prices).find(key => 
-                    key.toLowerCase().includes(token.name.toLowerCase()) || 
-                    token.name.toLowerCase().includes(key.toLowerCase())
-                  );
-                  tokenData = partialMatch ? prices[partialMatch] : { price: 0, change: 0, volume: '0M' };
-                }
-                
-                // Debug log to see what tokens we're getting
-                console.log('Token name:', token.name, 'Token data:', tokenData);
-                
-                // Get token symbol for display
-                const tokenSymbols: { [key: string]: string } = {
-                  'Bitcoin': 'BTC',
-                  'Ethereum': 'ETH', 
-                  'Solana': 'SOL',
-                  'Cardano': 'ADA',
-                  'Polygon': 'MATIC',
-                  'Chainlink': 'LINK'
-                };
-                
-                const symbol = tokenSymbols[token.name] || token.name.substring(0, 3).toUpperCase();
-                
-                return (
-                  <div key={`crypto-${token.id}-${index}`} className="flex items-center justify-between p-2.5 sm:p-3.5 border border-gray-800 rounded-lg">
-                    <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
-                      <div className="w-6 h-6 sm:w-8 sm:h-8 bg-gray-800 rounded-full flex items-center justify-center flex-shrink-0">
-                        <span className="text-xs font-medium text-gray-300">{symbol}</span>
+              {priceLoading && cryptoPrices.length === 0 ? (
+                <div className="flex items-center justify-center py-8">
+                  <RefreshCw className="w-6 h-6 animate-spin text-gray-400" />
+                  <span className="ml-2 text-gray-400">Loading prices...</span>
+                </div>
+              ) : (
+                cryptoPrices.length > 0 ? (
+                  cryptoPrices.map((crypto) => {
+                    const symbol = crypto.tokenName.substring(0, 3).toUpperCase();
+                    
+                    return (
+                      <div key={crypto.tokenName} className="flex items-center justify-between p-2.5 sm:p-3.5 border border-gray-800 rounded-lg">
+                        <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
+                          <div className="w-6 h-6 sm:w-8 sm:h-8 bg-gray-800 rounded-full flex items-center justify-center flex-shrink-0">
+                            <span className="text-xs font-medium text-gray-300">{symbol}</span>
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-white font-medium text-sm sm:text-lg truncate">{crypto.tokenName}</p>
+                            <p className="text-xs sm:text-sm text-gray-400">
+                              {crypto.lastUpdated ? new Date(crypto.lastUpdated).toLocaleTimeString() : 'Live'}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex flex-col items-end ml-2">
+                          <p className="text-white font-medium text-sm sm:text-lg">
+                            ${crypto.currentPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </p>
+                          <div className={`flex items-center gap-1 text-xs sm:text-sm ${
+                            crypto.priceChangePercent > 0 ? 'text-green-400' : 'text-red-400'
+                          }`}>
+                            {crypto.priceChangePercent > 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
+                            <span>{crypto.priceChangePercent > 0 ? '+' : ''}{crypto.priceChangePercent.toFixed(2)}%</span>
+                          </div>
+                        </div>
                       </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-white font-medium text-sm sm:text-lg truncate">{token.name}</p>
-                        <p className="text-xs sm:text-sm text-gray-400">Vol: {tokenData.volume}</p>
-                      </div>
-                    </div>
-                    <div className="flex flex-col items-end ml-2">
-                      <p className="text-white font-medium text-sm sm:text-lg">${tokenData.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
-                      <div className={`flex items-center gap-1 text-xs sm:text-sm ${
-                        tokenData.change > 0 ? 'text-green-400' : 'text-red-400'
-                      }`}>
-                        {tokenData.change > 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
-                        <span>{tokenData.change > 0 ? '+' : ''}{tokenData.change.toFixed(2)}%</span>
-                      </div>
-                    </div>
+                    );
+                  })
+                ) : (
+                  <div className="text-center py-8 text-gray-400">
+                    <p>No price data available</p>
                   </div>
-                );
-              })}
+                )
+              )}
             </div>
           </CardContent>
         </Card>

@@ -1,125 +1,164 @@
-import { useState, useEffect } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card'
 import { Button } from '../ui/button'
 import { Badge } from '../ui/badge'
 import { 
   History as HistoryIcon,
+  Filter,
   Download,
+  Search,
   Calendar,
   TrendingUp,
+  TrendingDown,
   Clock,
-  CheckCircle
+  CheckCircle,
+  AlertCircle
 } from 'lucide-react'
 
+// API Configuration
+const API_BASE = import.meta.env.VITE_API_BASE_URL ?? ''
+const getApiUrl = (path: string) => {
+  if (API_BASE) {
+    const base = API_BASE.replace(/\/$/, '')
+    const apiPath = path.startsWith('/') ? path : `/${path}`
+    return `${base}${apiPath}`
+  }
+  return path.startsWith('/') ? path : `/${path}`
+}
+
 export function History() {
-  const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3001'
-  const [stats, setStats] = useState<any>(null)
+  const [filter, setFilter] = useState('all')
+  const [orders, setOrders] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [orders, setOrders] = useState<any>(null)
-  const [pagination, setPagination] = useState<any>(null)
-  const [currentPage, setCurrentPage] = useState(1)
-  const [pageSize, setPageSize] = useState(10)
 
-
-  // Fetch stats from API
-  const fetchStats = async () => {
-    const token = localStorage.getItem('adminToken')
-    const response = await fetch(`${API_BASE}/api/admin/orders/stats`, {
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      }
-    })
-    
-    if (!response.ok) {
-      throw new Error('Failed to fetch stats')
-    }
-    
-    const data = await response.json()
-    return data.data
-  }
-
-  // Fetch orders from API with pagination - only FINISHED orders
-  const fetchOrders = async (page: number = currentPage, limit: number = pageSize) => {
-    const token = localStorage.getItem('adminToken')
-    const response = await fetch(`${API_BASE}/api/admin/orders/all?page=${page}&limit=${limit}&status=FINISHED`, {
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      }
-    })
-
-    if (!response.ok) {
-      throw new Error('Failed to fetch orders')
-    }
-
-    const data = await response.json()
-    return data.data
-  }
-
-  // Load stats and orders on component mount
   useEffect(() => {
-    const loadData = async () => {
-      setLoading(true)
-      setError(null)
-      
+    const fetchOrders = async () => {
       try {
-        const statsData = await fetchStats()
-        const ordersData = await fetchOrders(currentPage, pageSize)
-        setStats(statsData)
-        setOrders(ordersData.orders)
-        setPagination(ordersData.pagination)
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load stats or orders')
-        console.error('Error loading stats or orders:', err)
+        setLoading(true)
+        setError(null)
+        const token = localStorage.getItem('adminToken')
+        const res = await fetch(getApiUrl('/api/admin/orders/all'), {
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+        })
+        const data = await res.json()
+        if (!res.ok || !data?.success) {
+          throw new Error(data?.message || 'Failed to fetch orders')
+        }
+        setOrders(Array.isArray(data.data?.orders) ? data.data.orders : [])
+      } catch (e: any) {
+        setError(e?.message || 'Failed to load orders')
       } finally {
         setLoading(false)
       }
     }
+    fetchOrders()
+  }, [])
+  
+  const filters = [
+    { id: 'all', label: 'All Trades' },
+    { id: 'completed', label: 'Completed' },
+    { id: 'pending', label: 'Pending' },
+    { id: 'cancelled', label: 'Cancelled' }
+  ]
 
-    loadData()
-  }, [currentPage, pageSize])
+  const tradeHistory = useMemo(() => {
+    return orders.map((o) => {
+      const finished = o.status === 'FINISHED'
+      const pending = o.status === 'ACTIVE'
+      const cancelled = o.status === 'EXPIRED'
+      const status = finished ? 'Completed' : pending ? 'Pending' : cancelled ? 'Cancelled' : o.status
+      const statusColor = finished
+        ? 'bg-green-500/20 text-green-400 border-green-500/30'
+        : pending
+        ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30'
+        : 'bg-red-500/20 text-red-400 border-red-500/30'
+      const tokenName = o.token?.name || 'TOKEN'
+      const stable = o.token?.stable || 'USDT'
+      const pair = `${tokenName}/${stable}`
+      const type = o.side === 'BUY' ? 'Buy' : 'Sell'
+      const amount = `${o.qty} ${tokenName}`
+      const price = `$${Number(o.entryPrice).toLocaleString()}`
+      const value = `$${Number(o.budget).toLocaleString()}`
+      const pnlNum = typeof o.netProfit === 'number' ? o.netProfit : 0
+      const pnl = `${pnlNum >= 0 ? '+' : ''}$${pnlNum.toFixed(2)}`
+      const pnlColor = pnlNum > 0 ? 'text-green-400' : pnlNum < 0 ? 'text-red-400' : 'text-gray-400'
+      const date = new Date(o.buyDate || o.timestamp || o.createdAt).toLocaleString()
+      return {
+        id: o.id,
+        date,
+        pair,
+        type,
+        side: o.side === 'BUY' ? 'Long' : 'Short',
+        amount,
+        price,
+        value,
+        fee: `$${(Number(o.fee) || 0).toFixed(2)}`,
+        pnl,
+        pnlColor,
+        status,
+        statusColor,
+      }
+    })
+  }, [orders])
 
-  // No filtering needed - only FINISHED orders are fetched from API
+  const stats = useMemo(() => {
+    const totalTrades = orders.length
+    const completedTrades = orders.filter((o) => o.status === 'FINISHED').length
+    const pendingTrades = orders.filter((o) => o.status === 'ACTIVE').length
+    const cancelledTrades = orders.filter((o) => o.status === 'EXPIRED').length
+    const totalVolumeNum = orders.reduce((s, o) => s + Number(o.budget || 0), 0)
+    const totalPnLNum = orders.reduce((s, o) => s + Number(o.netProfit || 0), 0)
+    const avgTradeNum = totalTrades ? totalPnLNum / totalTrades : 0
+    return {
+      totalTrades,
+      completedTrades,
+      pendingTrades,
+      cancelledTrades,
+      totalVolume: `$${totalVolumeNum.toLocaleString()}`,
+      totalPnL: `${totalPnLNum >= 0 ? '+' : ''}$${totalPnLNum.toFixed(2)}`,
+      avgTrade: `${avgTradeNum >= 0 ? '+' : ''}$${avgTradeNum.toFixed(2)}`,
+    }
+  }, [orders])
+
+  const filteredTrades = filter === 'all' 
+    ? tradeHistory 
+    : tradeHistory.filter(trade => trade.status.toLowerCase() === filter)
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
       {/* Header */}
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-white">Trading History</h1>
-          <p className="text-gray-400">Complete record of all your trading activity</p>
+          <h1 className="text-2xl sm:text-3xl font-bold text-white">Trading History</h1>
+          <p className="text-sm sm:text-base text-gray-400">Complete record of all trading activity</p>
         </div>
-        <div className="flex items-center gap-3">
-          <Button variant="outline" className="border-gray-700 text-gray-300 hover:text-white">
-            <Calendar className="w-4 h-4 mr-2" />
-            Date Range
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+          <Button variant="outline" size="sm" className="border-gray-700 text-gray-300 hover:text-white text-xs sm:text-sm">
+            <Calendar className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
+            <span className="hidden sm:inline">Date Range</span>
+            <span className="sm:hidden">Date</span>
           </Button>
-          <Button variant="outline" className="border-gray-700 text-gray-300 hover:text-white">
-            <Download className="w-4 h-4 mr-2" />
-            Export
+          <Button variant="outline" size="sm" className="border-gray-700 text-gray-300 hover:text-white text-xs sm:text-sm">
+            <Download className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
+            <span className="hidden sm:inline">Export</span>
+            <span className="sm:hidden">Export</span>
           </Button>
         </div>
       </div>
 
       {/* Trading Stats */}
-      {error && (
-        <div className="bg-red-900/20 border border-red-600 rounded-lg p-4">
-          <p className="text-red-400">Error: {error}</p>
-        </div>
-      )}
-      
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
         <Card className="bg-gray-900 border-gray-800">
           <CardHeader className="pb-3">
             <CardTitle className="text-sm text-gray-400 font-medium">Total Trades</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="flex items-center gap-2">
-              <span className="text-2xl font-bold text-white">
-                {loading ? '...' : (stats?.totalTrades || 0)}
-              </span>
+              <span className="text-2xl font-bold text-white">{stats.totalTrades}</span>
               <HistoryIcon className="w-5 h-5 text-blue-400" />
             </div>
             <p className="text-sm text-gray-400 mt-1">All time</p>
@@ -128,16 +167,14 @@ export function History() {
 
         <Card className="bg-gray-900 border-gray-800">
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm text-gray-400 font-medium">Completed Trades</CardTitle>
+            <CardTitle className="text-sm text-gray-400 font-medium">Total Volume</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="flex items-center gap-2">
-              <span className="text-2xl font-bold text-white">
-                {loading ? '...' : (stats?.completedTrades || 0)}
-              </span>
-              <CheckCircle className="w-5 h-5 text-green-400" />
+              <span className="text-2xl font-bold text-white">{stats.totalVolume}</span>
+              <TrendingUp className="w-5 h-5 text-green-400" />
             </div>
-            <p className="text-sm text-gray-400 mt-1">Successfully executed</p>
+            <p className="text-sm text-gray-400 mt-1">Traded volume</p>
           </CardContent>
         </Card>
 
@@ -147,9 +184,7 @@ export function History() {
           </CardHeader>
           <CardContent>
             <div className="flex items-center gap-2">
-              <span className={`text-2xl font-bold ${(stats?.totalProfit || 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                {loading ? '...' : `$${(stats?.totalProfit || 0).toFixed(2)}`}
-              </span>
+              <span className={`text-2xl font-bold ${stats.totalPnL.startsWith('+') ? 'text-green-400' : 'text-red-400'}`}>{stats.totalPnL}</span>
               <TrendingUp className="w-5 h-5 text-green-400" />
             </div>
             <p className="text-sm text-gray-400 mt-1">Net profit/loss</p>
@@ -158,13 +193,11 @@ export function History() {
 
         <Card className="bg-gray-900 border-gray-800">
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm text-gray-400 font-medium">Avg Profit</CardTitle>
+            <CardTitle className="text-sm text-gray-400 font-medium">Avg Trade</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="flex items-center gap-2">
-              <span className={`text-2xl font-bold ${(stats?.avgProfit || 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                {loading ? '...' : `$${(stats?.avgProfit || 0).toFixed(2)}`}
-              </span>
+              <span className={`text-2xl font-bold ${stats.avgTrade.startsWith('+') ? 'text-green-400' : 'text-red-400'}`}>{stats.avgTrade}</span>
               <TrendingUp className="w-5 h-5 text-green-400" />
             </div>
             <p className="text-sm text-gray-400 mt-1">Per trade</p>
@@ -172,12 +205,61 @@ export function History() {
         </Card>
       </div>
 
-      {/* Trade History */}
+      {/* Filters and Search */}
       <Card className="bg-gray-900 border-gray-800">
         <CardHeader>
-          <CardTitle className="text-white">Completed Trades</CardTitle>
+          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
+            <CardTitle className="text-white">Trade History</CardTitle>
+            <div className="flex items-center gap-3">
+              {/* Search */}
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Search trades..."
+                  className="pl-10 pr-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500 text-sm"
+                />
+              </div>
+              {/* Filter */}
+              <Button variant="outline" size="sm" className="border-gray-700 text-gray-300 hover:text-white">
+                <Filter className="w-4 h-4 mr-2" />
+                <span className="hidden sm:inline">Filter</span>
+              </Button>
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
+          {loading && <div className="text-gray-400 text-sm">Loading orders…</div>}
+          {error && (
+            <div className="mb-4 p-3 bg-red-900/20 border border-red-800 rounded-lg text-sm text-red-400" role="alert">
+              {error}
+            </div>
+          )}
+          {/* Filter Tabs */}
+          <div className="flex gap-2 mb-6 flex-wrap">
+            {filters.map((filterOption) => (
+              <button
+                key={filterOption.id}
+                onClick={() => setFilter(filterOption.id)}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  filter === filterOption.id
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
+                }`}
+              >
+                {filterOption.label}
+                {filterOption.id === 'completed' && (
+                  <span className="ml-2 text-xs bg-gray-700 px-2 py-0.5 rounded">{stats.completedTrades}</span>
+                )}
+                {filterOption.id === 'pending' && (
+                  <span className="ml-2 text-xs bg-gray-700 px-2 py-0.5 rounded">{stats.pendingTrades}</span>
+                )}
+                {filterOption.id === 'cancelled' && (
+                  <span className="ml-2 text-xs bg-gray-700 px-2 py-0.5 rounded">{stats.cancelledTrades}</span>
+                )}
+              </button>
+            ))}
+          </div>
 
           {/* Trade Table */}
           <div className="overflow-x-auto">
@@ -195,128 +277,43 @@ export function History() {
                   <th className="text-left py-3 text-sm font-medium text-gray-400">Status</th>
                 </tr>
               </thead>
-                <tbody>
-                 {loading ? (
-                   <tr>
-                     <td colSpan={9} className="py-8 text-center text-gray-400">
-                       Loading orders...
-                     </td>
-                   </tr>
-                 ) : orders?.length === 0 ? (
-                   <tr>
-                     <td colSpan={9} className="py-8 text-center text-gray-400">
-                       No completed orders found
-                     </td>
-                   </tr>
-                 ) : (
-                   orders?.map((order: any) => (
-                     <tr key={order.id} className="border-b border-gray-800/50 hover:bg-gray-800/30">
-                       <td className="py-4 text-sm text-gray-300">
-                         <div className="flex items-center gap-2">
-                           <Clock className="w-3 h-3 text-gray-500" />
-                           {new Date(order.buyDate).toLocaleString()}
-                         </div>
-                       </td>
-                       <td className="py-4 text-sm text-white font-medium">{order.token.name}</td>
-                       <td className="py-4">
-                         <Badge className={`${order.side === 'BUY' ? 'bg-green-500/20 text-green-400 border-green-500/30' : 'bg-red-500/20 text-red-400 border-red-500/30'}`}>
-                           {order.side}
-                         </Badge>
-                       </td>
-                       <td className="py-4 text-sm text-gray-300">{order.qty}</td>
-                       <td className="py-4 text-sm text-gray-300">${order.entryPrice.toLocaleString()}</td>
-                       <td className="py-4 text-sm text-white font-medium">${order.budget.toLocaleString()}</td>
-                       <td className="py-4">
-                         <span className={`text-sm font-medium ${order.netProfit >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                           {order.netProfit >= 0 ? '+' : ''}${order.netProfit.toFixed(2)}
-                         </span>
-                       </td>
-                       <td className="py-4">
-                         <Badge className="bg-green-500/20 text-green-400 border-green-500/30">
-                           <CheckCircle className="w-3 h-3 mr-1" />
-                           {order.status}
-                         </Badge>
-                       </td>
-                     </tr>
-                   ))
-                 )}
+              <tbody>
+                {filteredTrades.map((trade) => (
+                  <tr key={trade.id} className="border-b border-gray-800/50 hover:bg-gray-800/30">
+                    <td className="py-4 text-sm text-gray-300">
+                      <div className="flex items-center gap-2">
+                        <Clock className="w-3 h-3 text-gray-500" />
+                        {trade.date}
+                      </div>
+                    </td>
+                    <td className="py-4 text-sm text-white font-medium">{trade.pair}</td>
+                    <td className="py-4">
+                      <Badge className={`${trade.type === 'Buy' ? 'bg-green-500/20 text-green-400 border-green-500/30' : 'bg-red-500/20 text-red-400 border-red-500/30'}`}>
+                        {trade.type}
+                      </Badge>
+                    </td>
+                    <td className="py-4 text-sm text-gray-300">{trade.side}</td>
+                    <td className="py-4 text-sm text-white font-medium">{trade.amount}</td>
+                    <td className="py-4 text-sm text-gray-300">{trade.price}</td>
+                    <td className="py-4 text-sm text-white font-medium">{trade.value}</td>
+                    <td className="py-4">
+                      <span className={`text-sm font-medium ${trade.pnlColor}`}>{trade.pnl}</span>
+                    </td>
+                    <td className="py-4">
+                      <Badge className={trade.statusColor}>
+                        {trade.status === 'Completed' && <CheckCircle className="w-3 h-3 mr-1" />}
+                        {trade.status === 'Pending' && <Clock className="w-3 h-3 mr-1" />}
+                        {trade.status === 'Cancelled' && <AlertCircle className="w-3 h-3 mr-1" />}
+                        {trade.status}
+                      </Badge>
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
         </CardContent>
       </Card>
-
-      {/* Pagination Controls */}
-      {pagination && (
-        <div className="flex items-center justify-between bg-gray-900 p-4 rounded-lg">
-          <div className="flex items-center space-x-4">
-            <div className="flex items-center space-x-2">
-              <label className="text-sm text-gray-400">Show:</label>
-              <select
-                value={pageSize}
-                onChange={(e) => {
-                  setPageSize(Number(e.target.value))
-                  setCurrentPage(1) // Reset to first page when changing page size
-                }}
-                className="bg-gray-800 border border-gray-600 rounded px-2 py-1 text-white text-sm"
-              >
-                <option value={5}>5</option>
-                <option value={10}>10</option>
-                <option value={25}>25</option>
-              </select>
-              <span className="text-sm text-gray-400">per page</span>
-            </div>
-            <div className="text-sm text-gray-400">
-              Showing {((pagination.currentPage - 1) * pagination.limit) + 1} to {Math.min(pagination.currentPage * pagination.limit, pagination.totalOrders)} of {pagination.totalOrders} orders
-            </div>
-          </div>
-          
-          <div className="flex items-center space-x-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setCurrentPage(currentPage - 1)}
-              disabled={!pagination.hasPrevPage}
-              className="border-gray-600 text-gray-300 hover:bg-gray-700 disabled:opacity-50"
-            >
-              Previous
-            </Button>
-            
-            <div className="flex items-center space-x-1">
-              {Array.from({ length: Math.min(5, pagination.totalPages) }, (_, i) => {
-                const pageNum = Math.max(1, Math.min(pagination.totalPages - 4, pagination.currentPage - 2)) + i
-                if (pageNum > pagination.totalPages) return null
-                
-                return (
-                  <Button
-                    key={pageNum}
-                    variant={pageNum === pagination.currentPage ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setCurrentPage(pageNum)}
-                    className={
-                      pageNum === pagination.currentPage
-                        ? "bg-blue-600 text-white"
-                        : "border-gray-600 text-gray-300 hover:bg-gray-700"
-                    }
-                  >
-                    {pageNum}
-                  </Button>
-                )
-              })}
-            </div>
-            
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setCurrentPage(currentPage + 1)}
-              disabled={!pagination.hasNextPage}
-              className="border-gray-600 text-gray-300 hover:bg-gray-700 disabled:opacity-50"
-            >
-              Next
-            </Button>
-          </div>
-        </div>
-      )}
     </div>
   )
 }

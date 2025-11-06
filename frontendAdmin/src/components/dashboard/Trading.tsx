@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card'
 import { Button } from '../ui/button'
 import { Badge } from '../ui/badge'
@@ -12,139 +12,105 @@ import {
   Eye
 } from 'lucide-react'
 
+// API Configuration
+const API_BASE = import.meta.env.VITE_API_BASE_URL ?? ''
+const getApiUrl = (path: string) => {
+  if (API_BASE) {
+    const base = API_BASE.replace(/\/$/, '')
+    const apiPath = path.startsWith('/') ? path : `/${path}`
+    return `${base}${apiPath}`
+  }
+  return path.startsWith('/') ? path : `/${path}`
+}
+
+interface TradingSummary {
+  totalPositions: number;
+  activeTokensCount: number;
+  totalPnL: number;
+  totalInvestment: number;
+  winRate: number;
+  availableCash: number;
+}
+
 export function Trading() {
   const [isAutoTrading, setIsAutoTrading] = useState(true)
-  const [activeView, setActiveView] = useState('positions') // 'positions' or 'orders'
-  const [selectedStrategy, setSelectedStrategy] = useState('')
+  const [selectedToken, setSelectedToken] = useState('')
   const [orderAmount, setOrderAmount] = useState('')
+  const [summary, setSummary] = useState<TradingSummary | null>(null)
+  const [availableTokens, setAvailableTokens] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
   
-  // Available cash for trading
-  const availableCash = 12345.67
+  useEffect(() => {
+    fetchTradingData();
+    fetchAvailableTokens();
+  }, []);
 
-  // Available strategies for users to choose from
-  const availableStrategies = [
-    {
-      id: 1,
-      name: 'BTC Momentum Pro',
-      description: 'Advanced momentum trading for Bitcoin with dynamic risk management',
-      pair: 'BTC/USDT',
-      performance: '+12.4%',
-      performanceColor: 'text-green-400',
-      winRate: '78%',
-      risk: 'Medium',
-      riskColor: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
-      leverage: '5x'
-    },
-    {
-      id: 2,
-      name: 'ETH Scalping Bot',
-      description: 'High-frequency scalping strategy optimized for Ethereum',
-      pair: 'ETH/USDT',
-      performance: '+8.7%',
-      performanceColor: 'text-green-400',
-      winRate: '82%',
-      risk: 'High',
-      riskColor: 'bg-red-500/20 text-red-400 border-red-500/30',
-      leverage: '10x'
-    },
-    {
-      id: 3,
-      name: 'SOL Swing Trader',
-      description: 'Medium-term swing trading strategy for Solana',
-      pair: 'SOL/USDT',
-      performance: '-2.1%',
-      performanceColor: 'text-red-400',
-      winRate: '65%',
-      risk: 'Low',
-      riskColor: 'bg-green-500/20 text-green-400 border-green-500/30',
-      leverage: '3x'
-    },
-    {
-      id: 4,
-      name: 'Multi-Pair Arbitrage',
-      description: 'Cross-exchange arbitrage across multiple trading pairs',
-      pair: 'Multiple',
-      performance: '+15.2%',
-      performanceColor: 'text-green-400',
-      winRate: '91%',
-      risk: 'Low',
-      riskColor: 'bg-green-500/20 text-green-400 border-green-500/30',
-      leverage: '2x'
+  const fetchTradingData = async () => {
+    try {
+      const token = localStorage.getItem('adminToken')
+      // Note: Admin might need a different endpoint, using user endpoint for now
+      const response = await fetch(getApiUrl('/api/user/trading/positions'), {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setSummary(data.data.summary);
+      } else {
+        console.error('Failed to fetch trading data');
+      }
+    } catch (error) {
+      console.error('Error fetching trading data:', error);
+    } finally {
+      setLoading(false);
     }
-  ]
+  };
 
-  // User's active positions (including multiple instances of same strategy)
-  const activePositions = [
-    { 
-      id: 1,
-      pair: 'BTC/USDT', 
-      type: 'Long', 
-      size: '0.05 BTC', 
-      pnl: '+$1,234', 
-      pnlColor: 'text-green-400', 
-      entry: '$67,000', 
-      strategy: 'BTC Momentum Pro',
-      investment: '$1,000',
-      startDate: '2024-01-15'
-    },
-    { 
-      id: 2,
-      pair: 'BTC/USDT', 
-      type: 'Long', 
-      size: '0.03 BTC', 
-      pnl: '+$756', 
-      pnlColor: 'text-green-400', 
-      entry: '$66,500', 
-      strategy: 'BTC Momentum Pro',
-      investment: '$750',
-      startDate: '2024-01-16'
-    },
-    { 
-      id: 3,
-      pair: 'ETH/USDT', 
-      type: 'Short', 
-      size: '2.5 ETH', 
-      pnl: '-$156', 
-      pnlColor: 'text-red-400', 
-      entry: '$3,500', 
-      strategy: 'ETH Scalping Bot',
-      investment: '$2,500',
-      startDate: '2024-01-14'
-    },
-    { 
-      id: 4,
-      pair: 'SOL/USDT', 
-      type: 'Long', 
-      size: '15 SOL', 
-      pnl: '+$89', 
-      pnlColor: 'text-green-400', 
-      entry: '$140', 
-      strategy: 'SOL Swing Trader',
-      investment: '$500',
-      startDate: '2024-01-13'
-    },
-  ]
+  const fetchAvailableTokens = async () => {
+    try {
+      const token = localStorage.getItem('adminToken')
+      const response = await fetch(getApiUrl('/api/admin/tokens'), {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      if (response.ok) {
+        const result = await response.json();
+        setAvailableTokens(result.data?.tokens || []);
+      } else {
+        console.error('Failed to fetch available tokens');
+      }
+    } catch (error) {
+      console.error('Error fetching available tokens:', error);
+    }
+  };
 
   const handlePlaceOrder = () => {
     const amount = parseFloat(orderAmount)
-    if (selectedStrategy && orderAmount && amount > 0 && amount <= availableCash) {
-      console.log(`Placing order for ${selectedStrategy} with amount $${amount}`)
+    const maxAmount = summary?.availableCash || 0
+    if (selectedToken && orderAmount && amount > 0 && amount <= maxAmount) {
+      console.log(`Placing order for ${selectedToken} with amount $${amount}`)
       // Reset form
-      setSelectedStrategy('')
+      setSelectedToken('')
       setOrderAmount('')
     }
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="h-full flex flex-col p-4 sm:p-6 overflow-hidden">
       {/* Header */}
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 flex-shrink-0 mb-4 sm:mb-6">
         <div>
-          <h1 className="text-3xl font-bold text-white">Trading</h1>
-          <p className="text-gray-400">Monitor positions and place strategy orders</p>
+          <h1 className="text-2xl sm:text-3xl font-bold text-white">Trading</h1>
+          <p className="text-sm sm:text-base text-gray-400">Place orders for any available token</p>
         </div>
-        <div className="flex items-center gap-4">
-          <Badge className={`${isAutoTrading ? 'bg-green-500/20 text-green-400 border-green-500/30' : 'bg-red-500/20 text-red-400 border-red-500/30'}`}>
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4">
+          <Badge className={`text-xs sm:text-sm ${isAutoTrading ? 'bg-green-500/20 text-green-400 border-green-500/30' : 'bg-red-500/20 text-red-400 border-red-500/30'}`}>
             Auto Trading {isAutoTrading ? 'Active' : 'Paused'}
           </Badge>
           <label className="relative inline-flex items-center cursor-pointer">
@@ -154,317 +120,165 @@ export function Trading() {
               onChange={(e) => setIsAutoTrading(e.target.checked)}
               className="sr-only peer"
             />
-            <div className="w-11 h-6 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-green-600"></div>
+            <div className="w-9 h-5 sm:w-11 sm:h-6 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 sm:after:h-5 sm:after:w-5 after:transition-all peer-checked:bg-green-600"></div>
           </label>
         </div>
       </div>
 
-      {/* View Toggle */}
-      <div className="flex rounded-lg bg-gray-800 p-1 w-fit">
-        <button
-          onClick={() => setActiveView('positions')}
-          className={`py-2 px-6 rounded text-sm font-medium transition-colors ${
-            activeView === 'positions'
-              ? 'bg-blue-600 text-white'
-              : 'text-gray-400 hover:text-white'
-          }`}
-        >
-          <Eye className="w-4 h-4 mr-2 inline" />
-          Live Positions
-        </button>
-        <button
-          onClick={() => setActiveView('orders')}
-          className={`py-2 px-6 rounded text-sm font-medium transition-colors ${
-            activeView === 'orders'
-              ? 'bg-blue-600 text-white'
-              : 'text-gray-400 hover:text-white'
-          }`}
-        >
-          <ShoppingCart className="w-4 h-4 mr-2 inline" />
-          Place Orders
-        </button>
-      </div>
-
-      {activeView === 'positions' ? (
-        <>
-          {/* Position Overview */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-          <Card className="bg-gray-900 border-gray-800">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm text-gray-400 font-medium">Active Positions</CardTitle>
-              </CardHeader>
-              <CardContent>
-                  <div className="flex items-center gap-2">
-                  <span className="text-2xl font-bold text-white">{activePositions.length}</span>
-                  <Activity className="w-5 h-5 text-green-400" />
-                </div>
-                <p className="text-sm text-gray-400 mt-1">Running strategies</p>
-              </CardContent>
-            </Card>
-
-            <Card className="bg-gray-900 border-gray-800">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm text-gray-400 font-medium">Total P&L</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="flex items-center gap-2">
-                  <span className="text-2xl font-bold text-green-400">+$1,923</span>
-                  <TrendingUp className="w-5 h-5 text-green-400" />
-                </div>
-                <p className="text-sm text-gray-400 mt-1">All positions</p>
-              </CardContent>
-            </Card>
-
-            <Card className="bg-gray-900 border-gray-800">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm text-gray-400 font-medium">Total Investment</CardTitle>
-              </CardHeader>
-              <CardContent>
-              <div className="flex items-center gap-2">
-                  <span className="text-2xl font-bold text-white">$4,750</span>
-                  <DollarSign className="w-5 h-5 text-blue-400" />
-              </div>
-                <p className="text-sm text-gray-400 mt-1">Across strategies</p>
-              </CardContent>
-            </Card>
-
-            <Card className="bg-gray-900 border-gray-800">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-sm text-gray-400 font-medium">Win Rate</CardTitle>
-            </CardHeader>
-            <CardContent>
-                <div className="flex items-center gap-2">
-                  <span className="text-2xl font-bold text-white">75%</span>
-                  <Target className="w-5 h-5 text-green-400" />
-                </div>
-                <p className="text-sm text-gray-400 mt-1">Overall</p>
-            </CardContent>
-          </Card>
-        </div>
-
-          {/* Active Positions List */}
-          <Card className="bg-gray-900 border-gray-800">
+      {/* Place Orders Section */}
+      <div className="flex-1 grid grid-cols-1 xl:grid-cols-3 gap-4 sm:gap-6 min-h-0 overflow-hidden items-stretch">
+        {/* Left Column - Account Balance & Order Form */}
+        <div className="xl:col-span-2 flex flex-col gap-4 sm:gap-6 h-full">
+          {/* Order Placement Form */}
+          <Card className="bg-gray-900 border-gray-800 flex-shrink-0">
             <CardHeader>
-              <CardTitle className="text-white">Your Active Positions</CardTitle>
-              <p className="text-sm text-gray-400">All your strategy positions including multiple instances</p>
+              <CardTitle className="text-white">Place Token Order</CardTitle>
+              <p className="text-sm text-gray-400">Choose a token and investment amount to start trading</p>
             </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {activePositions.map((position) => (
-                  <div key={position.id} className="p-4 rounded-lg bg-gray-800/50 border border-gray-700">
-                    <div className="flex items-center justify-between mb-3">
-                      <div className="flex items-center gap-3">
-                        <span className="font-semibold text-white">{position.pair}</span>
-                        <Badge className={position.type === 'Long' ? 'bg-green-500/20 text-green-400 border-green-500/30' : 'bg-red-500/20 text-red-400 border-red-500/30'}>
-                          {position.type}
-                        </Badge>
-                        <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30">
-                          {position.strategy}
-                        </Badge>
-                      </div>
-                      <span className={`font-bold text-lg ${position.pnlColor}`}>{position.pnl}</span>
-              </div>
-
-                    <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-sm">
-                      <div>
-                        <p className="text-gray-400">Investment</p>
-                        <p className="text-white font-medium">{position.investment}</p>
-                      </div>
-                      <div>
-                        <p className="text-gray-400">Size</p>
-                        <p className="text-white font-medium">{position.size}</p>
-                      </div>
-                      <div>
-                        <p className="text-gray-400">Entry Price</p>
-                        <p className="text-white font-medium">{position.entry}</p>
-                      </div>
-                      <div>
-                        <p className="text-gray-400">Start Date</p>
-                        <p className="text-white font-medium">{position.startDate}</p>
-                      </div>
-                      <div className="flex items-center">
-                        <Button variant="outline" size="sm" className="border-red-500 text-red-400 hover:bg-red-500/20">
-                          Close Position
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        </>
-      ) : (
-        <>
-          {/* Place Orders View */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Order Placement Form */}
-            <div className="lg:col-span-2">
-              <Card className="bg-gray-900 border-gray-800">
-                <CardHeader>
-                  <CardTitle className="text-white">Place Strategy Order</CardTitle>
-                  <p className="text-sm text-gray-400">Choose a strategy and investment amount to start trading</p>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  {/* Strategy Selection */}
-                  <div className="space-y-3">
-                    <label className="text-sm font-medium text-gray-300">Select Strategy</label>
+            <CardContent className="space-y-6">
+              {/* Token Selection */}
+              <div className="space-y-3">
+                <label className="text-sm font-medium text-gray-300">Select Token</label>
                 <select 
-                      value={selectedStrategy}
-                      onChange={(e) => setSelectedStrategy(e.target.value)}
+                  value={selectedToken}
+                  onChange={(e) => setSelectedToken(e.target.value)}
                   className="w-full p-3 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-blue-500"
                 >
-                      <option value="">Choose a strategy...</option>
-                      {availableStrategies.map((strategy) => (
-                        <option key={strategy.id} value={strategy.name}>
-                          {strategy.name} - {strategy.pair}
-                        </option>
-                      ))}
+                  <option value="">Choose a token...</option>
+                  {availableTokens.map((token, index) => (
+                    <option key={`select-${token.id}-${index}`} value={token.name}>
+                      {token.name}/{token.stable || 'USDT'} (Leverage: {token.leverage || 1}x)
+                    </option>
+                  ))}
                 </select>
               </div>
 
-                  {/* Investment Amount */}
-                  <div className="space-y-3">
-                    <label className="text-sm font-medium text-gray-300">Investment Amount (USD)</label>
-                  <input
-                    type="number"
-                      value={orderAmount}
-                      onChange={(e) => setOrderAmount(e.target.value)}
-                      placeholder="Enter amount..."
-                      max={availableCash}
-                    className="w-full p-3 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
-                  />
-                    <div className="flex justify-between items-center">
-                      <p className="text-sm text-green-400">
-                        Maximum investment: ${availableCash.toLocaleString()}
-                      </p>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setOrderAmount(availableCash.toString())}
-                        className="text-blue-400 hover:text-white text-xs"
-                      >
-                        Use Max
-                      </Button>
-                    </div>
-              </div>
-
-                  {/* Strategy Details Preview */}
-                  {selectedStrategy && (
-                    <div className="p-4 bg-gray-800/50 rounded-lg border border-gray-700">
-                      {(() => {
-                        const strategy = availableStrategies.find(s => s.name === selectedStrategy);
-                        return strategy ? (
-                          <div className="space-y-3">
-                            <div className="flex items-center gap-3">
-                              <h3 className="font-semibold text-white">{strategy.name}</h3>
-                              <Badge className={strategy.riskColor}>
-                                {strategy.risk} Risk
-                              </Badge>
-                              <Badge className="bg-gray-700/50 text-gray-300 border-gray-600">
-                                {strategy.leverage} Leverage
-                              </Badge>
-                            </div>
-                            <p className="text-gray-400 text-sm">{strategy.description}</p>
-                            <div className="grid grid-cols-3 gap-4 text-sm">
-                              <div>
-                                <p className="text-gray-400">Performance</p>
-                                <p className={`font-medium ${strategy.performanceColor}`}>{strategy.performance}</p>
-                              </div>
-                              <div>
-                                <p className="text-gray-400">Win Rate</p>
-                                <p className="text-white font-medium">{strategy.winRate}</p>
-                              </div>
-                              <div>
-                                <p className="text-gray-400">Trading Pair</p>
-                                <p className="text-white font-medium">{strategy.pair}</p>
-                </div>
+              {/* Investment Amount */}
+              <div className="space-y-3">
+                <label className="text-sm font-medium text-gray-300">Investment Amount (USD)</label>
+                <input
+                  type="number"
+                  value={orderAmount}
+                  onChange={(e) => setOrderAmount(e.target.value)}
+                  placeholder="Enter amount..."
+                  max={summary?.availableCash || 0}
+                  className="w-full p-3 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
+                />
+                <div className="flex justify-between items-center">
+                  <p className="text-sm text-green-400">
+                    Maximum investment: ${(summary?.availableCash || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </p>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setOrderAmount((summary?.availableCash || 0).toString())}
+                    className="text-blue-400 hover:text-white text-xs"
+                  >
+                    Use Max
+                  </Button>
                 </div>
               </div>
-                        ) : null;
-                      })()}
-                    </div>
-                  )}
 
               {/* Place Order Button */}
               <div className="space-y-2">
                 <Button 
-                      onClick={handlePlaceOrder}
-                      disabled={!selectedStrategy || !orderAmount || parseFloat(orderAmount) <= 0 || parseFloat(orderAmount) > availableCash}
-                      className="w-full bg-green-600 hover:bg-green-700 py-3 text-base font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      <Plus className="w-4 h-4 mr-2" />
-                      Place Strategy Order
+                  onClick={handlePlaceOrder}
+                  disabled={!selectedToken || !orderAmount || parseFloat(orderAmount) <= 0 || parseFloat(orderAmount) > (summary?.availableCash || 0)}
+                  className="w-full bg-green-600 hover:bg-green-700 py-3 text-base font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <Plus className="w-4 h-4 mr-2" />
+                  Place Token Order
                 </Button>
-                {orderAmount && parseFloat(orderAmount) > availableCash && (
+                {orderAmount && parseFloat(orderAmount) > (summary?.availableCash || 0) && (
                   <p className="text-sm text-red-400 text-center">
-                    Amount exceeds available cash (${availableCash.toLocaleString()})
+                    Amount exceeds available cash (${(summary?.availableCash || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })})
                   </p>
                 )}
               </div>
             </CardContent>
           </Card>
-            </div>
 
-            {/* Available Strategies List & Account Info */}
-            <div className="space-y-6">
           {/* Account Summary */}
-              <Card className="bg-gray-900 border-gray-800">
+          <Card className="bg-gray-900 border-gray-800 flex-1 flex flex-col">
             <CardHeader>
-                  <CardTitle className="text-white">Account Balance</CardTitle>
+              <CardTitle className="text-white">Account Balance</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-3">
+            <CardContent className="space-y-3 flex-1 flex flex-col justify-center">
               <div className="flex justify-between">
                 <span className="text-gray-400">Available Balance</span>
-                    <span className="text-white font-bold">${availableCash.toLocaleString()}</span>
+                <span className="text-white font-bold">${(summary?.availableCash ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
               </div>
               <div className="flex justify-between">
-                    <span className="text-gray-400">Invested in Strategies</span>
-                    <span className="text-white font-medium">$4,750.00</span>
+                <span className="text-gray-400">Invested in Strategies</span>
+                <span className="text-white font-medium">${(summary?.totalInvestment ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
               </div>
               <div className="flex justify-between">
-                    <span className="text-gray-400">Total P&L</span>
-                    <span className="text-green-400 font-medium">+$1,923.00</span>
-                  </div>
-                </CardContent>
-              </Card>
+                <span className="text-gray-400">Total P&L</span>
+                <span className={`font-medium ${(summary?.totalPnL ?? 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                  {(summary?.totalPnL ?? 0) >= 0 ? '+' : ''}${(summary?.totalPnL ?? 0).toFixed(2)}
+                </span>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
 
-              {/* Quick Strategy Overview */}
-              <Card className="bg-gray-900 border-gray-800">
-                <CardHeader>
-                  <CardTitle className="text-white">Available Strategies</CardTitle>
-                  <p className="text-sm text-gray-400">Quick overview of all strategies</p>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-3">
-                    {availableStrategies.map((strategy) => (
-                      <div key={strategy.id} className="p-3 rounded-lg bg-gray-800/50 border border-gray-700">
-                        <div className="flex items-center justify-between mb-2">
-                          <h4 className="font-medium text-white text-sm">{strategy.name}</h4>
-                          <Badge className={`${strategy.riskColor} text-xs`}>
-                            {strategy.risk}
-                          </Badge>
+        {/* Right Column - Available Tokens */}
+        <div className="flex flex-col h-full">
+          {/* Available Tokens */}
+          <Card className="bg-gray-900 border-gray-800 h-full flex flex-col">
+            <CardHeader className="flex-shrink-0">
+              <CardTitle className="text-white">Available Tokens</CardTitle>
+              <p className="text-sm text-gray-400">All tokens available for trading</p>
+            </CardHeader>
+            <CardContent className="flex-1 overflow-y-auto min-h-0">
+              <div className="space-y-3">
+                {availableTokens.map((token, index) => {
+                  const isSelected = selectedToken === token.name;
+                  return (
+                    <div 
+                      key={`card-${token.id}-${index}`} 
+                      className={`p-3 rounded-lg border transition-all cursor-pointer ${
+                        isSelected 
+                          ? 'bg-blue-500/20 border-blue-500/50 shadow-lg shadow-blue-500/10' 
+                          : 'bg-gray-800/50 border-gray-700 hover:bg-gray-800/70'
+                      }`}
+                      onClick={() => setSelectedToken(token.name)}
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <h4 className={`font-medium text-sm ${isSelected ? 'text-blue-400' : 'text-white'}`}>
+                          {token.name}
+                        </h4>
+                        <Badge className={`${
+                          isSelected 
+                            ? 'bg-blue-500/30 text-blue-300 border-blue-500/50' 
+                            : 'bg-blue-500/20 text-blue-400 border-blue-500/30'
+                        }`}>
+                          Available
+                        </Badge>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        <div>
+                          <p className="text-gray-400">Min Quantity</p>
+                          <p className={`font-medium ${isSelected ? 'text-blue-300' : 'text-white'}`}>
+                            {token.minQty || 'N/A'}
+                          </p>
                         </div>
-                        <div className="grid grid-cols-2 gap-2 text-xs">
-                          <div>
-                            <p className="text-gray-400">Performance</p>
-                            <p className={`font-medium ${strategy.performanceColor}`}>{strategy.performance}</p>
-                          </div>
-                          <div>
-                            <p className="text-gray-400">Win Rate</p>
-                            <p className="text-white font-medium">{strategy.winRate}</p>
-                          </div>
+                        <div>
+                          <p className="text-gray-400">Leverage</p>
+                          <p className={`font-medium ${isSelected ? 'text-blue-300' : 'text-white'}`}>
+                            {token.leverage || 1}x
+                          </p>
                         </div>
-              </div>
-                    ))}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </CardContent>
           </Card>
         </div>
       </div>
-        </>
-      )}
     </div>
   )
 }

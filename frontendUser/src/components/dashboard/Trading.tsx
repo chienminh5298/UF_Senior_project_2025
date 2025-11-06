@@ -189,36 +189,6 @@ export function Trading() {
                     </div>
               </div>
 
-              {/* Token Details Preview */}
-              {selectedToken && (
-                    <div className="p-4 bg-gray-800/50 rounded-lg border border-gray-700">
-                      {(() => {
-                    const token = availableTokens.find(t => t.name === selectedToken);
-                    return token ? (
-                          <div className="space-y-3">
-                            <div className="flex items-center gap-3">
-                          <h3 className="font-semibold text-white">{token.name}</h3>
-                          <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30">
-                            Available
-                              </Badge>
-                            </div>
-                        <p className="text-gray-400 text-sm">Trading pair: {token.name}/{token.stable}</p>
-                        <div className="grid grid-cols-2 gap-4 text-sm">
-                              <div>
-                            <p className="text-gray-400">Minimum Quantity</p>
-                            <p className="text-white font-medium">{token.minQty}</p>
-                              </div>
-                              <div>
-                            <p className="text-gray-400">Leverage</p>
-                            <p className="text-white font-medium">{token.leverage}x</p>
-                </div>
-                </div>
-              </div>
-                        ) : null;
-                      })()}
-                    </div>
-                  )}
-
               {/* Place Order Button */}
               <div className="space-y-2">
                 <Button 
@@ -272,26 +242,47 @@ export function Trading() {
             </CardHeader>
             <CardContent className="flex-1 overflow-y-auto min-h-0">
               <div className="space-y-3">
-                {availableTokens.map((token, index) => (
-                  <div key={`card-${token.id}-${index}`} className="p-3 rounded-lg bg-gray-800/50 border border-gray-700">
-                    <div className="flex items-center justify-between mb-2">
-                      <h4 className="font-medium text-white text-sm">{token.name}</h4>
-                      <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30">
-                        Available
-                      </Badge>
-                    </div>
-                    <div className="grid grid-cols-2 gap-2 text-xs">
-                      <div>
-                        <p className="text-gray-400">Min Quantity</p>
-                        <p className="text-white font-medium">{token.minQty}</p>
+                {availableTokens.map((token, index) => {
+                  const isSelected = selectedToken === token.name;
+                  return (
+                    <div 
+                      key={`card-${token.id}-${index}`} 
+                      className={`p-3 rounded-lg border transition-all cursor-pointer ${
+                        isSelected 
+                          ? 'bg-blue-500/20 border-blue-500/50 shadow-lg shadow-blue-500/10' 
+                          : 'bg-gray-800/50 border-gray-700 hover:bg-gray-800/70'
+                      }`}
+                      onClick={() => setSelectedToken(token.name)}
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <h4 className={`font-medium text-sm ${isSelected ? 'text-blue-400' : 'text-white'}`}>
+                          {token.name}
+                        </h4>
+                        <Badge className={`${
+                          isSelected 
+                            ? 'bg-blue-500/30 text-blue-300 border-blue-500/50' 
+                            : 'bg-blue-500/20 text-blue-400 border-blue-500/30'
+                        }`}>
+                          Available
+                        </Badge>
                       </div>
-                      <div>
-                        <p className="text-gray-400">Leverage</p>
-                        <p className="text-white font-medium">{token.leverage}x</p>
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        <div>
+                          <p className="text-gray-400">Min Quantity</p>
+                          <p className={`font-medium ${isSelected ? 'text-blue-300' : 'text-white'}`}>
+                            {token.minQty}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-gray-400">Leverage</p>
+                          <p className={`font-medium ${isSelected ? 'text-blue-300' : 'text-white'}`}>
+                            {token.leverage}x
+                          </p>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </CardContent>
           </Card>
