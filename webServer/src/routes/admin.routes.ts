@@ -1151,11 +1151,13 @@ router.get('/tokens', requireAuth, async (req, res) => {
 
   try {
     const tokens = await prisma.token.findMany({
-      where: { isActive: true },
       select: {
         id: true,
         name: true,
         isActive: true,
+      },
+      orderBy: {
+        name: 'asc',
       },
     });
 
@@ -1441,6 +1443,87 @@ router.get('/bills/:id', requireAuth, async (req, res) => {
     return res.status(500).json({
       success: false,
       message: 'Failed to fetch bill',
+    });
+  }
+});
+
+// PATCH /api/admin/tokens/bulk
+/**
+ * @swagger
+ * /api/admin/tokens/bulk:
+ *   patch:
+ *     summary: Bulk update token active status
+ *     tags: [Admin]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [tokens]
+ *             properties:
+ *               tokens:
+ *                 type: array
+ *                 description: Array of token IDs to activate
+ *                 items:
+ *                   type: integer
+ *     responses:
+ *       200:
+ *         description: Tokens updated successfully
+ *       401: { description: Unauthorized }
+ *       500: { description: Failed to update tokens }
+ */
+router.patch('/tokens/bulk', requireAuth, async (req, res) => {
+  try {
+    const { user } = req;
+    const { tokens } = req.body;
+
+    if (!user) {
+      return res.status(401).json({ success: false, message: 'Unauthorized' });
+    }
+
+    if (!Array.isArray(tokens)) {
+      return res.status(400).json({
+        success: false,
+        message: 'tokens must be an array of token IDs',
+      });
+    }
+
+    // First, deactivate all tokens
+    await prisma.token.updateMany({
+      data: { isActive: false },
+    });
+
+    // Then, activate only the selected tokens
+    if (tokens.length > 0) {
+      await prisma.token.updateMany({
+        where: { id: { in: tokens } },
+        data: { isActive: true },
+      });
+    }
+
+    // Refresh active tokens in WebSocket service
+    try {
+      const { binanceWebSocketService } = await import(
+        '../services/binanceWebSocket'
+      );
+      await binanceWebSocketService.refreshActiveTokens();
+    } catch (wsError) {
+      console.error('Error refreshing WebSocket active tokens:', wsError);
+      // Don't fail the request if WebSocket refresh fails
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: 'Tokens updated successfully',
+    });
+  } catch (error) {
+    console.error('Error bulk updating tokens:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to update tokens',
     });
   }
 });
@@ -2350,7 +2433,7 @@ router.get('/orders/price-data', requireAuth, async (req, res) => {
  *                       description: Daily P&L (sum of netProfit from orders created today)
  *                     activeTokensCount:
  *                       type: integer
- *                       description: Number of tokens that are active (isActive: true)
+ *                       description: Number of tokens that are active (isActive equals true)
  *                     availableTokensCount:
  *                       type: integer
  *                       description: Total number of all tokens in database (regardless of active status)

@@ -91,10 +91,8 @@ describe('POST /api/user/claim Integration Tests', () => {
     });
 
     it('should return 400 when billIds is empty', async () => {
-      // Mock bills with positive netProfit
-      (prisma.bill.findMany as jest.Mock).mockResolvedValue([
-        { id: 1, netProfit: 100 },
-      ]);
+      // Mock empty bills result (when billIds is empty array)
+      (prisma.bill.findMany as jest.Mock).mockResolvedValue([]);
 
       // Mock user data
       (prisma.user.findUnique as jest.Mock).mockResolvedValue({
@@ -117,14 +115,19 @@ describe('POST /api/user/claim Integration Tests', () => {
 
       expect(response.body).toEqual({
         success: false,
-        message: 'Missing required fields',
+        message: 'No valid bills found for claim',
       });
     });
 
     it('should return 400 when network is missing', async () => {
-      // Mock bills with positive netProfit
+      // Mock bills with positive netProfit and stored commission rates
       (prisma.bill.findMany as jest.Mock).mockResolvedValue([
-        { id: 1, netProfit: 100 },
+        {
+          id: 1,
+          netProfit: 100,
+          adminCommissionPercent: 30,
+          referralCommissionPercent: 0,
+        },
       ]);
 
       // Mock user data
@@ -152,9 +155,14 @@ describe('POST /api/user/claim Integration Tests', () => {
     });
 
     it('should return 400 when address is missing', async () => {
-      // Mock bills with positive netProfit
+      // Mock bills with positive netProfit and stored commission rates
       (prisma.bill.findMany as jest.Mock).mockResolvedValue([
-        { id: 1, netProfit: 100 },
+        {
+          id: 1,
+          netProfit: 100,
+          adminCommissionPercent: 30,
+          referralCommissionPercent: 0,
+        },
       ]);
 
       // Mock user data
@@ -182,9 +190,14 @@ describe('POST /api/user/claim Integration Tests', () => {
     });
 
     it('should return 400 when hashId is missing', async () => {
-      // Mock bills with positive netProfit
+      // Mock bills with positive netProfit and stored commission rates
       (prisma.bill.findMany as jest.Mock).mockResolvedValue([
-        { id: 1, netProfit: 100 },
+        {
+          id: 1,
+          netProfit: 100,
+          adminCommissionPercent: 30,
+          referralCommissionPercent: 0,
+        },
       ]);
 
       // Mock user data
@@ -222,10 +235,20 @@ describe('POST /api/user/claim Integration Tests', () => {
     });
 
     it('should return 400 when no bills to claim (amount is 0)', async () => {
-      // Mock bills with zero netProfit
+      // Mock bills with zero netProfit and stored commission rates
       (prisma.bill.findMany as jest.Mock).mockResolvedValue([
-        { id: 1, netProfit: 0 },
-        { id: 2, netProfit: 0 },
+        {
+          id: 1,
+          netProfit: 0,
+          adminCommissionPercent: 30,
+          referralCommissionPercent: 0,
+        },
+        {
+          id: 2,
+          netProfit: 0,
+          adminCommissionPercent: 30,
+          referralCommissionPercent: 0,
+        },
       ]);
 
       // Mock user data
@@ -254,13 +277,27 @@ describe('POST /api/user/claim Integration Tests', () => {
     });
 
     it('should create claim successfully when user has no active voucher', async () => {
-      // Mock bills with positive netProfit
+      // Mock bills with positive netProfit and stored commission rates
+      // Commission is stored as percentage (30) in DB, so 30% commission
+      // netProfit: 100, commission: 30% = 30, amount = 100 - 30 = 70
+      // netProfit: 50, commission: 30% = 15, amount = 50 - 15 = 35
+      // Total amount = 70 + 35 = 105
       (prisma.bill.findMany as jest.Mock).mockResolvedValue([
-        { id: 1, netProfit: 100 },
-        { id: 2, netProfit: 50 },
+        {
+          id: 1,
+          netProfit: 100,
+          adminCommissionPercent: 30,
+          referralCommissionPercent: 0,
+        },
+        {
+          id: 2,
+          netProfit: 50,
+          adminCommissionPercent: 30,
+          referralCommissionPercent: 0,
+        },
       ]);
 
-      // Mock user data
+      // Mock user data (not used for calculation, bills have their own commission rates)
       (prisma.user.findUnique as jest.Mock).mockResolvedValue({
         adminCommissionPercent: 0.1,
       });
@@ -271,7 +308,7 @@ describe('POST /api/user/claim Integration Tests', () => {
       // Mock claim creation
       const mockClaim = {
         id: 1,
-        amount: 15, // (100 + 50) * 0.1
+        amount: 105, // (100 - 30) + (50 - 15) = 70 + 35 = 105
         network: 'ethereum',
         address: '0x123',
         hashId: 'hash123',
@@ -302,7 +339,7 @@ describe('POST /api/user/claim Integration Tests', () => {
       // Verify claim was created with correct data
       expect(prisma.claim.create).toHaveBeenCalledWith({
         data: {
-          amount: 15,
+          amount: 105,
           bills: { connect: [{ id: 1 }, { id: 2 }] },
           network: 'ethereum',
           address: '0x123',
@@ -318,11 +355,21 @@ describe('POST /api/user/claim Integration Tests', () => {
       });
     });
 
-    it('should set amount to 0 when user has active voucher', async () => {
-      // Mock bills with positive netProfit
+    it('should set amount to total netProfit when user has active voucher', async () => {
+      // Mock bills with positive netProfit and stored commission rates
       (prisma.bill.findMany as jest.Mock).mockResolvedValue([
-        { id: 1, netProfit: 100 },
-        { id: 2, netProfit: 50 },
+        {
+          id: 1,
+          netProfit: 100,
+          adminCommissionPercent: 30,
+          referralCommissionPercent: 0,
+        },
+        {
+          id: 2,
+          netProfit: 50,
+          adminCommissionPercent: 30,
+          referralCommissionPercent: 0,
+        },
       ]);
 
       // Mock user data
@@ -330,11 +377,25 @@ describe('POST /api/user/claim Integration Tests', () => {
         adminCommissionPercent: 0.1,
       });
 
-      // Mock active voucher
+      // Mock active voucher (no commission when voucher is active)
       (prisma.voucher.findFirst as jest.Mock).mockResolvedValue({
         id: 1,
         status: VoucherStatus.inuse,
       });
+
+      // Mock claim creation
+      const mockClaim = {
+        id: 1,
+        amount: 150, // Total netProfit (100 + 50) when voucher is active
+        network: 'ethereum',
+        address: '0x123',
+        hashId: 'hash123',
+        userId: 1,
+      };
+      (prisma.claim.create as jest.Mock).mockResolvedValue(mockClaim);
+
+      // Mock bill updates
+      (prisma.bill.updateMany as jest.Mock).mockResolvedValue({ count: 2 });
 
       const response = await request(app)
         .post('/api/user/claim')
@@ -345,11 +406,12 @@ describe('POST /api/user/claim Integration Tests', () => {
           address: '0x123',
           hashId: 'hash123',
         })
-        .expect(400);
+        .expect(200);
 
       expect(response.body).toEqual({
-        success: false,
-        message: 'No bills to claim',
+        success: true,
+        message: 'Claim created successfully',
+        data: mockClaim,
       });
     });
 
@@ -387,10 +449,8 @@ describe('POST /api/user/claim Integration Tests', () => {
     });
 
     it('should handle empty billIds array', async () => {
-      // Mock bills with positive netProfit
-      (prisma.bill.findMany as jest.Mock).mockResolvedValue([
-        { id: 1, netProfit: 100 },
-      ]);
+      // Mock empty bills result (when billIds is empty array)
+      (prisma.bill.findMany as jest.Mock).mockResolvedValue([]);
 
       // Mock user data
       (prisma.user.findUnique as jest.Mock).mockResolvedValue({
@@ -413,23 +473,42 @@ describe('POST /api/user/claim Integration Tests', () => {
 
       expect(response.body).toEqual({
         success: false,
-        message: 'Missing required fields',
+        message: 'No valid bills found for claim',
       });
     });
 
     it('should handle missing user commission data', async () => {
-      // Mock bills with positive netProfit
+      // Mock bills with positive netProfit and stored commission rates
       (prisma.bill.findMany as jest.Mock).mockResolvedValue([
-        { id: 1, netProfit: 100 },
+        {
+          id: 1,
+          netProfit: 100,
+          adminCommissionPercent: 30,
+          referralCommissionPercent: 0,
+        },
       ]);
 
-      // Mock user data with null commission
+      // Mock user data with null commission (not used, bills have their own commission)
       (prisma.user.findUnique as jest.Mock).mockResolvedValue({
         adminCommissionPercent: null,
       });
 
       // Mock no active voucher
       (prisma.voucher.findFirst as jest.Mock).mockResolvedValue(null);
+
+      // Mock claim creation
+      const mockClaim = {
+        id: 1,
+        amount: 70, // 100 - 30 = 70
+        network: 'ethereum',
+        address: '0x123',
+        hashId: 'hash123',
+        userId: 1,
+      };
+      (prisma.claim.create as jest.Mock).mockResolvedValue(mockClaim);
+
+      // Mock bill updates
+      (prisma.bill.updateMany as jest.Mock).mockResolvedValue({ count: 1 });
 
       const response = await request(app)
         .post('/api/user/claim')
@@ -440,16 +519,17 @@ describe('POST /api/user/claim Integration Tests', () => {
           address: '0x123',
           hashId: 'hash123',
         })
-        .expect(400);
+        .expect(200);
 
       expect(response.body).toEqual({
-        success: false,
-        message: 'No bills to claim',
+        success: true,
+        message: 'Claim created successfully',
+        data: mockClaim,
       });
     });
 
     it('should handle non-existent bills', async () => {
-      // Mock empty bills result
+      // Mock empty bills result (bills don't exist or don't belong to user)
       (prisma.bill.findMany as jest.Mock).mockResolvedValue([]);
 
       // Mock user data
@@ -473,7 +553,7 @@ describe('POST /api/user/claim Integration Tests', () => {
 
       expect(response.body).toEqual({
         success: false,
-        message: 'No bills to claim',
+        message: 'No valid bills found for claim',
       });
     });
   });

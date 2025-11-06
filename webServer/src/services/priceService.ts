@@ -50,10 +50,14 @@ class PriceService {
     const cached = this.priceCache.get(tokenName);
     const now = new Date();
 
-    if (cached && now.getTime() - cached.lastUpdated.getTime() < 30000) {
+    if (
+      cached &&
+      now.getTime() - cached.lastUpdated.getTime() < 5 * 60 * 1000
+    ) {
       return cached;
     }
 
+    // Fallback to sample data if no WebSocket data available
     const basePrice = SAMPLE_PRICES[tokenName] || 100;
     const changeRange = PRICE_CHANGES[tokenName] || { min: -0.1, max: 0.1 };
     const changePercent =
@@ -70,7 +74,10 @@ class PriceService {
       lastUpdated: now,
     };
 
-    this.priceCache.set(tokenName, tokenPrice);
+    if (!cached) {
+      this.priceCache.set(tokenName, tokenPrice);
+    }
+
     return tokenPrice;
   }
 
@@ -244,6 +251,11 @@ class PriceService {
       lastUpdate: this.lastUpdate,
       cachedTokens: Array.from(this.priceCache.keys()),
     };
+  }
+
+  updatePrice(tokenPrice: TokenPrice): void {
+    this.priceCache.set(tokenPrice.tokenName, tokenPrice);
+    this.lastUpdate = new Date();
   }
 }
 
