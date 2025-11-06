@@ -1,27 +1,34 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card'
-import { Badge } from '../ui/badge'
 import { Button } from '../ui/button'
 import { AreaChart, Area, XAxis, YAxis, ResponsiveContainer } from 'recharts'
 import { TrendingUp, TrendingDown, Zap, BarChart, RefreshCw, CheckCircle, Settings, X } from 'lucide-react'
 
 // API Configuration
-const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3001'
+const API_BASE = import.meta.env.VITE_API_BASE_URL ?? ''
+const getApiUrl = (path: string) => {
+  if (API_BASE) {
+    // Remove trailing slash from API_BASE and ensure path starts with /
+    const base = API_BASE.replace(/\/$/, '')
+    const apiPath = path.startsWith('/') ? path : `/${path}`
+    return `${base}${apiPath}`
+  }
+  // Use relative path if no API_BASE (will use Vite proxy)
+  return path.startsWith('/') ? path : `/${path}`
+}
 
-// Mock data
-const portfolioData = [
-  { time: '00:00', value: 20000 },
-  { time: '04:00', value: 21500 },
-  { time: '08:00', value: 20800 },
-  { time: '12:00', value: 22400 },
-  { time: '16:00', value: 23200 },
-  { time: '20:00', value: 24567 },
-]
+interface PerformanceData {
+  time: string;
+  year: string;
+  month: number;
+  day: number;
+  value: number;
+}
 
 // API Functions
 const fetchPriceData = async () => {
   const token = localStorage.getItem('adminToken')
-  const response = await fetch(`${API_BASE}/api/admin/orders/price-data`, {
+  const response = await fetch(getApiUrl('/api/admin/orders/price-data'), {
     headers: {
       'Authorization': `Bearer ${token}`,
       'Content-Type': 'application/json'
@@ -38,7 +45,7 @@ const fetchPriceData = async () => {
 
 const fetchDashboardStats = async () => {
   const token = localStorage.getItem('adminToken')
-  const response = await fetch(`${API_BASE}/api/admin/dashboard/stats`, {
+  const response = await fetch(getApiUrl('/api/admin/dashboard/stats'), {
     headers: {
       'Authorization': `Bearer ${token}`,
       'Content-Type': 'application/json'
@@ -53,9 +60,44 @@ const fetchDashboardStats = async () => {
   return data.data
 }
 
+const fetchPerformanceData = async () => {
+  const token = localStorage.getItem('adminToken')
+  // Use admin endpoint for portfolio performance data
+  const response = await fetch(getApiUrl('/api/admin/portfolio/performance'), {
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    }
+  })
+  
+  if (!response.ok) {
+    throw new Error('Failed to fetch performance data')
+  }
+  
+  const data = await response.json()
+  return data.data
+}
+
+const fetchPortfolioData = async () => {
+  const token = localStorage.getItem('adminToken')
+  const response = await fetch(getApiUrl('/api/admin/portfolio'), {
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    }
+  })
+  
+  if (!response.ok) {
+    throw new Error('Failed to fetch portfolio data')
+  }
+  
+  const data = await response.json()
+  return data.data
+}
+
 const fetchTokens = async () => {
   const token = localStorage.getItem('adminToken')
-  const response = await fetch(`${API_BASE}/api/admin/tokens`, {
+  const response = await fetch(getApiUrl('/api/admin/tokens'), {
     headers: {
       'Authorization': `Bearer ${token}`,
       'Content-Type': 'application/json'
@@ -73,7 +115,7 @@ const fetchTokens = async () => {
 
 const updateTokensBulk = async (tokenIds: number[]) => {
   const token = localStorage.getItem('adminToken')
-  const response = await fetch(`${API_BASE}/api/admin/tokens/bulk`, {
+  const response = await fetch(getApiUrl('/api/admin/tokens/bulk'), {
     method: 'PATCH',
     headers: {
       'Authorization': `Bearer ${token}`,
@@ -93,8 +135,11 @@ const updateTokensBulk = async (tokenIds: number[]) => {
 export function Dashboard() {
   const [cryptoPrices, setCryptoPrices] = useState<any[]>([])
   const [dashboardStats, setDashboardStats] = useState<any>(null)
+  const [portfolioData, setPortfolioData] = useState<any>(null)
+  const [performanceData, setPerformanceData] = useState<PerformanceData[]>([])
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [priceLoading, setPriceLoading] = useState(false)
+  const [priceError, setPriceError] = useState<string | null>(null)
   
   // Token Selection Modal State
   const [showTokenSelector, setShowTokenSelector] = useState(false)
@@ -102,51 +147,72 @@ export function Dashboard() {
   const [selectedTokenIds, setSelectedTokenIds] = useState<number[]>([])
   const [tokenSelectorLoading, setTokenSelectorLoading] = useState(false)
 
+  const loadPriceData = useCallback(async (showLoading = false) => {
+    if (showLoading) {
+      setPriceLoading(true);
+    }
+    setPriceError(null);
+    
+    try {
+      const priceData = await fetchPriceData();
+      setCryptoPrices(priceData || []);
+    } catch (err) {
+      setPriceError(err instanceof Error ? err.message : 'Failed to load price data');
+      console.error('Error loading price data:', err);
+    } finally {
+      if (showLoading) {
+        setPriceLoading(false);
+      }
+    }
+  }, []);
+
   useEffect(() => {
     const loadData = async () => {
       setLoading(true)
-      setError(null)
       
       try {
-        const [priceData, stats] = await Promise.all([
-          fetchPriceData(),
-          fetchDashboardStats()
+        const [stats, portfolio, performance] = await Promise.all([
+          fetchDashboardStats(),
+          fetchPortfolioData().catch(err => {
+            console.error('Error loading portfolio data:', err)
+            return null
+          }),
+          fetchPerformanceData().catch(err => {
+            console.error('Error loading performance data:', err)
+            return []
+          })
         ])
-        setCryptoPrices(priceData || [])
         setDashboardStats(stats)
+        setPortfolioData(portfolio)
+        setPerformanceData(performance || [])
+        
+        // Update portfolio value in App.tsx via localStorage
+        if (portfolio?.totalValue !== undefined) {
+          localStorage.setItem('adminPortfolioValue', portfolio.totalValue.toString())
+          // Dispatch custom event to notify App.tsx
+          window.dispatchEvent(new CustomEvent('portfolioValueUpdate', { detail: portfolio.totalValue }))
+        }
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load data')
         console.error('Error loading data:', err)
-        setCryptoPrices([
-          { tokenName: 'Bitcoin', currentPrice: 67845.32, priceChangePercent: 2.45 },
-          { tokenName: 'Ethereum', currentPrice: 3456.78, priceChangePercent: -1.23 },
-          { tokenName: 'Solana', currentPrice: 145.67, priceChangePercent: 5.67 },
-        ])
       } finally {
         setLoading(false)
       }
     }
 
     loadData()
-  }, [])
+    loadPriceData(true); // Show loading on initial load
 
-  const handleRefreshData = async () => {
-    setLoading(true)
-    setError(null)
-    
-    try {
-      const [priceData, stats] = await Promise.all([
-        fetchPriceData(),
-        fetchDashboardStats()
-      ])
-      setCryptoPrices(priceData || [])
-      setDashboardStats(stats)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to refresh data')
-    } finally {
-      setLoading(false)
-    }
-  }
+    // Set up automatic price updates every 2 seconds
+    const priceInterval = setInterval(() => {
+      loadPriceData(false); // Don't show loading spinner on auto-updates
+    }, 2000);
+
+    // Cleanup interval on component unmount
+    return () => {
+      clearInterval(priceInterval);
+    };
+  }, [loadPriceData])
+
 
   // Token Selection Handlers
   const handleOpenTokenSelector = async () => {
@@ -162,7 +228,7 @@ export function Dashboard() {
         .map((token: any) => token.id)
       setSelectedTokenIds(activeTokenIds)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load tokens')
+      console.error('Failed to load tokens:', err)
     } finally {
       setTokenSelectorLoading(false)
     }
@@ -183,7 +249,6 @@ export function Dashboard() {
 
   const handleSaveTokenSelection = async () => {
     setTokenSelectorLoading(true)
-    setError(null)
     
     try {
       await updateTokensBulk(selectedTokenIds)
@@ -192,73 +257,85 @@ export function Dashboard() {
       setDashboardStats(stats)
       setShowTokenSelector(false)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update tokens')
+      console.error('Failed to update tokens:', err)
     } finally {
       setTokenSelectorLoading(false)
     }
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-4 sm:p-6 pb-8 sm:pb-12 space-y-4 sm:space-y-6 flex flex-col h-full overflow-y-auto">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-white">Dashboard</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold text-white">Dashboard</h1>
+          <p className="text-sm sm:text-base text-gray-400">Overview of your trading performance and portfolio</p>
         </div>
       </div>
 
       {/* Key Metrics */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
         <Card className="bg-gray-900 border-gray-800">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-gray-400">Total Portfolio</CardTitle>
-            <BarChart className="h-4 w-4 text-gray-400" />
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm text-gray-400 font-medium">Total Portfolio</CardTitle>
           </CardHeader>
           <CardContent>
-            {loading && !dashboardStats ? (
+            {loading && !portfolioData ? (
               <div className="flex items-center justify-center py-2">
                 <RefreshCw className="w-4 h-4 animate-spin text-gray-400" />
               </div>
             ) : (
               <>
-                <div className="text-2xl font-bold text-white">
-                  ${dashboardStats?.totalPortfolio?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}
+                <div className="flex items-center gap-2">
+                  <span className="text-2xl font-bold text-white">
+                    ${(portfolioData?.totalValue || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </span>
+                  <BarChart className="w-5 h-5 text-blue-400" />
                 </div>
-                <div className="flex items-center gap-1 text-sm text-gray-400">
-                  Total order budgets
-                </div>
+                <p className={`text-sm mt-1 ${(portfolioData?.totalPnLPercent ?? 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                  {(portfolioData?.totalPnLPercent ?? 0) >= 0 ? '+' : ''}{(portfolioData?.totalPnLPercent ?? 0).toFixed(2)}% today
+                </p>
               </>
             )}
           </CardContent>
         </Card>
 
         <Card className="bg-gray-900 border-gray-800">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-gray-400">Total P&L</CardTitle>
-            <TrendingUp className="h-4 w-4 text-gray-400" />
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm text-gray-400 font-medium">Total P&L</CardTitle>
           </CardHeader>
           <CardContent>
-            {loading && !dashboardStats ? (
+            {loading && !portfolioData ? (
               <div className="flex items-center justify-center py-2">
                 <RefreshCw className="w-4 h-4 animate-spin text-gray-400" />
               </div>
             ) : (
               <>
-                <div className={`text-2xl font-bold ${dashboardStats?.totalPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                  {dashboardStats?.totalPnL >= 0 ? '+' : ''}${dashboardStats?.totalPnL?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}
+                <div className="flex items-center gap-2">
+                  <span className={`text-2xl font-bold ${(portfolioData?.totalPnL ?? 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                    {(portfolioData?.totalPnL ?? 0) >= 0 ? '+' : ''}${(portfolioData?.totalPnL ?? 0).toFixed(2)}
+                  </span>
+                  <TrendingUp className={`w-5 h-5 ${(portfolioData?.totalPnL ?? 0) >= 0 ? 'text-green-400' : 'text-red-400'}`} />
                 </div>
-                <div className="text-sm text-gray-400">
-                  Daily: {dashboardStats?.dailyPnL >= 0 ? '+' : ''}${dashboardStats?.dailyPnL?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}
-                </div>
+                <p className="text-sm text-gray-400 mt-1">
+                  {(portfolioData?.totalPnLPercent ?? 0) >= 0 ? '+' : ''}{(portfolioData?.totalPnLPercent ?? 0).toFixed(2)}% total gain
+                </p>
               </>
             )}
           </CardContent>
         </Card>
 
         <Card className="bg-gray-900 border-gray-800">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-gray-400">Active Tokens</CardTitle>
-            <Zap className="h-4 w-4 text-gray-400" />
+          <CardHeader className="pb-3 relative pr-10">
+            <CardTitle className="text-sm text-gray-400 font-medium">Active Tokens</CardTitle>
+            <Button
+              onClick={handleOpenTokenSelector}
+              variant="outline"
+              size="sm"
+              className="absolute top-3 right-3 h-6 w-6 p-0 border-gray-700 text-gray-300 hover:text-white hover:bg-gray-800 flex items-center justify-center"
+            >
+              <Settings className="w-3 h-3" />
+            </Button>
           </CardHeader>
           <CardContent>
             {loading && !dashboardStats ? (
@@ -267,26 +344,19 @@ export function Dashboard() {
               </div>
             ) : (
               <>
-                <div className="text-2xl font-bold text-white">{dashboardStats?.activeTokensCount || 0}</div>
-                <div className="text-sm text-gray-400 mb-2">tokens currently active</div>
-                <Button
-                  onClick={handleOpenTokenSelector}
-                  variant="outline"
-                  size="sm"
-                  className="w-full border-gray-700 text-gray-300 hover:text-white hover:bg-gray-800"
-                >
-                  <Settings className="w-4 h-4 mr-2" />
-                  Manage Tokens
-                </Button>
+                <div className="flex items-center gap-2">
+                  <span className="text-2xl font-bold text-white">{dashboardStats?.activeTokensCount || 0}</span>
+                  <Zap className="w-5 h-5 text-blue-400" />
+                </div>
+                <p className="text-sm text-gray-400 mt-1">tokens currently active</p>
               </>
             )}
           </CardContent>
         </Card>
 
         <Card className="bg-gray-900 border-gray-800">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-gray-400">Available Tokens</CardTitle>
-            <TrendingUp className="h-4 w-4 text-gray-400" />
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm text-gray-400 font-medium">Available Tokens</CardTitle>
           </CardHeader>
           <CardContent>
             {loading && !dashboardStats ? (
@@ -295,8 +365,11 @@ export function Dashboard() {
               </div>
             ) : (
               <>
-                <div className="text-2xl font-bold text-white">{dashboardStats?.availableTokensCount || 0}</div>
-                <div className="text-sm text-gray-400">tokens to choose from</div>
+                <div className="flex items-center gap-2">
+                  <span className="text-2xl font-bold text-white">{dashboardStats?.availableTokensCount || 0}</span>
+                  <TrendingUp className="w-5 h-5 text-blue-400" />
+                </div>
+                <p className="text-sm text-gray-400 mt-1">tokens to choose from</p>
               </>
             )}
           </CardContent>
@@ -304,26 +377,34 @@ export function Dashboard() {
       </div>
 
       {/* Charts Section */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Portfolio Performance */}
-        <Card className="bg-gray-900 border-gray-800">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6 flex-1 min-h-0 mb-4 sm:mb-6">
+        {/* Portfolio Chart */}
+        <Card className="bg-gray-900 border-gray-800 flex flex-col lg:col-span-2">
           <CardHeader>
-            <CardTitle className="text-white">Portfolio Performance</CardTitle>
+            <CardTitle className="text-white text-xl sm:text-2xl">Portfolio Chart</CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="h-[300px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={portfolioData}>
+          <CardContent className="flex-1">
+            <div className="h-full min-h-[160px] sm:min-h-[180px]">
+              <ResponsiveContainer width="100%" height="90%">
+                <AreaChart data={performanceData}>
                   <XAxis 
                     dataKey="time" 
                     axisLine={false}
                     tickLine={false}
                     tick={{ fill: '#9CA3AF', fontSize: 12 }}
+                    tickFormatter={(_, index) => {
+                      // Only show year labels on January 1st of each year
+                      const dataPoint = performanceData[index];
+                      if (!dataPoint) return '';
+                      
+                      // Show year label only if it's January 1st (month = 1, day = 1)
+                      return (dataPoint.month === 1 && dataPoint.day === 1) ? dataPoint.year : '';
+                    }}
                   />
                   <YAxis 
                     axisLine={false}
                     tickLine={false}
-                    tick={{ fill: '#9CA3AF', fontSize: 12 }}
+                    tick={{ fill: '#9CA3AF', fontSize: 10 }}
                   />
                   <Area 
                     type="monotone" 
@@ -345,112 +426,64 @@ export function Dashboard() {
         </Card>
 
         {/* Crypto Prices */}
-        <Card className="bg-gray-900 border-gray-800">
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle className="text-white">Crypto Prices</CardTitle>
-            <Button 
-              onClick={handleRefreshData}
-              disabled={loading}
-              variant="outline" 
-              size="sm"
-              className="border-gray-700 hover:bg-gray-800"
-            >
-              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-            </Button>
+        <Card className="bg-gray-900 border-gray-800 flex flex-col lg:col-span-1">
+          <CardHeader>
+            <CardTitle className="text-white text-xl sm:text-2xl">Crypto Prices</CardTitle>
           </CardHeader>
-          <CardContent>
-            {error && (
+          <CardContent className="flex-1">
+            {priceError && (
               <div className="mb-4 p-3 bg-red-900/20 border border-red-600 rounded-lg">
-                <p className="text-red-400 text-sm">Error: {error}</p>
+                <p className="text-red-400 text-sm">Error: {priceError}</p>
               </div>
             )}
-            <div className="space-y-4">
-              {loading && cryptoPrices.length === 0 ? (
+            <div className="space-y-3 sm:space-y-4 h-full overflow-y-auto scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-gray-800">
+              {priceLoading && cryptoPrices.length === 0 ? (
                 <div className="flex items-center justify-center py-8">
                   <RefreshCw className="w-6 h-6 animate-spin text-gray-400" />
                   <span className="ml-2 text-gray-400">Loading prices...</span>
                 </div>
               ) : (
-                cryptoPrices.map((crypto) => (
-                  <div key={crypto.tokenName} className="flex items-center justify-between p-3 border border-gray-800 rounded-lg">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 bg-gray-800 rounded-full flex items-center justify-center">
-                        <span className="text-xs font-medium text-gray-300">
-                          {crypto.tokenName.substring(0, 3).toUpperCase()}
-                        </span>
+                cryptoPrices.length > 0 ? (
+                  cryptoPrices.map((crypto) => {
+                    const symbol = crypto.tokenName.substring(0, 3).toUpperCase();
+                    
+                    return (
+                      <div key={crypto.tokenName} className="flex items-center justify-between p-2.5 sm:p-3.5 border border-gray-800 rounded-lg">
+                        <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
+                          <div className="w-6 h-6 sm:w-8 sm:h-8 bg-gray-800 rounded-full flex items-center justify-center flex-shrink-0">
+                            <span className="text-xs font-medium text-gray-300">{symbol}</span>
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-white font-medium text-sm sm:text-lg truncate">{crypto.tokenName}</p>
+                            <p className="text-xs sm:text-sm text-gray-400">
+                              {crypto.lastUpdated ? new Date(crypto.lastUpdated).toLocaleTimeString() : 'Live'}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex flex-col items-end ml-2">
+                          <p className="text-white font-medium text-sm sm:text-lg">
+                            ${crypto.currentPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </p>
+                          <div className={`flex items-center gap-1 text-xs sm:text-sm ${
+                            crypto.priceChangePercent > 0 ? 'text-green-400' : 'text-red-400'
+                          }`}>
+                            {crypto.priceChangePercent > 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
+                            <span>{crypto.priceChangePercent > 0 ? '+' : ''}{crypto.priceChangePercent.toFixed(2)}%</span>
+                          </div>
+                        </div>
                       </div>
-                      <div>
-                        <p className="text-white font-medium">{crypto.tokenName}</p>
-                        <p className="text-sm text-gray-400">
-                          {crypto.lastUpdated ? new Date(crypto.lastUpdated).toLocaleTimeString() : 'Live'}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-white font-medium">${crypto.currentPrice.toLocaleString()}</p>
-                      <div className={`flex items-center gap-1 text-sm ${
-                        crypto.priceChangePercent > 0 ? 'text-green-400' : 'text-red-400'
-                      }`}>
-                        {crypto.priceChangePercent > 0 ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
-                        {crypto.priceChangePercent > 0 ? '+' : ''}{crypto.priceChangePercent.toFixed(2)}%
-                      </div>
-                    </div>
+                    );
+                  })
+                ) : (
+                  <div className="text-center py-8 text-gray-400">
+                    <p>No price data available</p>
                   </div>
-                ))
+                )
               )}
             </div>
           </CardContent>
         </Card>
       </div>
-
-      {/* Active Trading Strategies */}
-      <Card className="bg-gray-900 border-gray-800">
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle className="text-white">Active Trading Strategies</CardTitle>
-          <Button variant="outline" size="sm" className="border-gray-700 text-gray-300 hover:text-white">
-            View All
-          </Button>
-        </CardHeader>
-        <CardContent>
-          {loading && !dashboardStats ? (
-            <div className="flex items-center justify-center py-8">
-              <RefreshCw className="w-6 h-6 animate-spin text-gray-400" />
-              <span className="ml-2 text-gray-400">Loading strategies...</span>
-            </div>
-          ) : !dashboardStats?.activeStrategies || dashboardStats.activeStrategies.length === 0 ? (
-            <div className="text-center py-8 text-gray-400">
-              <p>No active strategies</p>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {dashboardStats.activeStrategies.map((strategy: any) => (
-                <div key={strategy.id} className="flex items-center justify-between p-3 border border-gray-800 rounded-lg">
-                  <div className="flex items-center gap-3">
-                    <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                    <div>
-                      <p className="text-white font-medium">{strategy.description}</p>
-                      <p className="text-sm text-gray-400">{strategy.trades} trades today</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-4">
-                    <Badge variant="success">
-                      Active
-                    </Badge>
-                    <div className="text-right">
-                      <div className={`font-medium ${strategy.pnl >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                        {strategy.pnl >= 0 ? '+' : ''}${strategy.pnl.toFixed(2)}
-                      </div>
-                      <div className="text-xs text-gray-400">
-                        {strategy.tokenCount} token{strategy.tokenCount !== 1 ? 's' : ''}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
 
       {/* Token Selection Modal */}
       {showTokenSelector && (

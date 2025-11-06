@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import React, { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card'
 import { Button } from '../ui/button'
 import { Badge } from '../ui/badge'
@@ -14,25 +14,54 @@ import {
   AlertTriangle
 } from 'lucide-react'
 
+// API Configuration
+const API_BASE = import.meta.env.VITE_API_BASE_URL ?? ''
+const getApiUrl = (path: string) => {
+  if (API_BASE) {
+    const base = API_BASE.replace(/\/$/, '')
+    const apiPath = path.startsWith('/') ? path : `/${path}`
+    return `${base}${apiPath}`
+  }
+  return path.startsWith('/') ? path : `/${path}`
+}
+
 export function Settings() {
   const [activeSection, setActiveSection] = useState('profile')
-  //const [darkMode, setDarkMode] = useState(true) //TODO: Add switch to light/dark mode
   const [emailNotifications, setEmailNotifications] = useState(true)
   const [pushNotifications, setPushNotifications] = useState(false)
   const [twoFactorEnabled, setTwoFactorEnabled] = useState(false)
   const [showApiKeys, setShowApiKeys] = useState(false)
   const [userData, setUserData] = useState<{ fullname: string; username: string; email: string } | null>(null)
+  const [firstName, setFirstName] = useState('')
+  const [lastName, setLastName] = useState('')
+  const [username, setUsername] = useState('')
+  const [email, setEmail] = useState('')
+  const [savingProfile, setSavingProfile] = useState(false)
+  const [profileError, setProfileError] = useState<string | null>(null)
+  const [profileSuccess, setProfileSuccess] = useState<string | null>(null)
+
+  const [currentPassword, setCurrentPassword] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [savingPassword, setSavingPassword] = useState(false)
+  const [passwordError, setPasswordError] = useState<string | null>(null)
+  const [passwordSuccess, setPasswordSuccess] = useState<string | null>(null)
 
   useEffect(() => {
-    // Load user data from localStorage
+    // Load admin data - for admin, we might not have user profile
+    // This is a placeholder - adjust based on your admin auth structure
     try {
-      const auth = localStorage.getItem('auth')
-      if (auth) {
-        const { user } = JSON.parse(auth)
-        setUserData(user)
+      const adminToken = localStorage.getItem('adminToken')
+      if (adminToken) {
+        // Admin might not have profile data, set defaults
+        setUserData({ fullname: 'Admin User', username: 'admin', email: 'admin@example.com' })
+        setFirstName('Admin')
+        setLastName('User')
+        setUsername('admin')
+        setEmail('admin@example.com')
       }
     } catch (e) {
-      console.error('Failed to load user data:', e)
+      console.error('Failed to load admin data:', e)
     }
   }, [])
 
@@ -44,12 +73,36 @@ export function Settings() {
     { id: 'api', label: 'API Keys', icon: Key },
   ]
 
-  const renderProfileSection = () => {
-    // Split full name into first and last name
-    const nameParts = userData?.fullname?.split(' ') || []
-    const firstName = nameParts[0] || ''
-    const lastName = nameParts.slice(1).join(' ') || ''
+  const handleSaveProfile = async () => {
+    if (savingProfile) return
+    setProfileError(null)
+    setProfileSuccess(null)
+    try {
+      setSavingProfile(true)
+      const token = localStorage.getItem('adminToken')
+      const fullname = `${firstName} ${lastName}`.trim()
+      const res = await fetch(getApiUrl('/api/user/profile'), {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ fullname, username, email }),
+      })
+      const data = await res.json()
+      if (!res.ok || !data?.success) {
+        throw new Error(data?.message || 'Failed to update profile')
+      }
+      setUserData(data.data)
+      setProfileSuccess('Profile updated successfully')
+    } catch (e: any) {
+      setProfileError(e?.message || 'Failed to update profile')
+    } finally {
+      setSavingProfile(false)
+    }
+  }
 
+  const renderProfileSection = () => {
     return (
       <div className="space-y-6">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -58,8 +111,8 @@ export function Settings() {
             <input
               type="text"
               value={firstName}
+              onChange={(e) => setFirstName(e.target.value)}
               className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
-              readOnly
             />
           </div>
           <div className="space-y-2">
@@ -67,8 +120,8 @@ export function Settings() {
             <input
               type="text"
               value={lastName}
+              onChange={(e) => setLastName(e.target.value)}
               className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
-              readOnly
             />
           </div>
         </div>
@@ -77,9 +130,9 @@ export function Settings() {
           <label className="text-sm font-medium text-gray-300">Username</label>
           <input
             type="text"
-            value={userData?.username || ''}
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
             className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
-            readOnly
           />
         </div>
         
@@ -87,11 +140,22 @@ export function Settings() {
           <label className="text-sm font-medium text-gray-300">Email Address</label>
           <input
             type="email"
-            value={userData?.email || ''}
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
             className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
-            readOnly
           />
         </div>
+
+        {profileError && (
+          <div className="mb-2 p-3 bg-red-900/20 border border-red-800 rounded-lg text-sm text-red-400" role="alert">
+            {profileError}
+          </div>
+        )}
+        {profileSuccess && (
+          <div className="mb-2 p-3 bg-green-900/20 border border-green-800 rounded-lg text-sm text-green-400" role="status">
+            {profileSuccess}
+          </div>
+        )}
 
         <div className="space-y-2">
           <label className="text-sm font-medium text-gray-300">Time Zone</label>
@@ -103,16 +167,99 @@ export function Settings() {
           </select>
         </div>
 
-        <Button className="bg-blue-600 hover:bg-blue-700">
+        <Button onClick={handleSaveProfile} disabled={savingProfile} className="bg-blue-600 hover:bg-blue-700">
           <Save className="w-4 h-4 mr-2" />
-          Save Changes
+          {savingProfile ? 'Saving...' : 'Save Changes'}
         </Button>
       </div>
     )
   }
 
+  const handleChangePassword = async () => {
+    if (savingPassword) return
+    setPasswordError(null)
+    setPasswordSuccess(null)
+    try {
+      if (!currentPassword || !newPassword) {
+        throw new Error('Please fill out all password fields')
+      }
+      if (newPassword !== confirmPassword) {
+        throw new Error('New passwords do not match')
+      }
+      setSavingPassword(true)
+      const token = localStorage.getItem('adminToken')
+      const res = await fetch(getApiUrl('/api/user/settings'), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ currentPassword, newPassword }),
+      })
+      const data = await res.json()
+      if (!res.ok || !data?.success) {
+        throw new Error(data?.message || 'Failed to update password')
+      }
+      setPasswordSuccess('Password updated successfully')
+      setCurrentPassword('')
+      setNewPassword('')
+      setConfirmPassword('')
+    } catch (e: any) {
+      setPasswordError(e?.message || 'Failed to update password')
+    } finally {
+      setSavingPassword(false)
+    }
+  }
+
   const renderSecuritySection = () => (
     <div className="space-y-6">
+      <Card className="bg-gray-800/50 border-gray-700">
+        <CardHeader>
+          <CardTitle className="text-white text-lg">Change Password</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {passwordError && (
+            <div className="p-3 bg-red-900/20 border border-red-800 rounded-lg text-sm text-red-400" role="alert">
+              {passwordError}
+            </div>
+          )}
+          {passwordSuccess && (
+            <div className="p-3 bg-green-900/20 border border-green-800 rounded-lg text-sm text-green-400" role="status">
+              {passwordSuccess}
+            </div>
+          )}
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-gray-300">Current Password</label>
+            <input
+              type="password"
+              value={currentPassword}
+              onChange={(e) => setCurrentPassword(e.target.value)}
+              className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-gray-300">New Password</label>
+            <input
+              type="password"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-gray-300">Confirm New Password</label>
+            <input
+              type="password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
+            />
+          </div>
+          <Button onClick={handleChangePassword} disabled={savingPassword} variant="outline" className="border-blue-600 text-blue-400 hover:bg-blue-600 hover:text-white">
+            {savingPassword ? 'Updating...' : 'Update Password'}
+          </Button>
+        </CardContent>
+      </Card>
 
       <Card className="bg-gray-800/50 border-gray-700">
         <CardHeader>
@@ -201,6 +348,53 @@ export function Settings() {
     </div>
   )
 
+  const renderTradingSection = () => (
+    <div className="space-y-6">
+      <Card className="bg-gray-800/50 border-gray-700">
+        <CardHeader>
+          <CardTitle className="text-white text-lg">Trading Preferences</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-gray-300">Default Risk Level</label>
+              <select className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-blue-500">
+                <option>Low Risk</option>
+                <option>Medium Risk</option>
+                <option>High Risk</option>
+              </select>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-gray-300">Auto-Trading</label>
+              <select className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-blue-500">
+                <option>Enabled</option>
+                <option>Disabled</option>
+                <option>Scheduled</option>
+              </select>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-gray-300">Max Position Size</label>
+              <input
+                type="number"
+                defaultValue="1000"
+                className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-gray-300">Stop Loss %</label>
+              <input
+                type="number"
+                defaultValue="5"
+                className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
+              />
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  )
 
   const renderApiSection = () => (
     <div className="space-y-6">
@@ -258,6 +452,8 @@ export function Settings() {
         return renderSecuritySection()
       case 'notifications':
         return renderNotificationsSection()
+      case 'trading':
+        return renderTradingSection()
       case 'api':
         return renderApiSection()
       default:
@@ -266,16 +462,16 @@ export function Settings() {
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
       {/* Header */}
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-white">Settings</h1>
-          <p className="text-gray-400">Manage your account and trading preferences</p>
+          <h1 className="text-2xl sm:text-3xl font-bold text-white">Settings</h1>
+          <p className="text-sm sm:text-base text-gray-400">Manage your account and trading preferences</p>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 sm:gap-6">
         {/* Sidebar */}
         <Card className="bg-gray-900 border-gray-800">
           <CardContent className="p-0">

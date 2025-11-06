@@ -159,12 +159,12 @@ export function Backtesting() {
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
       {/* Header */}
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-white">Strategy Backtesting</h1>
-          <p className="text-gray-400">Test your strategies with historical data</p>
+          <h1 className="text-2xl sm:text-3xl font-bold text-white">Strategy Backtesting</h1>
+          <p className="text-sm sm:text-base text-gray-400">Test your strategies with historical data</p>
         </div>
           <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30">
             <Zap className="w-3 h-3 mr-1" />
@@ -173,7 +173,7 @@ export function Backtesting() {
       </div>
 
       {/* Main Layout: Left Config + Right Chart */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
         {/* Left: Configuration Panel */}
       <Card className="bg-gray-900 border-gray-800">
         <CardHeader>

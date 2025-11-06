@@ -4,7 +4,6 @@ import { Button } from '../ui/button'
 import { Badge } from '../ui/badge'
 import { 
   TrendingUp,
-  TrendingDown,
   DollarSign,
   Briefcase,
   PieChart,
@@ -14,124 +13,183 @@ import {
 } from 'lucide-react'
 
 // API Configuration
-const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3001'
+const API_BASE = import.meta.env.VITE_API_BASE_URL ?? ''
+const getApiUrl = (path: string) => {
+  if (API_BASE) {
+    const base = API_BASE.replace(/\/$/, '')
+    const apiPath = path.startsWith('/') ? path : `/${path}`
+    return `${base}${apiPath}`
+  }
+  return path.startsWith('/') ? path : `/${path}`
+}
 
-// API Functions
-const fetchPortfolioData = async () => {
+interface PortfolioData {
+  totalValue: number;
+  totalPnL: number;
+  totalPnLPercent: number;
+  activeTokensCount: number;
+  availableTokens: Array<{ id: number; name: string; isActive: boolean }>;
+  userTokens: Array<{ id: number; token: { id: number; name: string; isActive: boolean } }>;
+}
+
+const fetchPortfolioDataAPI = async () => {
   const token = localStorage.getItem('adminToken')
-  const response = await fetch(`${API_BASE}/api/admin/portfolio`, {
+  // Use admin endpoint for overview stats to match Dashboard
+  const adminResponse = await fetch(getApiUrl('/api/admin/portfolio'), {
     headers: {
       'Authorization': `Bearer ${token}`,
       'Content-Type': 'application/json'
     }
   })
   
-  if (!response.ok) {
+  if (!adminResponse.ok) {
     throw new Error('Failed to fetch portfolio data')
   }
   
+  const adminData = await adminResponse.json()
+  const adminPortfolio = adminData.data
+  
+  // Also fetch user-specific data for active positions
+  try {
+    const userResponse = await fetch(getApiUrl('/api/user/portfolio'), {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
+    })
+    
+    if (userResponse.ok) {
+      const userData = await userResponse.json()
+      // Merge admin stats with user-specific tokens
+      return {
+        ...adminPortfolio,
+        userTokens: userData.data?.userTokens || [],
+        availableTokens: userData.data?.availableTokens || adminPortfolio.holdings?.map((h: any) => ({
+          id: h.tokenId,
+          name: h.name,
+          isActive: true
+        })) || []
+      }
+    }
+  } catch (err) {
+    console.error('Error fetching user portfolio data:', err)
+  }
+  
+  // Return admin data with empty userTokens if user endpoint fails
+  return {
+    ...adminPortfolio,
+    userTokens: [],
+    availableTokens: adminPortfolio.holdings?.map((h: any) => ({
+      id: h.tokenId,
+      name: h.name,
+      isActive: true
+    })) || []
+  }
+}
+
+const fetchActiveOrdersAPI = async () => {
+  const token = localStorage.getItem('adminToken')
+  // Use user endpoint for active orders/positions
+  const response = await fetch(getApiUrl('/api/user/trading/positions'), {
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+  })
+
+  if (!response.ok) {
+    throw new Error('Failed to fetch active orders')
+  }
+
   const data = await response.json()
-  return data.data
+  return data.data?.activePositions || []
 }
 
 export function Portfolio() {
-  const [portfolioData, setPortfolioData] = useState<any>(null)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [portfolioData, setPortfolioData] = useState<PortfolioData | null>(null)
+  const [activeOrders, setActiveOrders] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    const loadPortfolioData = async () => {
-      setLoading(true)
-      setError(null)
-      
-      try {
-        const data = await fetchPortfolioData()
-        setPortfolioData(data)
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load portfolio data')
-        console.error('Error loading portfolio data:', err)
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    loadPortfolioData()
-  }, [])
-
-  const handleRefresh = async () => {
-    setLoading(true)
-    setError(null)
-    
+  const fetchPortfolioData = async () => {
     try {
-      const data = await fetchPortfolioData()
+      const data = await fetchPortfolioDataAPI()
       setPortfolioData(data)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to refresh portfolio data')
+    } catch (error) {
+      console.error('Error fetching portfolio data:', error)
     } finally {
       setLoading(false)
     }
   }
 
+  const fetchActiveOrders = async () => {
+    try {
+      const orders = await fetchActiveOrdersAPI()
+      setActiveOrders(orders)
+    } catch (error) {
+      console.error('Error fetching active orders:', error)
+    }
+  }
+
+  useEffect(() => {
+    fetchPortfolioData()
+    fetchActiveOrders()
+  }, [])
+
+  const handleRefresh = () => {
+    setLoading(true)
+    fetchPortfolioData()
+    fetchActiveOrders()
+  }
+
+  const portfolioStats = {
+    totalValue: portfolioData?.totalValue || 0,
+    todayChange: portfolioData?.totalPnL || 0,
+    todayChangePercent: portfolioData?.totalPnLPercent || 0,
+    totalPnL: portfolioData?.totalPnL || 0,
+    totalPnLPercent: portfolioData?.totalPnLPercent || 0,
+  }
+
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-4 sm:p-6 space-y-4 sm:space-y-6 min-h-screen">
       {/* Header */}
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-white">Portfolio</h1>
-          <p className="text-gray-400">Track your crypto holdings and performance</p>
+          <h1 className="text-2xl sm:text-3xl font-bold text-white">Portfolio</h1>
+          <p className="text-sm sm:text-base text-gray-400">Track your crypto holdings and performance</p>
         </div>
-        <div className="flex items-center gap-3">
-          <Button variant="outline" className="border-gray-700 text-gray-300 hover:text-white">
-            <Eye className="w-4 h-4 mr-2" />
-            Hide Balances
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+          <Button variant="outline" size="sm" className="border-gray-700 text-gray-300 hover:text-white text-xs sm:text-sm">
+            <Eye className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
+            <span className="hidden sm:inline">Hide Balances</span>
+            <span className="sm:hidden">Hide</span>
           </Button>
-          <Button variant="outline" className="border-gray-700 text-gray-300 hover:text-white">
-            <Download className="w-4 h-4 mr-2" />
-            Export
+          <Button variant="outline" size="sm" className="border-gray-700 text-gray-300 hover:text-white text-xs sm:text-sm">
+            <Download className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
+            <span className="hidden sm:inline">Export</span>
+            <span className="sm:hidden">Export</span>
           </Button>
-          <Button 
-            variant="outline" 
-            className="border-gray-700 text-gray-300 hover:text-white"
-            onClick={handleRefresh}
-            disabled={loading}
-          >
-            <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-            Refresh
+          <Button variant="outline" size="sm" className="border-gray-700 text-gray-300 hover:text-white text-xs sm:text-sm" onClick={handleRefresh}>
+            <RefreshCw className={`w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2 ${loading ? 'animate-spin' : ''}`} />
+            <span className="hidden sm:inline">Refresh</span>
+            <span className="sm:hidden">Refresh</span>
           </Button>
         </div>
       </div>
 
-      {/* Error Display */}
-      {error && (
-        <div className="p-4 bg-red-900/20 border border-red-600 rounded-lg">
-          <p className="text-red-400 text-sm">Error: {error}</p>
-        </div>
-      )}
-
       {/* Portfolio Overview */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
         <Card className="bg-gray-900 border-gray-800">
           <CardHeader className="pb-3">
             <CardTitle className="text-sm text-gray-400 font-medium">Total Value</CardTitle>
           </CardHeader>
           <CardContent>
-            {loading && !portfolioData ? (
-              <div className="flex items-center justify-center py-2">
-                <RefreshCw className="w-4 h-4 animate-spin text-gray-400" />
-              </div>
-            ) : (
-              <>
-                <div className="flex items-center gap-2">
-                  <span className="text-2xl font-bold text-white">
-                    ${portfolioData?.totalValue?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}
-                  </span>
-                  <Briefcase className="w-5 h-5 text-blue-400" />
-                </div>
-                <p className={`text-sm mt-1 ${portfolioData?.todayChange >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                  {portfolioData?.todayChange >= 0 ? '+' : ''}${portfolioData?.todayChange?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'} today
-                </p>
-              </>
-            )}
+            <div className="flex items-center gap-2">
+              <span className="text-2xl font-bold text-white">${portfolioStats.totalValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+              <Briefcase className="w-5 h-5 text-blue-400" />
+            </div>
+            <p className={`text-sm mt-1 ${portfolioStats.todayChange >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+              {portfolioStats.todayChange >= 0 ? '+' : ''}${portfolioStats.todayChange.toFixed(2)} today
+            </p>
           </CardContent>
         </Card>
 
@@ -140,25 +198,13 @@ export function Portfolio() {
             <CardTitle className="text-sm text-gray-400 font-medium">24h Change</CardTitle>
           </CardHeader>
           <CardContent>
-            {loading && !portfolioData ? (
-              <div className="flex items-center justify-center py-2">
-                <RefreshCw className="w-4 h-4 animate-spin text-gray-400" />
-              </div>
-            ) : (
-              <>
-                <div className="flex items-center gap-2">
-                  <span className={`text-2xl font-bold ${portfolioData?.todayChangePercent >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                    {portfolioData?.todayChangePercent >= 0 ? '+' : ''}{portfolioData?.todayChangePercent?.toFixed(2) || '0.00'}%
-                  </span>
-                  {portfolioData?.todayChangePercent >= 0 ? (
-                    <TrendingUp className="w-5 h-5 text-green-400" />
-                  ) : (
-                    <TrendingDown className="w-5 h-5 text-red-400" />
-                  )}
-                </div>
-                <p className="text-sm text-gray-400 mt-1">vs yesterday</p>
-              </>
-            )}
+            <div className="flex items-center gap-2">
+              <span className={`text-2xl font-bold ${portfolioStats.todayChangePercent >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                {portfolioStats.todayChangePercent >= 0 ? '+' : ''}{portfolioStats.todayChangePercent.toFixed(2)}%
+              </span>
+              <TrendingUp className={`w-5 h-5 ${portfolioStats.todayChangePercent >= 0 ? 'text-green-400' : 'text-red-400'}`} />
+            </div>
+            <p className="text-sm text-gray-400 mt-1">vs yesterday</p>
           </CardContent>
         </Card>
 
@@ -167,104 +213,121 @@ export function Portfolio() {
             <CardTitle className="text-sm text-gray-400 font-medium">Total P&L</CardTitle>
           </CardHeader>
           <CardContent>
-            {loading && !portfolioData ? (
-              <div className="flex items-center justify-center py-2">
-                <RefreshCw className="w-4 h-4 animate-spin text-gray-400" />
-              </div>
-            ) : (
-              <>
-                <div className="flex items-center gap-2">
-                  <span className={`text-2xl font-bold ${portfolioData?.totalPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                    {portfolioData?.totalPnL >= 0 ? '+' : ''}${portfolioData?.totalPnL?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0.00'}
-                  </span>
-                  <DollarSign className={`w-5 h-5 ${portfolioData?.totalPnL >= 0 ? 'text-green-400' : 'text-red-400'}`} />
-                </div>
-                <p className="text-sm text-gray-400 mt-1">
-                  {portfolioData?.totalPnLPercent >= 0 ? '+' : ''}{portfolioData?.totalPnLPercent?.toFixed(2) || '0.00'}% total gain
-                </p>
-              </>
-            )}
+            <div className="flex items-center gap-2">
+              <span className={`text-2xl font-bold ${portfolioStats.totalPnL >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                {portfolioStats.totalPnL >= 0 ? '+' : ''}${portfolioStats.totalPnL.toFixed(2)}
+              </span>
+              <DollarSign className={`w-5 h-5 ${portfolioStats.totalPnL >= 0 ? 'text-green-400' : 'text-red-400'}`} />
+            </div>
+            <p className="text-sm text-gray-400 mt-1">
+              {portfolioStats.totalPnLPercent >= 0 ? '+' : ''}{portfolioStats.totalPnLPercent.toFixed(2)}% total gain
+            </p>
           </CardContent>
         </Card>
 
         <Card className="bg-gray-900 border-gray-800">
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm text-gray-400 font-medium">Assets</CardTitle>
+            <CardTitle className="text-sm text-gray-400 font-medium">Active Tokens</CardTitle>
           </CardHeader>
           <CardContent>
-            {loading && !portfolioData ? (
-              <div className="flex items-center justify-center py-2">
-                <RefreshCw className="w-4 h-4 animate-spin text-gray-400" />
-              </div>
-            ) : (
-              <>
-                <div className="flex items-center gap-2">
-                  <span className="text-2xl font-bold text-white">{portfolioData?.assetsCount || 0}</span>
-                  <PieChart className="w-5 h-5 text-purple-400" />
-                </div>
-                <p className="text-sm text-gray-400 mt-1">Different holdings</p>
-              </>
-            )}
+            <div className="flex items-center gap-2">
+              <span className="text-2xl font-bold text-white">{portfolioData?.activeTokensCount || 0}</span>
+              <PieChart className="w-5 h-5 text-blue-400" />
+            </div>
+            <p className="text-sm text-gray-400 mt-1">{portfolioData?.availableTokens.length || 0} available</p>
           </CardContent>
         </Card>
       </div>
 
-      <div className="grid grid-cols-1 gap-6">
-        {/* Holdings */}
-        <Card className="bg-gray-900 border-gray-800">
-          <CardHeader>
-            <CardTitle className="text-white">Your Holdings</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {loading && !portfolioData ? (
-              <div className="flex items-center justify-center py-8">
-                <RefreshCw className="w-6 h-6 animate-spin text-gray-400" />
-                <span className="ml-2 text-gray-400">Loading holdings...</span>
-              </div>
-            ) : !portfolioData?.holdings || portfolioData.holdings.length === 0 ? (
-              <div className="text-center py-8 text-gray-400">
-                <p>No active holdings</p>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {portfolioData.holdings.map((holding: any) => {
-                  const changeColor = holding.change >= 0 ? 'text-green-400' : 'text-red-400'
-                  const allocation = portfolioData.totalValue > 0 
-                    ? ((holding.value / portfolioData.totalValue) * 100).toFixed(1) + '%'
-                    : '0%'
-                  
-                  return (
-                    <div key={holding.tokenId} className="flex items-center justify-between p-4 rounded-lg bg-gray-800/50">
-                      <div className="flex items-center gap-4">
-                        <div className="w-10 h-10 rounded-full bg-gray-700 flex items-center justify-center">
-                          <span className="text-sm font-bold text-white">{holding.symbol.slice(0, 2)}</span>
+      {/* Active Positions */}
+      <Card className="bg-gray-900 border-gray-800">
+        <CardHeader>
+          <CardTitle className="text-white">Your Active Positions</CardTitle>
+          <p className="text-sm text-gray-400">
+            {portfolioData?.userTokens.length || 0} selected tokens
+          </p>
+        </CardHeader>
+        <CardContent>
+          {loading ? (
+            <div className="text-center py-8">
+              <div className="text-gray-400">Loading positions...</div>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {portfolioData?.userTokens.map((userToken, index) => {
+                // Find if there's an active order for this token
+                const activeOrder = activeOrders.find(order => 
+                  order.pair === `${userToken.token.name}/USDT`
+                );
+                
+                return (
+                  <div key={`position-${userToken.id}-${index}`} className="p-4 sm:p-6 rounded-lg bg-gray-800/50 border border-gray-700">
+                    {/* Header with token name, badges, and P&L */}
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 gap-3">
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
+                        <span className="font-bold text-white text-lg sm:text-xl">{userToken.token.name}/USDT</span>
+                        <div className="flex flex-wrap gap-2">
+                          <Badge className="bg-green-500/20 text-green-400 border-green-500/30 text-sm">
+                            Selected
+                          </Badge>
+                          <Badge className={`text-sm ${activeOrder ? 'bg-green-500/20 text-green-400 border-green-500/30' : 'bg-blue-500/20 text-blue-400 border-blue-500/30'}`}>
+                            {activeOrder ? 'Active Trading' : 'Ready to Trade'}
+                          </Badge>
+                        </div>
+                      </div>
+                      <span className={`font-bold text-lg sm:text-xl ${activeOrder ? activeOrder.pnlColor : 'text-gray-400'}`}>
+                        {activeOrder ? activeOrder.pnl : '$0.00'}
+                      </span>
+                    </div>
+
+                    {/* Data fields with even spacing and right-aligned button */}
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 sm:gap-6 flex-1">
+                        <div>
+                          <p className="text-gray-400 text-sm font-medium">Investment</p>
+                          <p className="text-white font-semibold text-base">{activeOrder ? activeOrder.investment : '$0.00'}</p>
                         </div>
                         <div>
-                          <h3 className="font-semibold text-white">{holding.name}</h3>
-                          <p className="text-sm text-gray-400">{holding.amount.toLocaleString(undefined, { maximumFractionDigits: 4 })} {holding.symbol}</p>
+                          <p className="text-gray-400 text-sm font-medium">Size</p>
+                          <p className="text-white font-semibold text-base">{activeOrder ? activeOrder.size : `0 ${userToken.token.name}`}</p>
+                        </div>
+                        <div>
+                          <p className="text-gray-400 text-sm font-medium">Entry Price</p>
+                          <p className="text-white font-semibold text-base">{activeOrder ? activeOrder.entry : 'Not started'}</p>
+                        </div>
+                        <div>
+                          <p className="text-gray-400 text-sm font-medium">Start Date</p>
+                          <p className="text-white font-semibold text-base">{activeOrder ? activeOrder.startDate : 'Not started'}</p>
                         </div>
                       </div>
-                      <div className="text-right">
-                        <div className="font-bold text-white">
-                          ${holding.value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </div>
-                        <div className={`text-sm ${changeColor}`}>
-                          {holding.change >= 0 ? '+' : ''}{holding.change.toFixed(2)}%
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <Badge className="bg-gray-700 text-gray-300">
-                          {allocation}
-                        </Badge>
+                      
+                      {/* Right-aligned button */}
+                      <div className="flex justify-end sm:justify-start">
+                        {activeOrder ? (
+                          <Button variant="outline" size="sm" className="border-red-500 text-red-400 hover:bg-red-500/20 text-sm px-4 py-2">
+                            Close Position
+                          </Button>
+                        ) : (
+                          <Button variant="outline" size="sm" className="border-green-500 text-green-400 hover:bg-green-500/20 text-sm px-4 py-2">
+                            Start Trading
+                          </Button>
+                        )}
                       </div>
                     </div>
-                  )
-                })}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+                  </div>
+                );
+              })}
+              
+              {(!portfolioData?.userTokens || portfolioData.userTokens.length === 0) && (
+                <div className="text-center py-8">
+                  <p className="text-gray-400">No active positions</p>
+                  <p className="text-sm text-gray-500 mt-1">Select tokens to start trading</p>
+                </div>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   )
 }
