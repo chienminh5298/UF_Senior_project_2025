@@ -156,7 +156,7 @@ router.put('/profile', requireAuth, async (req, res) => {
     }
     if (typeof username === 'string') {
       username = String(username).trim().toLowerCase();
-      if (!/^[a-z0-9_\.\-]{3,32}$/.test(username)) {
+      if (!/^[a-z0-9_.-]{3,32}$/.test(username)) {
         return res.status(400).json({
           success: false,
           message:

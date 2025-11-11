@@ -2888,7 +2888,7 @@ router.get('/portfolio/performance', requireAuth, async (req, res) => {
         const monthsAgo = 24 - i;
         const progress = monthsAgo / 24;
         // Start at 30% of current value 2 years ago, grow to 100% now
-        dayValue = currentTotalValue * (0.3 + (0.7 * (1 - progress)));
+        dayValue = currentTotalValue * (0.3 + 0.7 * (1 - progress));
       } else if (dayValue === 0) {
         // For the earliest point, use 30% of current value
         dayValue = currentTotalValue * 0.3;
@@ -2908,7 +2908,8 @@ router.get('/portfolio/performance', requireAuth, async (req, res) => {
 
     // Ensure the last data point matches the current total value
     if (performanceData.length > 0) {
-      performanceData[performanceData.length - 1].value = Math.round(currentTotalValue * 100) / 100;
+      performanceData[performanceData.length - 1].value =
+        Math.round(currentTotalValue * 100) / 100;
     }
 
     res.status(200).json({
