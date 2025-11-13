@@ -210,6 +210,24 @@ const fetchOrderStats = async () => {
   return data.data
 }
 
+const fetchSystemOverview = async () => {
+  const token = localStorage.getItem('adminToken')
+  
+  const response = await fetch(`${API_BASE}/api/admin/system/overview`, {
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    }
+  })
+  
+  if (!response.ok) {
+    throw new Error('Failed to fetch system overview')
+  }
+  
+  const data = await response.json()
+  return data.data
+}
+
 const fetchClaims = async () => {
   const token = localStorage.getItem('adminToken')
   
@@ -518,6 +536,7 @@ export function Admin() {
   const [apiUsers, setApiUsers] = useState<ApiUser[]>([])
   const [apiClaims, setApiClaims] = useState<any[]>([])
   const [orderStats, setOrderStats] = useState<any>(null)
+  const [systemOverview, setSystemOverview] = useState<any>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   
@@ -817,12 +836,17 @@ export function Admin() {
           const claimsData = await fetchClaims()
           setApiClaims(claimsData)
         } else if (activeTab === 'Analyze') {
-          const [statsData, priceDataResult] = await Promise.all([
+          const [statsData, priceDataResult, overviewData] = await Promise.all([
             fetchOrderStats(),
-            fetchPriceData()
+            fetchPriceData(),
+            fetchSystemOverview().catch(err => {
+              console.error('Error loading system overview:', err)
+              return null
+            })
           ])
           setOrderStats(statsData)
           setPriceData(priceDataResult || [])
+          setSystemOverview(overviewData)
         } else if (activeTab === 'Strategies') {
           const [tokensData, strategiesData] = await Promise.all([
             fetchTokens(),
@@ -904,10 +928,27 @@ export function Admin() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-gray-400 text-sm">Total Account Funds</p>
-                  <p className="text-2xl font-bold text-white">$1,247,500</p>
-                  <p className="text-green-400 text-sm">+12.3% from last month</p>
+                  {loading && !systemOverview ? (
+                    <div className="flex items-center gap-2 mt-2">
+                      <RefreshCw className="w-4 h-4 animate-spin text-gray-400" />
+                      <span className="text-gray-400 text-sm">Loading...</span>
+                    </div>
+                  ) : (
+                    <>
+                      <p className="text-2xl font-bold text-white">
+                        ${(systemOverview?.totalAccountFunds || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </p>
+                      <p className={`text-sm ${(systemOverview?.accountFundsChangePercent || 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                        {(systemOverview?.accountFundsChangePercent || 0) >= 0 ? '+' : ''}{(systemOverview?.accountFundsChangePercent || 0).toFixed(2)}% from last month
+                      </p>
+                    </>
+                  )}
                 </div>
-                <TrendingUp className="w-8 h-8 text-green-400" />
+                {(systemOverview?.accountFundsChangePercent || 0) >= 0 ? (
+                  <TrendingUp className="w-8 h-8 text-green-400" />
+                ) : (
+                  <TrendingDown className="w-8 h-8 text-red-400" />
+                )}
               </div>
             </CardContent>
           </Card>
@@ -917,10 +958,27 @@ export function Admin() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-gray-400 text-sm">Total Deposits</p>
-                  <p className="text-2xl font-bold text-white">$987,600</p>
-                  <p className="text-blue-400 text-sm">+8.7% from last month</p>
+                  {loading && !systemOverview ? (
+                    <div className="flex items-center gap-2 mt-2">
+                      <RefreshCw className="w-4 h-4 animate-spin text-gray-400" />
+                      <span className="text-gray-400 text-sm">Loading...</span>
+                    </div>
+                  ) : (
+                    <>
+                      <p className="text-2xl font-bold text-white">
+                        ${(systemOverview?.totalDeposits || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </p>
+                      <p className={`text-sm ${(systemOverview?.depositsChangePercent || 0) >= 0 ? 'text-blue-400' : 'text-red-400'}`}>
+                        {(systemOverview?.depositsChangePercent || 0) >= 0 ? '+' : ''}{(systemOverview?.depositsChangePercent || 0).toFixed(2)}% from last month
+                      </p>
+                    </>
+                  )}
                 </div>
-                <TrendingUp className="w-8 h-8 text-blue-400" />
+                {(systemOverview?.depositsChangePercent || 0) >= 0 ? (
+                  <TrendingUp className="w-8 h-8 text-blue-400" />
+                ) : (
+                  <TrendingDown className="w-8 h-8 text-red-400" />
+                )}
               </div>
             </CardContent>
           </Card>
@@ -930,10 +988,27 @@ export function Admin() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-gray-400 text-sm">Total Withdrawals</p>
-                  <p className="text-2xl font-bold text-white">$123,450</p>
-                  <p className="text-yellow-400 text-sm">+5.2% from last month</p>
+                  {loading && !systemOverview ? (
+                    <div className="flex items-center gap-2 mt-2">
+                      <RefreshCw className="w-4 h-4 animate-spin text-gray-400" />
+                      <span className="text-gray-400 text-sm">Loading...</span>
+                    </div>
+                  ) : (
+                    <>
+                      <p className="text-2xl font-bold text-white">
+                        ${(systemOverview?.totalWithdrawals || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </p>
+                      <p className={`text-sm ${(systemOverview?.withdrawalsChangePercent || 0) >= 0 ? 'text-yellow-400' : 'text-red-400'}`}>
+                        {(systemOverview?.withdrawalsChangePercent || 0) >= 0 ? '+' : ''}{(systemOverview?.withdrawalsChangePercent || 0).toFixed(2)}% from last month
+                      </p>
+                    </>
+                  )}
                 </div>
-                <TrendingDown className="w-8 h-8 text-yellow-400" />
+                {(systemOverview?.withdrawalsChangePercent || 0) >= 0 ? (
+                  <TrendingUp className="w-8 h-8 text-yellow-400" />
+                ) : (
+                  <TrendingDown className="w-8 h-8 text-red-400" />
+                )}
               </div>
             </CardContent>
           </Card>
@@ -1930,10 +2005,6 @@ export function Admin() {
                   {/* Action Buttons */}
                   {userDetails && (
                     <div className="space-y-2 pt-4">
-                      <Button className="w-full bg-blue-600 hover:bg-blue-700">
-                        <Settings className="w-4 h-4 mr-2" />
-                        Edit User
-                      </Button>
                       {userDetails.isActive ? (
                         <Button 
                           onClick={handleUserStatusUpdate}
