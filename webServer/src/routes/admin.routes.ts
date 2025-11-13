@@ -3031,9 +3031,10 @@ router.get('/system/overview', requireAuth, async (req, res) => {
     });
     const lastMonthAccountFunds = lastMonthOrdersResult._sum.budget || 0;
     const accountFundsChange = totalAccountFunds - lastMonthAccountFunds;
-    const accountFundsChangePercent = lastMonthAccountFunds > 0 
-      ? (accountFundsChange / lastMonthAccountFunds) * 100 
-      : 0;
+    const accountFundsChangePercent =
+      lastMonthAccountFunds > 0
+        ? (accountFundsChange / lastMonthAccountFunds) * 100
+        : 0;
 
     // Deposits change (orders created this month vs last month)
     const thisMonthOrdersResult = await prisma.order.aggregate({
@@ -3047,11 +3048,11 @@ router.get('/system/overview', requireAuth, async (req, res) => {
       },
     });
     const thisMonthDeposits = thisMonthOrdersResult._sum.budget || 0;
-    
+
     const twoMonthsAgo = new Date(now);
     twoMonthsAgo.setMonth(now.getMonth() - 2);
     twoMonthsAgo.setHours(0, 0, 0, 0);
-    
+
     const lastMonthDepositsResult = await prisma.order.aggregate({
       where: {
         createdAt: {
@@ -3065,9 +3066,8 @@ router.get('/system/overview', requireAuth, async (req, res) => {
     });
     const lastMonthDeposits = lastMonthDepositsResult._sum.budget || 0;
     const depositsChange = thisMonthDeposits - lastMonthDeposits;
-    const depositsChangePercent = lastMonthDeposits > 0 
-      ? (depositsChange / lastMonthDeposits) * 100 
-      : 0;
+    const depositsChangePercent =
+      lastMonthDeposits > 0 ? (depositsChange / lastMonthDeposits) * 100 : 0;
 
     // Withdrawals change
     const thisMonthClaimsResult = await prisma.claim.aggregate({
@@ -3097,9 +3097,10 @@ router.get('/system/overview', requireAuth, async (req, res) => {
     });
     const lastMonthWithdrawals = lastMonthClaimsResult._sum.amount || 0;
     const withdrawalsChange = thisMonthWithdrawals - lastMonthWithdrawals;
-    const withdrawalsChangePercent = lastMonthWithdrawals > 0 
-      ? (withdrawalsChange / lastMonthWithdrawals) * 100 
-      : 0;
+    const withdrawalsChangePercent =
+      lastMonthWithdrawals > 0
+        ? (withdrawalsChange / lastMonthWithdrawals) * 100
+        : 0;
 
     return res.status(200).json({
       success: true,
