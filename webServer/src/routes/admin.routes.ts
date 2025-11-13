@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import prisma from '../models/prismaClient';
 import { requireAuth } from '../middleware/auth';
-import { Status } from '@prisma/client';
+import { Status, ClaimStatus } from '@prisma/client';
 
 const router = Router();
 
@@ -2888,7 +2888,7 @@ router.get('/portfolio/performance', requireAuth, async (req, res) => {
         const monthsAgo = 24 - i;
         const progress = monthsAgo / 24;
         // Start at 30% of current value 2 years ago, grow to 100% now
-        dayValue = currentTotalValue * (0.3 + (0.7 * (1 - progress)));
+        dayValue = currentTotalValue * (0.3 + 0.7 * (1 - progress));
       } else if (dayValue === 0) {
         // For the earliest point, use 30% of current value
         dayValue = currentTotalValue * 0.3;
@@ -2908,7 +2908,8 @@ router.get('/portfolio/performance', requireAuth, async (req, res) => {
 
     // Ensure the last data point matches the current total value
     if (performanceData.length > 0) {
-      performanceData[performanceData.length - 1].value = Math.round(currentTotalValue * 100) / 100;
+      performanceData[performanceData.length - 1].value =
+        Math.round(currentTotalValue * 100) / 100;
     }
 
     res.status(200).json({
@@ -2921,6 +2922,206 @@ router.get('/portfolio/performance', requireAuth, async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to fetch performance data',
+    });
+  }
+});
+
+// GET /api/admin/system/overview
+/**
+ * @swagger
+ * /api/admin/system/overview:
+ *   get:
+ *     summary: Get system overview statistics (account funds, deposits, withdrawals)
+ *     tags: [Admin]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: System overview data fetched successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     totalAccountFunds:
+ *                       type: number
+ *                       description: Total account funds (sum of all order budgets)
+ *                     totalDeposits:
+ *                       type: number
+ *                       description: Total deposits (sum of all order budgets - initial investments)
+ *                     totalWithdrawals:
+ *                       type: number
+ *                       description: Total withdrawals (sum of approved claims)
+ *                     accountFundsChange:
+ *                       type: number
+ *                       description: Change in account funds from last month
+ *                     accountFundsChangePercent:
+ *                       type: number
+ *                       description: Percentage change in account funds from last month
+ *                     depositsChange:
+ *                       type: number
+ *                       description: Change in deposits from last month
+ *                     depositsChangePercent:
+ *                       type: number
+ *                       description: Percentage change in deposits from last month
+ *                     withdrawalsChange:
+ *                       type: number
+ *                       description: Change in withdrawals from last month
+ *                     withdrawalsChangePercent:
+ *                       type: number
+ *                       description: Percentage change in withdrawals from last month
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Failed to fetch system overview data
+ */
+router.get('/system/overview', requireAuth, async (req, res) => {
+  const { user } = req;
+
+  if (!user) {
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
+  }
+
+  try {
+    // Calculate total account funds
+    const totalPortfolioResult = await prisma.order.aggregate({
+      _sum: {
+        budget: true,
+      },
+    });
+    const totalAccountFunds = totalPortfolioResult._sum.budget || 0;
+
+    // Total deposits = sum of all order budgets
+    const totalDeposits = totalAccountFunds;
+
+    // Calculate total withdrawals (Lets do claims for now)
+    const approvedClaimsResult = await prisma.claim.aggregate({
+      where: {
+        status: ClaimStatus.FINISHED,
+      },
+      _sum: {
+        amount: true,
+      },
+    });
+    const totalWithdrawals = approvedClaimsResult._sum.amount || 0;
+
+    // Calculate changes from last month
+    const now = new Date();
+    const lastMonth = new Date(now);
+    lastMonth.setMonth(now.getMonth() - 1);
+    lastMonth.setHours(0, 0, 0, 0);
+
+    // Account funds from last month
+    const lastMonthOrdersResult = await prisma.order.aggregate({
+      where: {
+        createdAt: {
+          lt: lastMonth,
+        },
+      },
+      _sum: {
+        budget: true,
+      },
+    });
+    const lastMonthAccountFunds = lastMonthOrdersResult._sum.budget || 0;
+    const accountFundsChange = totalAccountFunds - lastMonthAccountFunds;
+    const accountFundsChangePercent =
+      lastMonthAccountFunds > 0
+        ? (accountFundsChange / lastMonthAccountFunds) * 100
+        : 0;
+
+    // Deposits change (orders created this month vs last month)
+    const thisMonthOrdersResult = await prisma.order.aggregate({
+      where: {
+        createdAt: {
+          gte: lastMonth,
+        },
+      },
+      _sum: {
+        budget: true,
+      },
+    });
+    const thisMonthDeposits = thisMonthOrdersResult._sum.budget || 0;
+
+    const twoMonthsAgo = new Date(now);
+    twoMonthsAgo.setMonth(now.getMonth() - 2);
+    twoMonthsAgo.setHours(0, 0, 0, 0);
+
+    const lastMonthDepositsResult = await prisma.order.aggregate({
+      where: {
+        createdAt: {
+          gte: twoMonthsAgo,
+          lt: lastMonth,
+        },
+      },
+      _sum: {
+        budget: true,
+      },
+    });
+    const lastMonthDeposits = lastMonthDepositsResult._sum.budget || 0;
+    const depositsChange = thisMonthDeposits - lastMonthDeposits;
+    const depositsChangePercent =
+      lastMonthDeposits > 0 ? (depositsChange / lastMonthDeposits) * 100 : 0;
+
+    // Withdrawals change
+    const thisMonthClaimsResult = await prisma.claim.aggregate({
+      where: {
+        status: ClaimStatus.FINISHED,
+        updatedAt: {
+          gte: lastMonth,
+        },
+      },
+      _sum: {
+        amount: true,
+      },
+    });
+    const thisMonthWithdrawals = thisMonthClaimsResult._sum.amount || 0;
+
+    const lastMonthClaimsResult = await prisma.claim.aggregate({
+      where: {
+        status: ClaimStatus.FINISHED,
+        updatedAt: {
+          gte: twoMonthsAgo,
+          lt: lastMonth,
+        },
+      },
+      _sum: {
+        amount: true,
+      },
+    });
+    const lastMonthWithdrawals = lastMonthClaimsResult._sum.amount || 0;
+    const withdrawalsChange = thisMonthWithdrawals - lastMonthWithdrawals;
+    const withdrawalsChangePercent =
+      lastMonthWithdrawals > 0
+        ? (withdrawalsChange / lastMonthWithdrawals) * 100
+        : 0;
+
+    return res.status(200).json({
+      success: true,
+      message: 'System overview data fetched successfully',
+      data: {
+        totalAccountFunds,
+        totalDeposits,
+        totalWithdrawals,
+        accountFundsChange,
+        accountFundsChangePercent,
+        depositsChange,
+        depositsChangePercent,
+        withdrawalsChange,
+        withdrawalsChangePercent,
+      },
+    });
+  } catch (error) {
+    console.error('Error fetching system overview data:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to fetch system overview data',
     });
   }
 });

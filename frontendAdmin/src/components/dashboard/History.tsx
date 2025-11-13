@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, useRef } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card'
 import { Button } from '../ui/button'
 import { Badge } from '../ui/badge'
@@ -9,10 +9,10 @@ import {
   Search,
   Calendar,
   TrendingUp,
-  TrendingDown,
   Clock,
   CheckCircle,
-  AlertCircle
+  AlertCircle,
+  X
 } from 'lucide-react'
 
 // API Configuration
@@ -31,6 +31,12 @@ export function History() {
   const [orders, setOrders] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [showFilterMenu, setShowFilterMenu] = useState(false)
+  const [filterType, setFilterType] = useState<string>('all') // 'all', 'buy', 'sell'
+  const [filterSide, setFilterSide] = useState<string>('all') // 'all', 'long', 'short'
+  const [filterPair, setFilterPair] = useState<string>('all')
+  const filterMenuRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const fetchOrders = async () => {
@@ -124,9 +130,89 @@ export function History() {
     }
   }, [orders])
 
-  const filteredTrades = filter === 'all' 
-    ? tradeHistory 
-    : tradeHistory.filter(trade => trade.status.toLowerCase() === filter)
+  // Get unique pairs for filter dropdown
+  const uniquePairs = useMemo(() => {
+    const pairs = new Set(tradeHistory.map(trade => trade.pair))
+    return Array.from(pairs).sort()
+  }, [tradeHistory])
+
+  // Filter trade badsed on everything
+  const filteredTrades = useMemo(() => {
+    let filtered = tradeHistory
+
+    // Status filter
+    if (filter !== 'all') {
+      filtered = filtered.filter(trade => trade.status.toLowerCase() === filter)
+    }
+
+    // Type filter 
+    if (filterType !== 'all') {
+      filtered = filtered.filter(trade => 
+        filterType === 'buy' ? trade.type === 'Buy' : trade.type === 'Sell'
+      )
+    }
+
+    // Side filter 
+    if (filterSide !== 'all') {
+      filtered = filtered.filter(trade => 
+        filterSide === 'long' ? trade.side === 'Long' : trade.side === 'Short'
+      )
+    }
+
+    // Pair filter
+    if (filterPair !== 'all') {
+      filtered = filtered.filter(trade => trade.pair === filterPair)
+    }
+
+    // Search query filt
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase().trim()
+      filtered = filtered.filter(trade => {
+        return (
+          trade.date.toLowerCase().includes(query) ||
+          trade.pair.toLowerCase().includes(query) ||
+          trade.type.toLowerCase().includes(query) ||
+          trade.side.toLowerCase().includes(query) ||
+          trade.amount.toLowerCase().includes(query) ||
+          trade.price.toLowerCase().includes(query) ||
+          trade.value.toLowerCase().includes(query) ||
+          trade.fee.toLowerCase().includes(query) ||
+          trade.pnl.toLowerCase().includes(query) ||
+          trade.status.toLowerCase().includes(query)
+        )
+      })
+    }
+
+    return filtered
+  }, [tradeHistory, filter, filterType, filterSide, filterPair, searchQuery])
+
+  // Close filter if click outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (filterMenuRef.current && !filterMenuRef.current.contains(event.target as Node)) {
+        setShowFilterMenu(false)
+      }
+    }
+
+    if (showFilterMenu) {
+      document.addEventListener('mousedown', handleClickOutside)
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [showFilterMenu])
+
+  // Reset to all
+  const resetFilters = () => {
+    setFilter('all')
+    setFilterType('all')
+    setFilterSide('all')
+    setFilterPair('all')
+    setSearchQuery('')
+  }
+
+  const hasActiveFilters = filter !== 'all' || filterType !== 'all' || filterSide !== 'all' || filterPair !== 'all' || searchQuery.trim() !== ''
 
   return (
     <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
@@ -212,19 +298,151 @@ export function History() {
             <CardTitle className="text-white">Trade History</CardTitle>
             <div className="flex items-center gap-3">
               {/* Search */}
-              <div className="relative">
+              <div className="relative flex-1 max-w-xs">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
                 <input
                   type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="Search trades..."
-                  className="pl-10 pr-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500 text-sm"
+                  className="w-full pl-10 pr-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500 text-sm"
                 />
+                {searchQuery && (
+                  <button
+                    onClick={() => setSearchQuery('')}
+                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-white"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
               </div>
               {/* Filter */}
-              <Button variant="outline" size="sm" className="border-gray-700 text-gray-300 hover:text-white">
-                <Filter className="w-4 h-4 mr-2" />
-                <span className="hidden sm:inline">Filter</span>
-              </Button>
+              <div className="relative" ref={filterMenuRef}>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={() => setShowFilterMenu(!showFilterMenu)}
+                  className={`border-gray-700 text-gray-300 hover:text-white ${hasActiveFilters ? 'border-blue-500 bg-blue-500/10' : ''}`}
+                >
+                  <Filter className="w-4 h-4 mr-2" />
+                  <span className="hidden sm:inline">Filter</span>
+                  {hasActiveFilters && (
+                    <span className="ml-2 w-2 h-2 bg-blue-500 rounded-full"></span>
+                  )}
+                </Button>
+                
+                {/* Filter Dropdown Menu */}
+                {showFilterMenu && (
+                  <div className="absolute right-0 top-full mt-2 w-64 bg-gray-800 border border-gray-700 rounded-lg shadow-lg z-50">
+                    <div className="p-4">
+                      <div className="flex items-center justify-between mb-4">
+                        <h3 className="text-white font-medium">Filters</h3>
+                        {hasActiveFilters && (
+                          <button
+                            onClick={resetFilters}
+                            className="text-xs text-blue-400 hover:text-blue-300"
+                          >
+                            Reset
+                          </button>
+                        )}
+                      </div>
+                      
+                      <div className="space-y-4">
+                        {/* Type Filter */}
+                        <div>
+                          <label className="text-sm font-medium text-gray-300 mb-2 block">Type</label>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => setFilterType('all')}
+                              className={`flex-1 px-3 py-2 rounded text-sm transition-colors ${
+                                filterType === 'all'
+                                  ? 'bg-blue-600 text-white'
+                                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                              }`}
+                            >
+                              All
+                            </button>
+                            <button
+                              onClick={() => setFilterType('buy')}
+                              className={`flex-1 px-3 py-2 rounded text-sm transition-colors ${
+                                filterType === 'buy'
+                                  ? 'bg-green-600 text-white'
+                                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                              }`}
+                            >
+                              Buy
+                            </button>
+                            <button
+                              onClick={() => setFilterType('sell')}
+                              className={`flex-1 px-3 py-2 rounded text-sm transition-colors ${
+                                filterType === 'sell'
+                                  ? 'bg-red-600 text-white'
+                                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                              }`}
+                            >
+                              Sell
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Side Filter */}
+                        <div>
+                          <label className="text-sm font-medium text-gray-300 mb-2 block">Side</label>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => setFilterSide('all')}
+                              className={`flex-1 px-3 py-2 rounded text-sm transition-colors ${
+                                filterSide === 'all'
+                                  ? 'bg-blue-600 text-white'
+                                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                              }`}
+                            >
+                              All
+                            </button>
+                            <button
+                              onClick={() => setFilterSide('long')}
+                              className={`flex-1 px-3 py-2 rounded text-sm transition-colors ${
+                                filterSide === 'long'
+                                  ? 'bg-green-600 text-white'
+                                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                              }`}
+                            >
+                              Long
+                            </button>
+                            <button
+                              onClick={() => setFilterSide('short')}
+                              className={`flex-1 px-3 py-2 rounded text-sm transition-colors ${
+                                filterSide === 'short'
+                                  ? 'bg-red-600 text-white'
+                                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                              }`}
+                            >
+                              Short
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Pair Filter */}
+                        <div>
+                          <label className="text-sm font-medium text-gray-300 mb-2 block">Pair</label>
+                          <select
+                            value={filterPair}
+                            onChange={(e) => setFilterPair(e.target.value)}
+                            className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded text-white text-sm focus:outline-none focus:border-blue-500"
+                          >
+                            <option value="all">All Pairs</option>
+                            {uniquePairs.map((pair) => (
+                              <option key={pair} value={pair}>
+                                {pair}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </CardHeader>
@@ -261,24 +479,51 @@ export function History() {
             ))}
           </div>
 
+          {/* Results count */}
+          {hasActiveFilters && (
+            <div className="mb-4 text-sm text-gray-400">
+              Showing {filteredTrades.length} of {tradeHistory.length} trades
+            </div>
+          )}
+
           {/* Trade Table */}
           <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-gray-800">
-                  <th className="text-left py-3 text-sm font-medium text-gray-400">Date & Time</th>
-                  <th className="text-left py-3 text-sm font-medium text-gray-400">Pair</th>
-                  <th className="text-left py-3 text-sm font-medium text-gray-400">Type</th>
-                  <th className="text-left py-3 text-sm font-medium text-gray-400">Side</th>
-                  <th className="text-left py-3 text-sm font-medium text-gray-400">Amount</th>
-                  <th className="text-left py-3 text-sm font-medium text-gray-400">Price</th>
-                  <th className="text-left py-3 text-sm font-medium text-gray-400">Value</th>
-                  <th className="text-left py-3 text-sm font-medium text-gray-400">P&L</th>
-                  <th className="text-left py-3 text-sm font-medium text-gray-400">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredTrades.map((trade) => (
+            {filteredTrades.length === 0 ? (
+              <div className="text-center py-12">
+                <p className="text-gray-400 text-lg mb-2">No trades found</p>
+                <p className="text-gray-500 text-sm">
+                  {hasActiveFilters 
+                    ? 'Try adjusting your filters or search query'
+                    : 'No trading history available'}
+                </p>
+                {hasActiveFilters && (
+                  <Button
+                    onClick={resetFilters}
+                    variant="outline"
+                    size="sm"
+                    className="mt-4 border-gray-700 text-gray-300 hover:text-white"
+                  >
+                    Clear Filters
+                  </Button>
+                )}
+              </div>
+            ) : (
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-gray-800">
+                    <th className="text-left py-3 text-sm font-medium text-gray-400">Date & Time</th>
+                    <th className="text-left py-3 text-sm font-medium text-gray-400">Pair</th>
+                    <th className="text-left py-3 text-sm font-medium text-gray-400">Type</th>
+                    <th className="text-left py-3 text-sm font-medium text-gray-400">Side</th>
+                    <th className="text-left py-3 text-sm font-medium text-gray-400">Amount</th>
+                    <th className="text-left py-3 text-sm font-medium text-gray-400">Price</th>
+                    <th className="text-left py-3 text-sm font-medium text-gray-400">Value</th>
+                    <th className="text-left py-3 text-sm font-medium text-gray-400">P&L</th>
+                    <th className="text-left py-3 text-sm font-medium text-gray-400">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredTrades.map((trade) => (
                   <tr key={trade.id} className="border-b border-gray-800/50 hover:bg-gray-800/30">
                     <td className="py-4 text-sm text-gray-300">
                       <div className="flex items-center gap-2">
@@ -308,9 +553,10 @@ export function History() {
                       </Badge>
                     </td>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </div>
         </CardContent>
       </Card>

@@ -106,7 +106,16 @@ export class BacktestController {
 
       // Query token from database to get minQty and leverage
       const queryToken = await prisma.token.findUnique({
-        where: { name: token === 'BTC' ? 'Bitcoin' : token === 'ETH' ? 'Ethereum' : token === 'SOL' ? 'Solana' : token },
+        where: {
+          name:
+            token === 'BTC'
+              ? 'Bitcoin'
+              : token === 'ETH'
+                ? 'Ethereum'
+                : token === 'SOL'
+                  ? 'Solana'
+                  : token,
+        },
         select: {
           minQty: true,
           leverage: true,

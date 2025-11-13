@@ -47,7 +47,7 @@ export interface Strategy {
 }
 
 export class BacktestingAPI {
-  private static readonly BASE_URL = 'http://localhost:3001/api';
+  private static readonly BASE_URL = '/api';
 
   static async getStrategies(): Promise<Strategy[]> {
     try {
@@ -93,11 +93,11 @@ export class BacktestingAPI {
 
       const data = await response.json();
       
-      if (!data.success) {
+      if (!response.ok || data.message !== 'Backtest done' || !data.result) {
         throw new Error(data.message || 'Backtest execution failed');
       }
       
-      return data.data.results;
+      return data.result;
     } catch (error) {
       console.error('Error executing backtest:', error);
       throw error;
