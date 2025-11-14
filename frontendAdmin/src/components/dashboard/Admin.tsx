@@ -768,7 +768,13 @@ export function Admin() {
       const claimsData = await fetchClaims()
       setApiClaims(claimsData)
       
-      // Close modal and reset state
+      // Refresh claim details if modal is open to update status and hide buttons
+      if (showClaimDetails && claimDetails && claimDetails.id === selectedClaimForAction.id) {
+        const updatedDetails = await fetchClaimDetails(selectedClaimForAction.id)
+        setClaimDetails(updatedDetails)
+      }
+      
+      // Close approve modal and reset state
       setShowApproveModal(false)
       setSelectedClaimForAction(null)
       setAdminNote('')
@@ -796,7 +802,13 @@ export function Admin() {
       const claimsData = await fetchClaims()
       setApiClaims(claimsData)
       
-      // Close modal and reset state
+      // Refresh claim details if modal is open to update status and hide buttons
+      if (showClaimDetails && claimDetails && claimDetails.id === selectedClaimForAction.id) {
+        const updatedDetails = await fetchClaimDetails(selectedClaimForAction.id)
+        setClaimDetails(updatedDetails)
+      }
+      
+      // Close reject modal and reset state
       setShowRejectModal(false)
       setSelectedClaimForAction(null)
       setAdminNote('')
@@ -2119,8 +2131,18 @@ export function Admin() {
     }
 
     return (
-      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-        <Card className="bg-gray-900 border-gray-800 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+      <div 
+        className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+        onClick={(e) => {
+          if (e.target === e.currentTarget) {
+            setShowNewStrategyForm(false)
+          }
+        }}
+      >
+        <Card 
+          className="bg-gray-900 border-gray-800 w-full max-w-2xl max-h-[90vh] overflow-y-auto"
+          onClick={(e) => e.stopPropagation()}
+        >
           <CardHeader className="flex flex-row items-center justify-between">
             <div>
               <CardTitle className="text-white">Create New Strategy</CardTitle>
@@ -2412,8 +2434,18 @@ export function Admin() {
     }
 
     return (
-      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-        <Card className="bg-gray-900 border-gray-800 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+      <div 
+        className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+        onClick={(e) => {
+          if (e.target === e.currentTarget) {
+            setShowConfigureStrategy(false)
+          }
+        }}
+      >
+        <Card 
+          className="bg-gray-900 border-gray-800 w-full max-w-2xl max-h-[90vh] overflow-y-auto"
+          onClick={(e) => e.stopPropagation()}
+        >
           <CardHeader className="flex flex-row items-center justify-between">
             <div>
               <CardTitle className="text-white">Configure Strategy</CardTitle>
@@ -2727,8 +2759,19 @@ export function Admin() {
 
       {/* Claim Details Modal */}
       {showClaimDetails && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-gray-900 border border-gray-800 rounded-lg w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+        <div 
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setShowClaimDetails(false)
+              setClaimDetails(null)
+            }
+          }}
+        >
+          <div 
+            className="bg-gray-900 border border-gray-800 rounded-lg w-full max-w-4xl max-h-[90vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="p-6">
               {/* Modal Header */}
               <div className="flex items-center justify-between mb-6">
@@ -3043,8 +3086,20 @@ export function Admin() {
 
       {/* Approve Claim Modal */}
       {showApproveModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-gray-900 border border-gray-800 rounded-lg w-full max-w-md">
+        <div 
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setShowApproveModal(false)
+              setSelectedClaimForAction(null)
+              setAdminNote('')
+            }
+          }}
+        >
+          <div 
+            className="bg-gray-900 border border-gray-800 rounded-lg w-full max-w-md"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="p-6">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-xl font-bold text-white">Approve Claim</h3>
@@ -3107,8 +3162,20 @@ export function Admin() {
 
       {/* Reject Claim Modal */}
       {showRejectModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-gray-900 border border-gray-800 rounded-lg w-full max-w-md">
+        <div 
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setShowRejectModal(false)
+              setSelectedClaimForAction(null)
+              setAdminNote('')
+            }
+          }}
+        >
+          <div 
+            className="bg-gray-900 border border-gray-800 rounded-lg w-full max-w-md"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="p-6">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-xl font-bold text-white">Reject Claim</h3>

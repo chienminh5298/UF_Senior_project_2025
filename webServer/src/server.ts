@@ -3,6 +3,7 @@ import http from 'http';
 import { Server as SocketIOServer } from 'socket.io';
 import { connectDatabase } from '../prisma/database';
 import { binanceWebSocketService } from './services/binanceWebSocket';
+import prisma from './models/prismaClient';
 
 const PORT = process.env.PORT || 3001;
 
@@ -29,21 +30,16 @@ io.on('connection', () => {
   });
 
   // Graceful shutdown
-  process.on('SIGTERM', () => {
-    console.log('SIGTERM received, shutting down gracefully...');
+  const shutdown = async () => {
+    console.log('Shutting down gracefully...');
     binanceWebSocketService.disconnect();
+    await prisma.$disconnect();
     server.close(() => {
       console.log('Server closed');
       process.exit(0);
     });
-  });
+  };
 
-  process.on('SIGINT', () => {
-    console.log('SIGINT received, shutting down gracefully...');
-    binanceWebSocketService.disconnect();
-    server.close(() => {
-      console.log('Server closed');
-      process.exit(0);
-    });
-  });
+  process.on('SIGTERM', shutdown);
+  process.on('SIGINT', shutdown);
 })();

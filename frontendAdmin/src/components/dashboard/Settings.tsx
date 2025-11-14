@@ -69,7 +69,6 @@ export function Settings() {
     { id: 'profile', label: 'Profile', icon: User },
     { id: 'security', label: 'Security', icon: Shield },
     { id: 'notifications', label: 'Notifications', icon: Bell },
-    { id: 'trading', label: 'Trading', icon: SettingsIcon },
     { id: 'api', label: 'API Keys', icon: Key },
   ]
 
@@ -348,53 +347,6 @@ export function Settings() {
     </div>
   )
 
-  const renderTradingSection = () => (
-    <div className="space-y-6">
-      <Card className="bg-gray-800/50 border-gray-700">
-        <CardHeader>
-          <CardTitle className="text-white text-lg">Trading Preferences</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-gray-300">Default Risk Level</label>
-              <select className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-blue-500">
-                <option>Low Risk</option>
-                <option>Medium Risk</option>
-                <option>High Risk</option>
-              </select>
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-gray-300">Auto-Trading</label>
-              <select className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-blue-500">
-                <option>Enabled</option>
-                <option>Disabled</option>
-                <option>Scheduled</option>
-              </select>
-            </div>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-gray-300">Max Position Size</label>
-              <input
-                type="number"
-                defaultValue="1000"
-                className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
-              />
-            </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-gray-300">Stop Loss %</label>
-              <input
-                type="number"
-                defaultValue="5"
-                className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
-              />
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-    </div>
-  )
 
   const renderApiSection = () => (
     <div className="space-y-6">
@@ -452,8 +404,6 @@ export function Settings() {
         return renderSecuritySection()
       case 'notifications':
         return renderNotificationsSection()
-      case 'trading':
-        return renderTradingSection()
       case 'api':
         return renderApiSection()
       default:

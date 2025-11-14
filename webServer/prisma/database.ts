@@ -1,14 +1,19 @@
 import { PrismaClient } from "@prisma/client";
-const prisma = new PrismaClient();
+import prismaClient from '../src/models/prismaClient';
 
 export const connectDatabase = async () => {
     try {
-        await prisma.$connect();
+        await prismaClient.$connect();
+        console.log('Database connected successfully');
     } catch (error) {
-        console.error(error);
-    } finally {
-        await prisma.$disconnect();
+        console.error('Database connection error:', error);
+        throw error;
     }
 };
 
-export default prisma;
+// Graceful shutdown - disconnect on process termination
+process.on('beforeExit', async () => {
+    await prismaClient.$disconnect();
+});
+
+export default prismaClient;

@@ -8,6 +8,7 @@ import { Backtesting } from './components/dashboard/Backtesting'
 import { Portfolio } from './components/dashboard/Portfolio'
 import { History } from './components/dashboard/History'
 import { Settings } from './components/dashboard/Settings'
+import { Bills } from './components/dashboard/Bills'
 import { Button } from './components/ui/button'
 import {
   ChevronDown, User, Settings as SettingsIcon, LogOut, Bell
@@ -15,14 +16,32 @@ import {
 
 type AppState = 'landing' | 'login' | 'dashboard'
 
+interface Notification {
+  id: number
+  type: 'PAYMENT_APPROVED' | 'PAYMENT_REJECTED' | 'PAYMENT_PENDING' | 'TRADE_COMPLETE' | 'SYSTEM'
+  title: string
+  message: string
+  isRead: boolean
+  createdAt: string
+  claim?: {
+    id: number
+    amount: number
+  }
+}
+
 function App() {
   const [currentPage, setCurrentPage] = useState<AppState>('landing')
   const [activeTab, setActiveTab] = useState('dashboard')
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false)
+  const [isNotificationMenuOpen, setIsNotificationMenuOpen] = useState(false)
   const [portfolioValue, setPortfolioValue] = useState<number>(0)
   const [loading, setLoading] = useState(false)
   const [cryptoPrices, setCryptoPrices] = useState<any[]>([])
+  const [notifications, setNotifications] = useState<Notification[]>([])
+  const [unreadCount, setUnreadCount] = useState(0)
+  const [loadingNotifications, setLoadingNotifications] = useState(false)
   const userMenuRef = useRef<HTMLDivElement>(null)
+  const notificationMenuRef = useRef<HTMLDivElement>(null)
 
   const fetchPriceData = useCallback(async () => {
     try {
@@ -142,19 +161,106 @@ function App() {
     }
   }, [activeTab])
 
+  const fetchNotifications = useCallback(async () => {
+    if (currentPage !== 'dashboard') return
+    
+    try {
+      const authData = localStorage.getItem('auth')
+      if (!authData) return
+
+      const parsedAuth = JSON.parse(authData)
+      const token = parsedAuth?.token
+
+      if (!token) return
+
+      setLoadingNotifications(true)
+      const response = await fetch('/api/user/notifications?page=1&limit=10', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        if (data?.success) {
+          setNotifications(data.data.notifications)
+          const unread = data.data.notifications.filter((n: Notification) => !n.isRead).length
+          setUnreadCount(unread)
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching notifications:', error)
+    } finally {
+      setLoadingNotifications(false)
+    }
+  }, [currentPage])
+
+  const markNotificationAsRead = async (notificationId: number) => {
+    try {
+      const authData = localStorage.getItem('auth')
+      if (!authData) return
+
+      const parsedAuth = JSON.parse(authData)
+      const token = parsedAuth?.token
+
+      if (!token) return
+
+      const response = await fetch(`/api/user/notifications/${notificationId}/read`, {
+        method: 'PATCH',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      })
+
+      if (response.ok) {
+        setNotifications(prev => 
+          prev.map(n => n.id === notificationId ? { ...n, isRead: true } : n)
+        )
+        setUnreadCount(prev => Math.max(0, prev - 1))
+      }
+    } catch (error) {
+      console.error('Error marking notification as read:', error)
+    }
+  }
+
   useEffect(() => {
     if (currentPage === 'dashboard') {
       loadPriceData()
+      fetchNotifications()
       // Set up automatic price updates every 2 seconds
       const priceInterval = setInterval(() => {
         loadPriceData()
       }, 2000)
+      // Set up automatic notification updates every 30 seconds
+      const notificationInterval = setInterval(() => {
+        fetchNotifications()
+      }, 30000)
 
       return () => {
         clearInterval(priceInterval)
+        clearInterval(notificationInterval)
       }
     }
-  }, [currentPage, loadPriceData])
+  }, [currentPage, loadPriceData, fetchNotifications])
+
+  // Close dropdowns when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (userMenuRef.current && !userMenuRef.current.contains(event.target as Node)) {
+        setIsUserMenuOpen(false)
+      }
+      if (notificationMenuRef.current && !notificationMenuRef.current.contains(event.target as Node)) {
+        setIsNotificationMenuOpen(false)
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [])
 
   // Landing Page
   if (currentPage === 'landing') {
@@ -178,6 +284,7 @@ function App() {
       case 'trading': return <Trading />
       case 'backtesting': return <Backtesting />
       case 'history': return <History />
+      case 'bills': return <Bills />
       case 'settings': return <Settings />
       default: return <Dashboard />
     }
@@ -244,9 +351,106 @@ function App() {
 
             <div className="flex items-center gap-6 flex-shrink-0">
               {/* Notifications */}
-              <Button variant="ghost" size="sm" className="text-gray-400 hover:text-white">
-                <Bell className="w-5 h-5" />
-              </Button>
+              <div className="relative" ref={notificationMenuRef}>
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  className="text-gray-400 hover:text-white relative"
+                  onClick={() => {
+                    setIsNotificationMenuOpen(!isNotificationMenuOpen)
+                    if (!isNotificationMenuOpen) {
+                      fetchNotifications() // Refresh when opening
+                    }
+                  }}
+                >
+                  <Bell className="w-5 h-5" />
+                  {unreadCount > 0 && (
+                    <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center">
+                      {unreadCount > 9 ? '9+' : unreadCount}
+                    </span>
+                  )}
+                </Button>
+
+                {/* Notification Dropdown */}
+                {isNotificationMenuOpen && (
+                  <div className="absolute right-0 top-full mt-2 w-96 bg-gray-800 border border-gray-700 rounded-lg shadow-lg z-50 max-h-[600px] overflow-hidden flex flex-col">
+                    <div className="p-4 border-b border-gray-700 flex items-center justify-between">
+                      <h3 className="text-lg font-semibold text-white">Notifications</h3>
+                      {unreadCount > 0 && (
+                        <span className="text-sm text-gray-400">{unreadCount} unread</span>
+                      )}
+                    </div>
+                    <div className="overflow-y-auto flex-1">
+                      {loadingNotifications ? (
+                        <div className="p-8 text-center text-gray-400">Loading notifications...</div>
+                      ) : notifications.length === 0 ? (
+                        <div className="p-8 text-center text-gray-400">No notifications</div>
+                      ) : (
+                        <div className="divide-y divide-gray-700">
+                          {notifications.map((notification) => (
+                            <div
+                              key={notification.id}
+                              className={`p-4 hover:bg-gray-700/50 transition-colors cursor-pointer ${
+                                !notification.isRead ? 'bg-blue-500/5' : ''
+                              }`}
+                              onClick={() => {
+                                if (!notification.isRead) {
+                                  markNotificationAsRead(notification.id)
+                                }
+                                if (notification.type === 'PAYMENT_REJECTED' || notification.type === 'PAYMENT_APPROVED') {
+                                  setActiveTab('bills')
+                                  setIsNotificationMenuOpen(false)
+                                }
+                              }}
+                            >
+                              <div className="flex items-start gap-3">
+                                <div className="flex-1">
+                                  <div className="flex items-center gap-2 mb-1">
+                                    <h4 className={`text-sm font-semibold ${
+                                      notification.isRead ? 'text-gray-400' : 'text-white'
+                                    }`}>
+                                      {notification.title}
+                                    </h4>
+                                    {!notification.isRead && (
+                                      <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
+                                    )}
+                                  </div>
+                                  <p className={`text-xs ${
+                                    notification.isRead ? 'text-gray-500' : 'text-gray-300'
+                                  }`}>
+                                    {notification.message}
+                                  </p>
+                                  {notification.type === 'PAYMENT_REJECTED' && (
+                                    <p className="text-xs text-red-400 mt-1 italic">
+                                      Click to view details on Bills page
+                                    </p>
+                                  )}
+                                  <p className="text-xs text-gray-500 mt-1">
+                                    {new Date(notification.createdAt).toLocaleString()}
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    {notifications.length > 0 && (
+                      <div className="p-3 border-t border-gray-700">
+                        <button
+                          onClick={() => {
+                            setActiveTab('bills')
+                            setIsNotificationMenuOpen(false)
+                          }}
+                          className="w-full text-sm text-blue-400 hover:text-blue-300 text-center"
+                        >
+                          View All Bills
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
 
               {/* Portfolio Value - Non-clickable */}
               <div className="text-right">
