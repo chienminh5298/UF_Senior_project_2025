@@ -44,7 +44,7 @@ const setStoploss = async ({ token, order, target }: SetStoplossType): Promise<s
     const payload: __payloadNewStoplossType = {
         symbol: token.name + token.stable,
         qty: roundQtyToNDecimal(order.qty, token.minQty),
-        side: order.side === "short" ? "BUY" : ("SELL" as "SELL" | "BUY"),
+        side: order.side === "BUY" ? "SELL" : "BUY",
         stopPrice: roundStopPriceTo2Decimals(calculateMarkPrice(target.stoplossPercent, order.entryPrice, order.side)),
     };
 
@@ -54,6 +54,7 @@ const setStoploss = async ({ token, order, target }: SetStoplossType): Promise<s
         writeLog([`Open stoploss successfully — ${token.name + token.stable}`, orderId]);
 
         const stoplossId = jsonbig.stringify(orderId).replace(/"/g, "");
+        console.log(`Set stoploss success for order ${order.orderId} - stoplossId: ${stoplossId}`);
         await prisma.order.update({
             where: { orderId: order.orderId },
             data: { stoplossOrderId: stoplossId },
