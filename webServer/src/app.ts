@@ -11,14 +11,17 @@ dotenv.config();
 
 const app = express();
 
+// CORS configuration - allow all origins in development/Docker
 app.use(
   cors({
-    origin: [
-      'http://localhost:3000',
-      'http://localhost:3001',
-      'http://localhost:3002',
-      'http://localhost:3003',
-    ],
+    origin: process.env.NODE_ENV === 'production' 
+      ? [
+          'http://localhost:3000',
+          'http://localhost:3001',
+          'http://localhost:3002',
+          'http://localhost:3003',
+        ]
+      : true, // Allow all origins in development/Docker
     credentials: true,
   })
 );
@@ -50,5 +53,23 @@ setupSwagger(app);
 
 // Routes
 app.use('/api', routes);
+
+// Error handling middleware - must be after routes
+app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  console.error('Error:', err);
+  res.status(err.status || 500).json({
+    success: false,
+    message: err.message || 'Internal server error',
+    ...(process.env.NODE_ENV === 'development' && { stack: err.stack }),
+  });
+});
+
+// 404 handler
+app.use((req: express.Request, res: express.Response) => {
+  res.status(404).json({
+    success: false,
+    message: 'Route not found',
+  });
+});
 
 export default app;

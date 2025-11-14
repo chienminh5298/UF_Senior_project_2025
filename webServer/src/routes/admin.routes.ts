@@ -2062,13 +2062,11 @@ router.patch('/claims/:id/approve', requireAuth, async (req, res) => {
       });
     }
 
-    const updatedClaim = await prisma.claim.update({
+    // Get bills associated with this claim
+    const claimWithBills = await prisma.claim.findUnique({
       where: { id: claimId },
-      data: {
-        status: 'FINISHED',
-        hashId: note || 'Claim approved by admin',
-      },
       include: {
+        bills: true,
         user: {
           select: {
             id: true,
@@ -2078,6 +2076,59 @@ router.patch('/claims/:id/approve', requireAuth, async (req, res) => {
         },
       },
     });
+
+    if (!claimWithBills) {
+      return res.status(404).json({
+        success: false,
+        message: 'Claim not found',
+      });
+    }
+
+    // Update claim with admin note
+    const updatedClaim = await prisma.claim.update({
+      where: { id: claimId },
+      data: {
+        status: 'FINISHED',
+        adminNote: note || null,
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            username: true,
+            email: true,
+          },
+        },
+        bills: true,
+      },
+    });
+
+    // Update all bills to FINISHED status (approved)
+    await prisma.bill.updateMany({
+      where: {
+        id: { in: claimWithBills.bills.map(b => b.id) },
+      },
+      data: {
+        status: 'FINISHED',
+        note: note || null, // Store admin note in bill as well
+      },
+    });
+
+    // Create notification for user
+    if (claimWithBills.user?.id) {
+      await prisma.notification.create({
+        data: {
+          type: 'PAYMENT_APPROVED',
+          title: 'Payment Approved',
+          message: note 
+            ? `Your payment of $${updatedClaim.amount.toFixed(2)} has been approved. ${note}`
+            : `Your payment of $${updatedClaim.amount.toFixed(2)} has been approved.`,
+          userId: claimWithBills.user.id,
+          claimId: claimId,
+          isRead: false,
+        },
+      });
+    }
 
     return res.status(200).json({
       success: true,
@@ -2170,13 +2221,11 @@ router.patch('/claims/:id/reject', requireAuth, async (req, res) => {
       });
     }
 
-    const updatedClaim = await prisma.claim.update({
+    // Get bills associated with this claim
+    const claimWithBills = await prisma.claim.findUnique({
       where: { id: claimId },
-      data: {
-        status: 'FINISHED',
-        hashId: note || 'Claim rejected by admin',
-      },
       include: {
+        bills: true,
         user: {
           select: {
             id: true,
@@ -2186,6 +2235,59 @@ router.patch('/claims/:id/reject', requireAuth, async (req, res) => {
         },
       },
     });
+
+    if (!claimWithBills) {
+      return res.status(404).json({
+        success: false,
+        message: 'Claim not found',
+      });
+    }
+
+    // Update claim with admin note (rejection reason)
+    const updatedClaim = await prisma.claim.update({
+      where: { id: claimId },
+      data: {
+        status: 'FINISHED', // FINISHED status for rejected claims
+        adminNote: note || 'Payment rejected by admin',
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            username: true,
+            email: true,
+          },
+        },
+        bills: true,
+      },
+    });
+
+    // Update all bills to REJECTED status and add admin note
+    await prisma.bill.updateMany({
+      where: {
+        id: { in: claimWithBills.bills.map(b => b.id) },
+      },
+      data: {
+        status: 'REJECTED',
+        note: note || 'Payment rejected by admin',
+      },
+    });
+
+    // Create notification for user
+    if (claimWithBills.user?.id) {
+      await prisma.notification.create({
+        data: {
+          type: 'PAYMENT_REJECTED',
+          title: 'Payment Rejected',
+          message: note 
+            ? `Your payment of $${updatedClaim.amount.toFixed(2)} has been rejected. ${note} Please check the Bills page for details.`
+            : `Your payment of $${updatedClaim.amount.toFixed(2)} has been rejected. Please check the Bills page for details.`,
+          userId: claimWithBills.user.id,
+          claimId: claimId,
+          isRead: false,
+        },
+      });
+    }
 
     return res.status(200).json({
       success: true,

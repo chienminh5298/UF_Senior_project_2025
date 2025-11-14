@@ -2,7 +2,7 @@ import { Router } from 'express';
 import prisma from '../models/prismaClient';
 import { requireAuth } from '../middleware/auth';
 import bcrypt from 'bcrypt';
-import { BillStatus, VoucherStatus } from '@prisma/client';
+import { BillStatus, VoucherStatus, NotificationType } from '@prisma/client';
 const router = Router();
 
 // POST /api/user/tokens
@@ -1424,6 +1424,29 @@ router.get('/bills', requireAuth, async (req, res) => {
         from: true,
         to: true,
         note: true,
+        adminCommissionPercent: true,
+        referralCommissionPercent: true,
+        claimId: true,
+        claim: {
+          select: {
+            id: true,
+            status: true,
+            adminNote: true,
+            hashId: true,
+          },
+        },
+        orders: {
+          select: {
+            id: true,
+            token: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+            sellDate: true,
+          },
+        },
       },
     });
 
@@ -1449,5 +1472,400 @@ router.get('/bills', requireAuth, async (req, res) => {
     return res
       .status(500)
       .json({ success: false, message: 'Failed to fetch bills' });
+  }
+});
+
+// GET /api/user/notifications
+/**
+ * @swagger
+ * /api/user/notifications:
+ *   get:
+ *     summary: Get user notifications
+ *     tags: [User]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           enum: [10, 25, 50]
+ *           default: 25
+ *     responses:
+ *       200:
+ *         description: Notifications fetched successfully
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Failed to fetch notifications
+ */
+router.get('/notifications', requireAuth, async (req, res) => {
+  const { user } = req;
+  const page = parseInt(req.query.page as string) || 1;
+  const limit = parseInt(req.query.limit as string) || 25;
+
+  if (!user) {
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
+  }
+
+  try {
+    const validLimits = [10, 25, 50];
+    const validatedLimit = validLimits.includes(limit) ? limit : 25;
+    const skip = (page - 1) * validatedLimit;
+
+    const totalNotifications = await prisma.notification.count({
+      where: { userId: user.id },
+    });
+
+    const notifications = await prisma.notification.findMany({
+      where: { userId: user.id },
+      skip,
+      take: validatedLimit,
+      orderBy: { createdAt: 'desc' },
+      include: {
+        claim: {
+          select: {
+            id: true,
+            amount: true,
+          },
+        },
+      },
+    });
+
+    const totalPages = Math.ceil(totalNotifications / validatedLimit);
+
+    return res.status(200).json({
+      success: true,
+      message: 'Notifications fetched successfully',
+      data: {
+        notifications,
+        pagination: {
+          currentPage: page,
+          totalPages,
+          totalNotifications,
+          limit: validatedLimit,
+          hasNextPage: page < totalPages,
+          hasPrevPage: page > 1,
+        },
+      },
+    });
+  } catch (error) {
+    console.error('Error fetching notifications:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to fetch notifications',
+    });
+  }
+});
+
+// PATCH /api/user/notifications/:id/read
+/**
+ * @swagger
+ * /api/user/notifications/{id}/read:
+ *   patch:
+ *     summary: Mark notification as read
+ *     tags: [User]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Notification marked as read
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Notification not found
+ *       500:
+ *         description: Failed to update notification
+ */
+router.patch('/notifications/:id/read', requireAuth, async (req, res) => {
+  const { user } = req;
+
+  if (!user) {
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
+  }
+
+  try {
+    const notificationId = parseInt(req.params.id);
+    if (isNaN(notificationId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid notification ID',
+      });
+    }
+
+    const notification = await prisma.notification.findUnique({
+      where: { id: notificationId },
+    });
+
+    if (!notification || notification.userId !== user.id) {
+      return res.status(404).json({
+        success: false,
+        message: 'Notification not found',
+      });
+    }
+
+    const updated = await prisma.notification.update({
+      where: { id: notificationId },
+      data: { isRead: true },
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: 'Notification marked as read',
+      data: { notification: updated },
+    });
+  } catch (error) {
+    console.error('Error updating notification:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to update notification',
+    });
+  }
+});
+
+// PATCH /api/user/notifications/read-all
+/**
+ * @swagger
+ * /api/user/notifications/read-all:
+ *   patch:
+ *     summary: Mark all notifications as read
+ *     tags: [User]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: All notifications marked as read
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Failed to update notifications
+ */
+router.patch('/notifications/read-all', requireAuth, async (req, res) => {
+  const { user } = req;
+
+  if (!user) {
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
+  }
+
+  try {
+    await prisma.notification.updateMany({
+      where: { userId: user.id, isRead: false },
+      data: { isRead: true },
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: 'All notifications marked as read',
+    });
+  } catch (error) {
+    console.error('Error updating notifications:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to update notifications',
+    });
+  }
+});
+
+// POST /api/user/bills/pay
+/**
+ * @swagger
+ * /api/user/bills/pay:
+ *   post:
+ *     summary: Submit payment for bills and create a claim
+ *     tags: [User]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [billIds, hashId, amount, network, address]
+ *             properties:
+ *               billIds:
+ *                 type: array
+ *                 items:
+ *                   type: integer
+ *               hashId:
+ *                 type: string
+ *               amount:
+ *                 type: number
+ *               network:
+ *                 type: string
+ *                 enum: [ERC20, SOLANA, BEP20]
+ *               address:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Payment submitted successfully and claim created
+ *       400:
+ *         description: Missing required fields or invalid bills
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Failed to submit payment
+ */
+router.post('/bills/pay', requireAuth, async (req, res) => {
+  const { user } = req;
+
+  if (!user) {
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
+  }
+
+  try {
+    const { billIds, hashId, amount, network, address } = req.body;
+
+    // Validate billIds
+    if (!billIds || !Array.isArray(billIds) || billIds.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Bill IDs are required',
+      });
+    }
+
+    // Validate each required field with specific error messages
+    const missingFields: string[] = [];
+    if (!hashId || (typeof hashId === 'string' && hashId.trim() === '')) {
+      missingFields.push('Hash ID');
+    }
+    if (!amount || isNaN(parseFloat(amount)) || parseFloat(amount) <= 0) {
+      missingFields.push('Amount');
+    }
+    if (!network || (typeof network === 'string' && network.trim() === '')) {
+      missingFields.push('Network');
+    }
+    if (!address || (typeof address === 'string' && address.trim() === '')) {
+      missingFields.push('Address');
+    }
+
+    if (missingFields.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `Missing or invalid fields: ${missingFields.join(', ')}`,
+      });
+    }
+
+    // Validate network enum
+    const validNetworks = ['ERC20', 'SOLANA', 'BEP20'];
+    if (!validNetworks.includes(network)) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid network. Must be one of: ${validNetworks.join(', ')}`,
+      });
+    }
+
+    // Verify bills belong to user and are unpaid or rejected (rejected bills can be paid again)
+    const bills = await prisma.bill.findMany({
+      where: {
+        id: { in: billIds },
+        userId: user.id,
+        status: { in: [BillStatus.NEW, BillStatus.REJECTED] }, // Allow NEW and REJECTED bills to be paid
+        netProfit: { gt: 0 },
+      },
+    });
+
+    if (bills.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'No valid payable bills found. Bills must be unpaid (NEW) or rejected (REJECTED) status.',
+      });
+    }
+
+    if (bills.length !== billIds.length) {
+      return res.status(400).json({
+        success: false,
+        message: 'Some bills are invalid, already paid, or pending approval',
+      });
+    }
+
+    // Calculate total commission for the selected bills
+    // Helper function to round up to 2 decimal places
+    const roundUpToCents = (value: number): number => {
+      return Math.ceil(value * 100) / 100;
+    };
+
+    let totalCommission = 0;
+    for (const bill of bills) {
+      const adminCommissionPercent = bill.adminCommissionPercent > 1
+        ? bill.adminCommissionPercent / 100
+        : bill.adminCommissionPercent;
+      const referralCommissionPercent = bill.referralCommissionPercent > 1
+        ? bill.referralCommissionPercent / 100
+        : bill.referralCommissionPercent;
+
+      if (bill.netProfit > 0) {
+        const billCommission = bill.netProfit * (adminCommissionPercent + referralCommissionPercent);
+        totalCommission += billCommission;
+      }
+    }
+    
+    // Round up the total commission to 2 decimal places
+    totalCommission = roundUpToCents(totalCommission);
+
+    // Create a claim that groups all selected bills together with one payment hash ID
+    // Status is NEW (pending admin approval)
+    const claim = await prisma.claim.create({
+      data: {
+        amount: totalCommission, // The commission amount being paid
+        bills: { connect: billIds.map((id: number) => ({ id })) },
+        network: network as any, // ERC20, SOLANA, or BEP20
+        address: address,
+        hashId: hashId,
+        userId: user.id,
+        status: 'NEW', // Pending admin approval
+      },
+    });
+
+    // Update bills to PROCESSING status (pending admin approval) and link them to the claim
+    await prisma.bill.updateMany({
+      where: {
+        id: { in: billIds },
+      },
+      data: {
+        status: BillStatus.PROCESSING, // Pending admin approval
+        claimId: claim.id,
+        hashId: hashId, // Store hash ID on bills as well for reference
+      },
+    });
+
+    // Create notification for user about pending payment
+    await prisma.notification.create({
+      data: {
+        type: 'PAYMENT_PENDING',
+        title: 'Payment Submitted',
+        message: `Your payment of $${totalCommission.toFixed(2)} has been submitted and is pending admin approval.`,
+        userId: user.id,
+        claimId: claim.id,
+        isRead: false,
+      },
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: 'Payment submitted successfully. Claim created and pending admin approval.',
+      data: {
+        claimId: claim.id,
+        billsUpdated: bills.length,
+        totalCommission: totalCommission,
+      },
+    });
+  } catch (error) {
+    console.error('Error submitting payment:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to submit payment',
+    });
   }
 });

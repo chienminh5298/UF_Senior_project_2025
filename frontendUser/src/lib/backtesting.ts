@@ -47,7 +47,7 @@ export interface Strategy {
 }
 
 export class BacktestingAPI {
-  private static readonly BASE_URL = 'http://localhost:3001/api';
+  private static readonly BASE_URL = '/api';
 
   static async getStrategies(): Promise<Strategy[]> {
     try {

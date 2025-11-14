@@ -4,7 +4,8 @@ import {
   Target, 
   History, 
   Briefcase, 
-  Settings
+  Settings,
+  Receipt
 } from 'lucide-react'
 import { cn } from '../../lib/utils'
 
@@ -19,6 +20,7 @@ const menuItems = [
   { id: 'trading', label: 'Trading', icon: TrendingUp },
   { id: 'backtesting', label: 'Backtesting', icon: Target },
   { id: 'history', label: 'History', icon: History },
+  { id: 'bills', label: 'Bills', icon: Receipt },
   { id: 'settings', label: 'Settings', icon: Settings },
 ]
 

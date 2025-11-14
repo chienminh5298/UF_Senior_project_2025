@@ -30,6 +30,7 @@ model User {
   userTokens        UserToken[]
   orders            Order[]
   claims            Claim[]
+  notifications     Notification[]
   apiKey            String              @unique
   apiSecret            String              @unique
   apiPassphrase            String?              @unique
@@ -65,7 +66,9 @@ model Claim {
   user                  User?               @relation(fields: [userId], references: [id])
   hashId                String?             
   network               Network
-  address               String             
+  address               String
+  adminNote             String?             // Admin comments/notes for approval/rejection
+  notifications         Notification[]
   createdAt             DateTime            @default(now())
   updatedAt             DateTime            @default(now()) @updatedAt
 }
@@ -229,4 +232,26 @@ enum BillStatus {
   REJECTED
   PROCESSING
   CLAIMED
+}
+
+model Notification {
+  id          Int       @id @default(autoincrement())
+  type        NotificationType
+  title       String
+  message     String
+  isRead      Boolean   @default(false)
+  userId      Int?
+  user        User?     @relation(fields: [userId], references: [id])
+  claimId     Int?      // Link to claim if payment-related
+  claim       Claim?    @relation(fields: [claimId], references: [id])
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @default(now()) @updatedAt
+}
+
+enum NotificationType {
+  PAYMENT_APPROVED
+  PAYMENT_REJECTED
+  PAYMENT_PENDING
+  TRADE_COMPLETE
+  SYSTEM
 }

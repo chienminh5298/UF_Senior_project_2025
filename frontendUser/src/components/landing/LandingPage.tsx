@@ -28,10 +28,54 @@ interface LandingPageProps {
 export function LandingPage({ onNavigateToLogin, onLogin }: LandingPageProps) {
     const [showAbout, setShowAbout] = useState(false)
     const [showTestAlgorithm, setShowTestAlgorithm] = useState(false)
+    const [isLoading, setIsLoading] = useState(false)
 
-    const handleDemoLogin = () => {
-        // Automatically login to dashboard (demo login)
-        onLogin()
+    const handleDemoLogin = async () => {
+        // Use real John Doe credentials for demo login (same as LoginPage)
+        try {
+            setIsLoading(true);
+            
+            console.log('Demo login: Attempting to login with John Doe credentials...');
+            
+            const DEMO_EMAIL = (import.meta as any).env?.VITE_DEMO_EMAIL ?? 'john@example.com';
+            const DEMO_PASSWORD = (import.meta as any).env?.VITE_DEMO_PASSWORD ?? 'password123';
+
+            const loginRes = await fetch('/api/auth/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    email: DEMO_EMAIL,
+                    password: DEMO_PASSWORD
+                })
+            });
+            
+            console.log('Demo login: Response status:', loginRes.status);
+            
+            let loginData;
+            try {
+                loginData = await loginRes.json();
+                console.log('Demo login: Response data:', loginData);
+            } catch (parseError) {
+                console.error('Demo login: Failed to parse response:', parseError);
+                throw new Error('Invalid response from server');
+            }
+            
+            if (!loginRes.ok || !loginData?.success) {
+                console.error('Demo login: Login failed:', loginData);
+                throw new Error(loginData?.message || 'Demo login failed');
+            }
+            
+            console.log('Demo login: Success! Setting auth data...');
+            const authPayload = { token: loginData.token, user: loginData.user };
+            localStorage.setItem('auth', JSON.stringify(authPayload));
+            console.log('Demo login: Auth data saved, calling onLogin...');
+            onLogin();
+        } catch (err: any) {
+            console.error('Demo login: Error occurred:', err);
+            alert(err?.message || 'Demo login failed. Please try again.');
+        } finally {
+            setIsLoading(false);
+        }
     }
 
     const toggleAbout = () => {
@@ -130,8 +174,9 @@ export function LandingPage({ onNavigateToLogin, onLogin }: LandingPageProps) {
                 size="lg" 
                 className="text-white hover:text-gray-300 px-8 py-4 text-lg font-medium"
                 onClick={() => handleDemoLogin()}
+                disabled={isLoading}
                 >
-                Demo Login
+                {isLoading ? 'Logging in...' : 'Demo Login'}
                 </Button>
             </div>
             
