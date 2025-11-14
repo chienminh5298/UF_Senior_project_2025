@@ -342,9 +342,9 @@ export function useBacktestingEngine({ token, year, onBacktestRun, onTradeAnimat
 
       const data = await response.json()
       
-      if (data.success && data.data?.results) {
-        console.log('Backtest completed:', data.data.results)
-        const results = data.data.results
+      if (response.ok && data.message === 'Backtest done' && data.result) {
+        console.log('Backtest completed:', data.result)
+        const results = data.result
         
         // Fetch the original candle count to calculate aggregation ratio
         const originalCandleCount = candles.length
@@ -358,7 +358,12 @@ export function useBacktestingEngine({ token, year, onBacktestRun, onTradeAnimat
         
         onBacktestRun?.()
         // Return original results with all trades for the trade history table
-        return results
+        // Include minQty and leverage if provided
+        return {
+          ...results,
+          minQty: data.minQty,
+          leverage: data.leverage,
+        }
       } else {
         console.error('Backtest failed:', data.message)
         throw new Error(data.message || 'Backtest failed')
