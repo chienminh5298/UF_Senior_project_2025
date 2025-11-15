@@ -331,12 +331,21 @@ export function useBacktestingEngine({ token, year, onBacktestRun, onTradeAnimat
         throw new Error('No candle data available')
       }
 
+      // Get auth token for authenticated requests
+      const adminToken = localStorage.getItem('adminToken')
+      
       // Run the backtest
+      const headers: HeadersInit = {
+        'Content-Type': 'application/json'
+      }
+      
+      if (adminToken) {
+        headers['Authorization'] = `Bearer ${adminToken}`
+      }
+      
       const response = await fetch('/api/backtest/execute', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
+        headers,
         body: JSON.stringify(config)
       })
 

@@ -331,12 +331,22 @@ export function useBacktestingEngine({ token, year, onBacktestRun, onTradeAnimat
         throw new Error('No candle data available')
       }
 
+      // Get auth token for authenticated requests
+      const authData = localStorage.getItem('auth')
+      const token = authData ? JSON.parse(authData).token : null
+      
       // Run the backtest
+      const headers: HeadersInit = {
+        'Content-Type': 'application/json'
+      }
+      
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`
+      }
+      
       const response = await fetch('/api/backtest/execute', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
+        headers,
         body: JSON.stringify(config)
       })
 
