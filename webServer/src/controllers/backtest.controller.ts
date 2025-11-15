@@ -42,6 +42,9 @@ export class BacktestController {
         renderSpeed = 1,
       } = req.body;
 
+      // Get current year for validation and date calculations
+      const currentYear = new Date().getFullYear();
+
       // Validate required parameters
       if (!token || !strategy || !year) {
         return res.status(400).json({
@@ -59,12 +62,12 @@ export class BacktestController {
         });
       }
 
-      // Validate year
-      const validYears = [2023, 2024, 2025];
+      // Validate year - allow current year and two years prior
+      const validYears = [currentYear - 2, currentYear - 1, currentYear];
       if (!validYears.includes(year)) {
         return res.status(400).json({
           success: false,
-          message: 'Invalid year. Must be one of: ' + validYears.join(', '),
+          message: `Invalid year. Must be one of: ${validYears.join(', ')}`,
         });
       }
 
@@ -147,10 +150,10 @@ export class BacktestController {
 
       // Create backtest configuration
       // Use strategy description for the backtesting service (it uses keywords like "momentum", "scalping")
-      // For 2025, use Oct 9 as end date (current available data), for past years use Dec 31
+      // For current year, use Oct 9 as end date (current available data), for past years use Dec 31
       const endDate =
-        year === 2025
-          ? new Date('2025-10-09T23:59:59Z')
+        year === currentYear
+          ? new Date(`${currentYear}-10-09T23:59:59Z`)
           : new Date(year, 11, 31, 23, 59, 59);
 
       const config: BacktestConfig = {

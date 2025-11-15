@@ -194,80 +194,10 @@ const getData1YearCandle = async (token: string, year: number | string) => {
   );
 };
 
-router.post('/execute', requireAuth, async (req, res) => {
-  try {
-    const {
-      token,
-      year,
-      strategyId,
-    }: { token: string; year: number; budget: number; strategyId: number } =
-      req.body;
-    let yearData = {};
-
-    // Check if token exists in cache
-    // if (tokenDataCache[token]?.[year]) {
-    //     yearData = tokenDataCache[token][year];
-    // } else {
-    //     const queryData = await getData1YearCandle(token, year);
-
-    //     if (queryData.status === 200) {
-    //         yearData = queryData.data;
-
-    //         // Cache
-    //         tokenDataCache[token] = tokenDataCache[token] || {};
-    //         tokenDataCache[token][year] = yearData;
-    //     } else {
-    //         return res.status(400).json({ message: "Invalid token or year" });
-    //     }
-    // }
-    const queryData = await getData1YearCandle(token, year);
-
-    if (queryData.status === 200) {
-      yearData = queryData.data;
-
-      // Cache
-      tokenDataCache[token] = tokenDataCache[token] || {};
-      tokenDataCache[token][year] = yearData;
-    } else {
-      return res.status(400).json({ message: 'Invalid token or year' });
-    }
-
-    const queryToken = await prisma.token.findUnique({
-      where: { name: token },
-    });
-
-    if (simulateCache[token]?.[year] && queryToken) {
-      return res.status(200).json({
-        message: 'Backtest done',
-        result: simulateCache[token]?.[year],
-        minQty: queryToken.minQty,
-        leverage: queryToken.leverage,
-      });
-    }
-
-    const result = queryToken
-      ? await backtestLogic({
-          strategyId,
-          data: yearData,
-          token: queryToken,
-          timeFrame: '1d',
-        })
-      : {};
-
-    // Cache
-    simulateCache[token] = simulateCache[token] || {};
-    simulateCache[token][year] = result;
-
-    return res.status(200).json({
-      message: 'Backtest done',
-      result: result,
-      minQty: queryToken?.minQty,
-      leverage: queryToken?.leverage,
-    });
-  } catch (err) {
-    return res.status(500).json({ message: 'Internal server error' });
-  }
-});
+// Execute backtest - authentication optional (for public landing page)
+router.post('/execute', (req, res) =>
+  backtestController.executeBacktest(req, res)
+);
 
 const backtestLogic = async ({
   strategyId,
