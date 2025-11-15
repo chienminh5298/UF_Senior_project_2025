@@ -97,6 +97,49 @@ services:
     #         -d *.moneymachine.fund
     #     restart: on-failure
 
+    backend:
+        build:
+            context: ./webServer
+            dockerfile: Dockerfile.dev
+        depends_on:
+            ufdatabase:
+                condition: service_healthy
+        ports:
+            - '3001:3001'
+            - '7777:7777'
+        env_file: ./webServer/.env
+        volumes:
+            - ./webServer:/app
+            - /app/node_modules          
+            # - ./certbot/conf:/etc/letsencrypt #Mount for SSL certs
+            # - ~/.aws:/root/.aws:ro
+        container_name: backend
+        # environment:
+        #     - AWS_PROFILE=AdministratorAccess-427078961005
+        #     - AWS_SDK_LOAD_CONFIG=1     # bắt SDK đọc ~/.aws/config
+        #     - AWS_REGION=ap-southeast-1
+    frontend-user:
+        build:
+            context: ./frontendUser
+            dockerfile: Dockerfile.dev
+        ports:
+            - '3000:3000'
+        volumes:
+            - ./frontendUser:/app
+            - /app/node_modules # avoid overwriting node_modules
+        environment:
+            - BACKEND_URL=http://backend:3001
+    frontend-admin:
+        build:
+            context: ./frontendAdmin
+            dockerfile: Dockerfile.dev
+        ports:
+            - '3002:3002'
+        volumes:
+            - ./frontendAdmin:/app
+            - /app/node_modules # avoid overwriting node_modules
+        environment:
+            - BACKEND_URL=http://backend:3001
 volumes:
     db-volume:
     log-volume:

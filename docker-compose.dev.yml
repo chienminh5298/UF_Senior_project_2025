@@ -41,6 +41,8 @@ services:
             - '3001:3001'
             - '7777:7777'
         env_file: ./webServer/.env
+        environment:
+            - DATABASE_URL=mysql://root:moneymachine@ufdatabase:3306/moneymachine
         volumes:
             - ./webServer:/app
             - /app/node_modules          
@@ -60,6 +62,8 @@ services:
         volumes:
             - ./frontendUser:/app
             - /app/node_modules # avoid overwriting node_modules
+        environment:
+            - BACKEND_URL=http://backend:3001
     frontend-admin:
         build:
             context: ./frontendAdmin
@@ -69,6 +73,8 @@ services:
         volumes:
             - ./frontendAdmin:/app
             - /app/node_modules # avoid overwriting node_modules
+        environment:
+            - BACKEND_URL=http://backend:3001
 volumes:
     db-volume:
     log-volume:

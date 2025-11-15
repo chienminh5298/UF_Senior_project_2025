@@ -14,7 +14,7 @@ RUN npm install
 COPY . .
 
 # 6. Expose port (Next.js dev mode default is 3000)
-EXPOSE 3001
+EXPOSE 3002
 
 # 7. Start dev server
 CMD ["npm", "run", "dev"]

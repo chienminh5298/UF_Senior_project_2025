@@ -84,7 +84,69 @@ export class BacktestController {
         });
       }
 
+      // Validate and fetch strategy from database
+      const strategyId = parseInt(String(strategy), 10);
+      if (isNaN(strategyId)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid strategy ID',
+        });
+      }
+
+      const dbStrategy = await prisma.strategy.findUnique({
+        where: { id: strategyId },
+        select: {
+          id: true,
+          description: true,
+          isActive: true,
+          tokenStrategies: {
+            select: {
+              token: {
+                select: {
+                  name: true,
+                },
+              },
+            },
+          },
+        },
+      });
+
+      if (!dbStrategy) {
+        return res.status(400).json({
+          success: false,
+          message: 'Strategy not found',
+        });
+      }
+
+      if (!dbStrategy.isActive) {
+        return res.status(400).json({
+          success: false,
+          message: 'Strategy is not active',
+        });
+      }
+
+      // Map token abbreviations to database token names
+      const tokenNameMap: Record<string, string> = {
+        BTC: 'Bitcoin',
+        ETH: 'Ethereum',
+        SOL: 'Solana',
+      };
+      const tokenName = tokenNameMap[token];
+
+      // Verify strategy is available for the selected token
+      const strategyTokens = dbStrategy.tokenStrategies
+        .filter((ts) => ts.token !== null)
+        .map((ts) => ts.token!.name);
+      
+      if (!strategyTokens.includes(tokenName)) {
+        return res.status(400).json({
+          success: false,
+          message: `Strategy is not available for ${token}`,
+        });
+      }
+
       // Create backtest configuration
+      // Use strategy description for the backtesting service (it uses keywords like "momentum", "scalping")
       // For 2025, use Oct 9 as end date (current available data), for past years use Dec 31
       const endDate =
         year === 2025
@@ -93,7 +155,7 @@ export class BacktestController {
 
       const config: BacktestConfig = {
         symbol: `${token}USDT`,
-        strategy,
+        strategy: dbStrategy.description, // Use description for strategy algorithm selection
         timeframe: String(year), // Using year as timeframe
         startDate: new Date(year, 0, 1),
         endDate,
@@ -145,97 +207,81 @@ export class BacktestController {
 
   /**
    * GET /api/backtest/strategies?token=BTC
-   * Get available trading strategies for a given token
+   * Get available trading strategies for a given token from the database
    */
   async getAvailableStrategies(req: Request, res: Response) {
     try {
       const token = req.query.token as string;
 
-      const allStrategies = {
-        BTC: [
-          {
-            id: 'btc-momentum-pro',
-            name: 'BTC Momentum Pro',
-            description:
-              'Moving average crossover strategy optimized for Bitcoin',
-            riskLevel: 'Medium',
-            expectedReturn: '15-35%',
-          },
-          {
-            id: 'btc-breakout-trader',
-            name: 'BTC Breakout Trader',
-            description: 'Identifies and trades significant price breakouts',
-            riskLevel: 'High',
-            expectedReturn: '20-45%',
-          },
-          {
-            id: 'btc-trend-follower',
-            name: 'BTC Trend Follower',
-            description: 'Long-term trend following strategy for Bitcoin',
-            riskLevel: 'Low',
-            expectedReturn: '10-25%',
-          },
-        ],
-        ETH: [
-          {
-            id: 'eth-scalping-bot',
-            name: 'ETH Scalping Bot',
-            description: 'High-frequency RSI-based scalping for Ethereum',
-            riskLevel: 'High',
-            expectedReturn: '20-50%',
-          },
-          {
-            id: 'eth-volatility-trader',
-            name: 'ETH Volatility Trader',
-            description: 'Trades based on volatility patterns in Ethereum',
-            riskLevel: 'Medium',
-            expectedReturn: '15-30%',
-          },
-          {
-            id: 'eth-smart-money',
-            name: 'ETH Smart Money',
-            description: 'Follows institutional order flow patterns',
-            riskLevel: 'Medium',
-            expectedReturn: '12-28%',
-          },
-        ],
-        SOL: [
-          {
-            id: 'sol-swing-trader',
-            name: 'SOL Swing Trader',
-            description:
-              'Swing trading strategy for Solana with trend following',
-            riskLevel: 'Medium',
-            expectedReturn: '10-25%',
-          },
-          {
-            id: 'sol-momentum-scalper',
-            name: 'SOL Momentum Scalper',
-            description: 'Fast-paced momentum scalping for Solana',
-            riskLevel: 'High',
-            expectedReturn: '18-40%',
-          },
-          {
-            id: 'sol-support-resistance',
-            name: 'SOL Support/Resistance',
-            description: 'Trades key support and resistance levels',
-            riskLevel: 'Low',
-            expectedReturn: '8-20%',
-          },
-        ],
+      // Map token abbreviations to database token names
+      const tokenNameMap: Record<string, string> = {
+        BTC: 'Bitcoin',
+        ETH: 'Ethereum',
+        SOL: 'Solana',
       };
 
-      if (token && allStrategies[token as keyof typeof allStrategies]) {
-        res.json({
-          success: true,
-          data: allStrategies[token as keyof typeof allStrategies],
-        });
-      } else {
-        res.json({
-          success: true,
-          data: allStrategies,
-        });
+      // Build query to fetch strategies
+      const whereClause: any = {
+        isActive: true, // Only return active strategies
+      };
+
+      // If token is provided, filter by token through tokenStrategies
+      if (token && tokenNameMap[token]) {
+        const tokenName = tokenNameMap[token];
+        whereClause.tokenStrategies = {
+          some: {
+            token: {
+              name: tokenName,
+              isActive: true,
+            },
+          },
+        };
       }
+
+      // Fetch strategies from database
+      const strategies = await prisma.strategy.findMany({
+        where: whereClause,
+        select: {
+          id: true,
+          description: true,
+          tokenStrategies: {
+            select: {
+              token: {
+                select: {
+                  name: true,
+                },
+              },
+            },
+          },
+        },
+        orderBy: {
+          id: 'asc',
+        },
+      });
+
+      // Format strategies to match frontend expectations
+      const formattedStrategies = strategies.map((strategy) => {
+        // Get token names for this strategy
+        const tokenNames = strategy.tokenStrategies
+          .filter((ts) => ts.token !== null)
+          .map((ts) => ts.token!.name);
+
+        // Create a name from description (first part) or use description
+        const name = strategy.description.split(' - ')[0] || strategy.description;
+
+        return {
+          id: String(strategy.id), // Convert to string to match frontend expectations
+          name: name,
+          description: strategy.description,
+        };
+      });
+
+      // If token is provided, return only strategies for that token
+      // Otherwise return all strategies
+      res.json({
+        success: true,
+        data: formattedStrategies,
+      });
     } catch (error) {
       console.error('Error fetching strategies:', error);
       res.status(500).json({
