@@ -14,22 +14,22 @@ services:
         ports:
             - '3306:3306'
         container_name: ufdatabase
-    bottrade:
-        build:
-            context: ./botTrade
-            dockerfile: Dockerfile.dev
-        depends_on:
-            ufdatabase:
-                condition: service_healthy
-        ports:
-            - '9999:9999'
-        env_file: ./botTrade/.env
-        volumes:
-            - ./botTrade:/app            # Mount local source for hot-reload
-            - /app/node_modules          # Prevent overwriting node_modules
-            - log-volume:/app/log
-            # - ~/.aws:/root/.aws:ro
-        container_name: bottrade
+    # bottrade:
+    #     build:
+    #         context: ./botTrade
+    #         dockerfile: Dockerfile.dev
+    #     depends_on:
+    #         ufdatabase:
+    #             condition: service_healthy
+    #     ports:
+    #         - '9999:9999'
+    #     env_file: ./botTrade/.env
+    #     volumes:
+    #         - ./botTrade:/app            # Mount local source for hot-reload
+    #         - /app/node_modules          # Prevent overwriting node_modules
+    #         - log-volume:/app/log
+    #         # - ~/.aws:/root/.aws:ro
+    #     container_name: bottrade
     backend:
         build:
             context: ./webServer
@@ -41,6 +41,8 @@ services:
             - '3001:3001'
             - '7777:7777'
         env_file: ./webServer/.env
+        environment:
+            - DATABASE_URL=mysql://root:moneymachine@ufdatabase:3306/moneymachine
         volumes:
             - ./webServer:/app
             - /app/node_modules          

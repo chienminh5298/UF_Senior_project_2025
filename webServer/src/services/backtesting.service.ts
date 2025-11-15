@@ -770,8 +770,8 @@ export class BacktestingService {
    */
   async executeBacktest(config: BacktestConfig): Promise<BacktestResults> {
     try {
-      // Get symbol for API call
-      const symbol = this.getSymbolForStrategy(config.strategy);
+      // Use the symbol from config (already includes token like BTCUSDT, ETHUSDT, etc.)
+      const symbol = config.symbol;
 
       // Use the startDate and endDate from config instead of calculateDateRange
       const startTime = config.startDate.getTime();
