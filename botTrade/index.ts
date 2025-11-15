@@ -7,9 +7,9 @@ import { loadTargetToStorage } from "@src/handleOrders/handleTarget";
 import express, { NextFunction, Request, Response } from "express";
 import brokerInstancePool from "@src/classes/brokerInstancePool";
 import prisma, { connectDatabase } from "@root/prisma/database";
-import handleBacktestRoute from "@src/routes/backtest/backtest";
+import handleBacktestRoute, { backtestLogic } from "@src/routes/backtest/backtest";
 import handleOrderRoute from "@src/routes/handleOrder";
-import { mutationUpdateData } from "@root/src/API/ultil";
+import { getData1YearCandle, mutationUpdateData } from "@root/src/API/ultil";
 import { isAuthorization } from "@src/middleware";
 import { logging } from "@src/utils/log";
 // import { loadDEK } from "@src/utils/aws";
@@ -71,7 +71,7 @@ const startServer = async () => {
             const minute = now.getMinutes();
             const second = now.getSeconds();
             // logging("info", `hour:${hour} - minute: ${minute} - second: ${second}`);
-            if (hour === 18 && minute === 32 && second === 5) {
+            if ((hour === 0 && minute === 0 && second === 5) || (hour === 8 && minute === 0 && second === 5) || (hour === 16 && minute === 0 && second === 5)) {
                 logging("info", `hour:${hour} - minute: ${minute} - second: ${second}`);
                 await checkExpireVouchers();
                 await checkGenerateBill();
@@ -82,7 +82,21 @@ const startServer = async () => {
     }
 };
 
-// startServer();
+// const test = async () => {
+//     let yearData;
+//     const queryData = await getData1YearCandle("SOL", "2025");
+
+//     if (queryData.status === 200) {
+//         console.log("Data fetched successfully");
+//         yearData = queryData.data;
+//         const result = await backtestLogic({ strategyId: 1, data: yearData, token: "SOL", timeFrame: "1d" });
+//         console.log(result);
+//     }
+//     console.log("Done" );
+// };
+// test();
+
+startServer();
 
 const checkTokens = async () => {
     let tokens: Token[] = await prisma.token.findMany();

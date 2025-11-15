@@ -255,7 +255,7 @@ class Binance implements BrokerInterface {
     API_newStoploss = async (p: __payloadNewStoplossType) => {
         try {
             const sym = p.symbol;
-            const stopSide = p.side === "SELL" ? "BUY" : "SELL"; // close opposite side
+            const stopSide = p.side; // close opposite side
 
             const res = await this.signedPOST<any>("/fapi/v1/order", {
                 symbol: sym,
@@ -395,82 +395,69 @@ class Binance implements BrokerInterface {
     private API_socketEventDriven = async () => {
         const connect = async () => {
             try {
-                // 1) Create/refresh listenKey
+                // 1) Create/refresh listenKey (empty string body => Content-Length: 0)
                 if (!this.listenKey) {
-                    const r = await axios.post(`${this.BASE_URL_API}/fapi/v1/listenKey`, null, {
-                        headers: { "X-MBX-APIKEY": this.API_KEY },
-                    });
+                    const r = await axios.post(
+                        `${this.BASE_URL_API}/fapi/v1/listenKey`,
+                        "", // IMPORTANT: empty string, not null/undefined
+                        { headers: { "X-MBX-APIKEY": this.API_KEY }, timeout: 8000 }
+                    );
                     this.listenKey = r.data?.listenKey;
+                    if (!this.listenKey) throw new Error("No listenKey in response");
 
-                    // Keepalive every ~55 min (must be < 60m)
+                    // Keepalive < 60 min
                     if (this.listenKeyKeepAlive) clearInterval(this.listenKeyKeepAlive);
                     this.listenKeyKeepAlive = setInterval(async () => {
                         try {
-                            await axios.put(`${this.BASE_URL_API}/fapi/v1/listenKey`, null, {
-                                headers: { "X-MBX-APIKEY": this.API_KEY },
-                            });
+                            await axios.put(
+                                `${this.BASE_URL_API}/fapi/v1/listenKey`,
+                                "", // keep this empty too
+                                { headers: { "X-MBX-APIKEY": this.API_KEY }, timeout: 8000 }
+                            );
                         } catch (e) {
-                            writeLog(["listenKey keepalive failed", e]);
+                            writeLog(["listenKey keepalive failed", (e as any)?.response?.status, (e as any)?.response?.data]);
                         }
                     }, 55 * 60 * 1000);
                 }
 
                 // 2) Open WS
-                const url = `${this.BASE_URL_WS}/${this.listenKey}`;
-                const socket = new WebSocket(url);
+                const socket = new WebSocket(`${this.BASE_URL_WS}/${this.listenKey}`);
 
-                const attemptReconnect = async () => {
+                const attemptReconnect = () => {
                     try {
                         socket.close();
                     } catch {}
-                    // drop current listenKey and get a fresh one on reconnect
-                    this.listenKey = null;
+                    this.listenKey = null; // force a fresh listenKey next time
                     setTimeout(() => this.API_socketEventDriven(), 3000);
                 };
 
                 socket.on("open", () => {
-                    // no auth message needed
-                    logging("info", `Open socket Binance successfull.`);
+                    /* ok */
                 });
 
-                socket.on("message", async (msg: WebSocket.RawData) => {
+                socket.on("message", async (msg) => {
                     try {
-                        // Your expected payload shape: { data: { e, o, ... } }
                         const parsed = jsonbig.parse(msg.toString());
-                        const { e, o } = (parsed?.data ?? parsed) as any; // fallback if broker sends without .data
+                        const { e, o } = (parsed?.data ?? parsed) as any;
+
+                        if (e === "listenKeyExpired") {
+                            writeLog(["listenKeyExpired notice → reconnect"]);
+                            return attemptReconnect();
+                        }
 
                         if (e !== "ORDER_TRADE_UPDATE") return;
-                        /* ─── Stop-loss / Take-profit hit ───────────────────── */
-                        if (
-                            o.x === "TRADE" && // executionReport
-                            o.X === "FILLED" && // filled 100%
-                            o.R === true && // reduce-only
-                            (o.ot === "STOP_MARKET" || o.ot === "TAKE_PROFIT_MARKET")
-                        ) {
-                            const orderId = jsonbig.stringify(o.i); // preserve full precision id
-                            const markPrice = parseFloat(o.ap); // avg price
+
+                        if (o.x === "TRADE" && o.X === "FILLED" && o.R === true && (o.ot === "STOP_MARKET" || o.ot === "TAKE_PROFIT_MARKET")) {
+                            const orderId = jsonbig.stringify(o.i);
+                            const markPrice = parseFloat(o.ap);
                             await excutedStoploss(orderId, markPrice);
                             return;
                         }
 
-                        /* ─── Đóng tay trên Web UI ──────────────────────────── */
-                        if (
-                            o.x === "TRADE" &&
-                            o.X === "FILLED" &&
-                            o.R === true &&
-                            o.ot === "MARKET" && // pure market close
-                            o.c?.includes("web") // clientOrderId from Web
-                        ) {
+                        if (o.x === "TRADE" && o.X === "FILLED" && o.R === true && o.ot === "MARKET" && o.c?.includes("web")) {
                             const token = removeUSDT(o.s);
                             const markPrice = parseFloat(o.ap);
                             await closeOrderManually(token, markPrice, this.userId);
-                            return;
-                        }
-
-                        // optional: handle listenKey expiration notice
-                        if (e === "listenKeyExpired") {
-                            writeLog(["listenKeyExpired notice → reconnect"]);
-                            attemptReconnect();
                         }
                     } catch (err) {
                         writeLog(["WS message parse error", err]);
@@ -481,15 +468,16 @@ class Binance implements BrokerInterface {
                     writeLog(["WS error", err]);
                     attemptReconnect();
                 });
-
                 socket.on("close", () => {
                     attemptReconnect();
                 });
-            } catch (e) {
-                writeLog(["WS connect error", e]);
+            } catch (e: any) {
+                // Log exact API error body to see Binance code (-2015 etc.)
+                writeLog(["WS connect error", e?.response?.status, e?.response?.data || e?.message]);
                 setTimeout(() => connect(), 3000);
             }
         };
+
         void connect();
     };
 
@@ -574,13 +562,20 @@ class Binance implements BrokerInterface {
     };
 
     getPrice = async (symbol: string) => {
-        const response = await axios.get(`${this.BASE_URL_API}/fapi/v1/premiumIndex?symbol=${symbol}`);
-
-        if (response.status !== 200) {
-            writeLog([`Error get price ${symbol}`, response]);
+        try {
+            const response = await axios.get(`${this.BASE_URL_API}/fapi/v1/premiumIndex`, {
+                params: { symbol: symbol.toUpperCase() },
+                timeout: 5000, // optional: avoid hanging requests
+            });
+            if (response.status !== 200 || !response.data?.markPrice) {
+                console.error(`Error fetching price for ${symbol}:`, response.data);
+                return undefined;
+            }
+            return parseFloat(response.data.markPrice);
+        } catch (err) {
+            handleError(`Can't getPrice ${symbol}`, "error", [err]);
             return undefined;
         }
-        return parseFloat(response.data.markPrice);
     };
 }
 

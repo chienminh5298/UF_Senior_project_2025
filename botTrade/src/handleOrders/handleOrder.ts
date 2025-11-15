@@ -56,6 +56,7 @@ export const openRootOrder = async ({ token, strategy, side, forSpecifyUserId = 
                     // Doesn't match condition => ghi nhận nhưng vẫn fulfilled
                     return { status: 204, userId: user.id }; // 204: skipped
                 }
+
                 return handleOpenOrder({
                     strategyId,
                     token,
@@ -259,7 +260,12 @@ export const calculateOrderQty = async ({ token, strategy, price, user, strategy
 const countUserTokenStrategies = async (user: User, strategyId: number): Promise<number> => {
     // Step 1: Get all tokens associated with the user
     const userTokens = await prisma.userToken.findMany({
-        where: { userId: user.id },
+        where: {
+            userId: user.id,
+            token: {
+                isActive: true,
+            },
+        },
         select: {
             tokenId: true,
         },

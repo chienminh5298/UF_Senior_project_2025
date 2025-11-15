@@ -28,7 +28,7 @@ class IntervalPriceOrder {
                     let warning = `Can't check price for token ${symbol}`;
                     logging("warning", warning);
                 }
-            }, 3000);
+            }, 5000);
 
             intervalArr[symbol] = intervalId;
         }
