@@ -21,12 +21,13 @@ interface TestAlgorithmProps {
 }
 
 export function TestAlgorithm({ onNavigateToLogin, onLogin }: TestAlgorithmProps) {
-  const [selectedToken, setSelectedToken] = useState('BTC')
+  const [selectedToken, setSelectedToken] = useState('')
   const [selectedStrategy, setSelectedStrategy] = useState('')
   const [selectedYear, setSelectedYear] = useState(2024)
   const [initialCapital, setInitialCapital] = useState(10000)
   const [renderSpeed, setRenderSpeed] = useState(1)
   const [availableStrategies, setAvailableStrategies] = useState<any[]>([])
+  const [availableTokens, setAvailableTokens] = useState<string[]>([])
   const [currentPage, setCurrentPage] = useState(1)
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
   const [backtestResults, setBacktestResults] = useState<any>(null)
@@ -108,8 +109,30 @@ export function TestAlgorithm({ onNavigateToLogin, onLogin }: TestAlgorithmProps
     ? tradesWithCapital[tradesWithCapital.length - 1].capitalAfter 
     : initialCapital
 
+  // Fetch available tokens on component mount
+  useEffect(() => {
+    const fetchTokens = async () => {
+      try {
+        const response = await fetch('/api/backtest/tokens')
+        const data = await response.json()
+        if (data.success && data.data && data.data.length > 0) {
+          setAvailableTokens(data.data)
+          // Auto-select first token if none selected
+          if (!selectedToken && data.data.length > 0) {
+            setSelectedToken(data.data[0])
+          }
+        }
+      } catch (error) {
+        console.error('Failed to fetch tokens:', error)
+      }
+    }
+    fetchTokens()
+  }, [])
+
   // Fetch available strategies when token changes
   useEffect(() => {
+    if (!selectedToken) return
+    
     console.log('Fetching strategies for token:', selectedToken)
     const fetchStrategies = async () => {
       try {
@@ -159,17 +182,17 @@ export function TestAlgorithm({ onNavigateToLogin, onLogin }: TestAlgorithmProps
       })
       
       // Fetch the backtest results
-            const response = await fetch('/api/backtest/execute', {
+      const strategyId = parseInt(String(selectedStrategy), 10)
+      const response = await fetch('/api/backtest/execute', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
           token: selectedToken,
-                    strategy: selectedStrategy,
           year: selectedYear,
-          initialCapital,
-          renderSpeed
+          strategyId: strategyId,
+          budget: initialCapital,
                 })
             })
 
@@ -234,11 +257,15 @@ export function TestAlgorithm({ onNavigateToLogin, onLogin }: TestAlgorithmProps
                         setSelectedStrategy('')
                       }}
                       className="w-full p-3 bg-gray-900 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-blue-500"
-                      disabled={isLoading || isAnimating}
+                      disabled={isLoading || isAnimating || availableTokens.length === 0}
                     >
-                      <option value="BTC">BTC</option>
-                      <option value="ETH">ETH</option>
-                      <option value="SOL">SOL</option>
+                      {availableTokens.length === 0 ? (
+                        <option value="">Loading tokens...</option>
+                      ) : (
+                        availableTokens.map((token) => (
+                          <option key={token} value={token}>{token}</option>
+                        ))
+                      )}
                     </select>
                   </div>
 

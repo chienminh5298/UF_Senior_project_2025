@@ -49,23 +49,102 @@ export class BacktestController {
         strategyId,
       }: { token: string; year: number; budget: number; strategyId: number } =
         req.body;
+
+      // Extract token name from "BTCUSDT" format (remove stable coin suffix)
+      // Token format from frontend: "BTCUSDT", database stores: name="BTC", stable="USDT"
+      let tokenName = token;
+      if (token && token.length > 4 && token.endsWith('USDT')) {
+        tokenName = token.slice(0, -4); // Remove "USDT" suffix
+      }
+
+      // Validate required parameters
+      if (!tokenName || !strategyId || !year) {
+        return res.status(400).json({
+          success: false,
+          message: 'Token, strategyId, and year are required',
+        });
+      }
+
+      // Fetch all active tokens from database to validate token parameter
+      const activeTokens = await prisma.token.findMany({
+        where: {
+          isActive: true,
+        },
+        select: {
+          name: true,
+        },
+      });
+
+      const validTokenNames = activeTokens.map((t) => t.name);
+
+      // Validate token
+      if (!validTokenNames.includes(tokenName)) {
+        return res.status(400).json({
+          success: false,
+          message: `Invalid token. Available tokens: ${validTokenNames.join(', ')}`,
+        });
+      }
+
+      // Validate year - allow current year and two years prior
+      const currentYear = new Date().getFullYear();
+      const validYears = [currentYear - 2, currentYear - 1, currentYear];
+      if (!validYears.includes(year)) {
+        return res.status(400).json({
+          success: false,
+          message: `Invalid year. Must be one of: ${validYears.join(', ')}`,
+        });
+      }
+
+      // Validate strategyId
+      if (isNaN(strategyId) || strategyId <= 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid strategyId',
+        });
+      }
+
+      // Extract budget from request body (if provided, otherwise use default)
+      const budget = req.body.budget || 10000;
+
+      // Validate budget
+      if (budget < 100 || budget > 1000000) {
+        return res.status(400).json({
+          success: false,
+          message: 'Budget must be between $100 and $1,000,000',
+        });
+      }
+
       let yearData = {};
 
-      const queryData = await getData1YearCandle(token, year);
+      try {
+        const queryData = await getData1YearCandle(tokenName, year);
 
-      if (queryData.status === 200) {
-        yearData = queryData.data;
-
-        // // Cache
-        // tokenDataCache[token] = tokenDataCache[token] || {};
-        // tokenDataCache[token][year] = yearData;
-      } else {
-        return res.status(400).json({ message: 'Invalid token or year' });
+        if (queryData.status === 200 && queryData.data) {
+          yearData = queryData.data;
+        } else {
+          return res.status(400).json({ 
+            success: false,
+            message: 'Invalid token or year' 
+          });
+        }
+      } catch (error) {
+        console.error('Error fetching candle data:', error);
+        return res.status(400).json({ 
+          success: false,
+          message: `Failed to fetch data for ${tokenName} ${year}: ${error instanceof Error ? error.message : 'Unknown error'}` 
+        });
       }
 
       const queryToken = await prisma.token.findUnique({
-        where: { name: token },
+        where: { name: tokenName },
       });
+
+      if (!queryToken) {
+        return res.status(400).json({
+          success: false,
+          message: `Token ${tokenName} not found in database`,
+        });
+      }
 
       // if (simulateCache[token]?.[year] && queryToken) {
       //   return res.status(200).json({
@@ -76,20 +155,28 @@ export class BacktestController {
       //   });
       // }
 
-      const result = queryToken
-        ? await backtestLogic({
-            strategyId,
-            data: yearData,
-            token: queryToken,
-            timeFrame: '1d',
-          })
-        : {};
+      let result;
+      try {
+        result = await backtestLogic({
+          strategyId,
+          data: yearData,
+          token: queryToken,
+          timeFrame: '1d',
+          initialCapital: budget,
+        });
+      } catch (error) {
+        console.error('Error in backtestLogic:', error);
+        return res.status(500).json({
+          success: false,
+          message: `Backtest execution failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        });
+      }
 
       // // Cache
       // simulateCache[token] = simulateCache[token] || {};
       // simulateCache[token][year] = result;
 
-       const response ={
+      const response = {
         message: 'Backtest done',
         result: result,
         minQty: queryToken?.minQty,
@@ -113,7 +200,13 @@ export class BacktestController {
    */
   async getAvailableStrategies(req: Request, res: Response) {
     try {
-      const token = req.query.token as string;
+      let token = req.query.token as string;
+
+      // Extract token name from "BTCUSDT" format (remove stable coin suffix)
+      // Token format from frontend: "BTCUSDT", database stores: name="BTC", stable="USDT"
+      if (token && token.length > 4 && token.endsWith('USDT')) {
+        token = token.slice(0, -4); // Remove "USDT" suffix
+      }
 
       // Fetch all active tokens from database to validate token parameter
       const activeTokens = await prisma.token.findMany({
@@ -294,7 +387,14 @@ export class BacktestController {
       const defaultToken =
         validTokenNames.length > 0 ? validTokenNames[0] : null;
 
-      const token = String(req.query.token || defaultToken || '');
+      let token = String(req.query.token || defaultToken || '');
+      
+      // Extract token name from "BTCUSDT" format (remove stable coin suffix)
+      // Token format from frontend: "BTCUSDT", database stores: name="BTC", stable="USDT"
+      if (token && token.length > 4 && token.endsWith('USDT')) {
+        token = token.slice(0, -4); // Remove "USDT" suffix
+      }
+
       const year = Number(req.query.year || new Date().getFullYear());
 
       // Validate token if provided
