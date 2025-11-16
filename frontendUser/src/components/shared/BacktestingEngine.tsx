@@ -323,7 +323,18 @@ export function useBacktestingEngine({ token, year, onBacktestRun, onTradeAnimat
     renderSpeed: number
   }) => {
     try {
-      console.log('Starting backtest with config:', config)
+      // Convert strategy to strategyId and initialCapital to budget
+      const strategyId = parseInt(String(config.strategy), 10)
+      const budget = config.initialCapital
+      
+      const requestBody = {
+        token: config.token,
+        year: config.year,
+        strategyId: strategyId,
+        budget: budget,
+      }
+      
+      console.log('Starting backtest with config:', requestBody)
       
       // Fetch candles first
       const candles = await fetchCandles()
@@ -347,7 +358,7 @@ export function useBacktestingEngine({ token, year, onBacktestRun, onTradeAnimat
       const response = await fetch('/api/backtest/execute', {
         method: 'POST',
         headers,
-        body: JSON.stringify(config)
+        body: JSON.stringify(requestBody)
       })
 
       const data = await response.json()

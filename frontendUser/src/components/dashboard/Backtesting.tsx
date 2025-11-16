@@ -15,18 +15,17 @@ import { PerformanceMetrics } from '../shared/PerformanceMetrics'
 export function Backtesting() {
   const [isRunning, setIsRunning] = useState(false)
   const [hasRun, setHasRun] = useState(false)
-  const [selectedToken, setSelectedToken] = useState('BTC')
+  const [selectedToken, setSelectedToken] = useState('')
   const [selectedStrategy, setSelectedStrategy] = useState('')
   const [selectedYear, setSelectedYear] = useState(2024)
   const [initialCapital, setInitialCapital] = useState(10000)
   const [renderSpeed, setRenderSpeed] = useState(1)
   const [backtestResults, setBacktestResults] = useState<any>(null)
   const [strategies, setStrategies] = useState<any[]>([])
+  const [availableTokens, setAvailableTokens] = useState<string[]>([])
   const [currentPage, setCurrentPage] = useState(1)
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
   const tradesPerPage = 10
-
-  const tokens = ['BTC', 'ETH', 'SOL']
   const years = [2023, 2024, 2025]
   const renderSpeeds = [
     { value: 0.5, label: '0.5x' },
@@ -104,8 +103,30 @@ export function Backtesting() {
     ? tradesWithCapital[tradesWithCapital.length - 1].capitalAfter 
     : initialCapital
 
+  // Fetch available tokens on component mount
+  useEffect(() => {
+    const fetchTokens = async () => {
+      try {
+        const response = await fetch('/api/backtest/tokens')
+        const data = await response.json()
+        if (data.success && data.data && data.data.length > 0) {
+          setAvailableTokens(data.data)
+          // Auto-select first token if none selected
+          if (!selectedToken && data.data.length > 0) {
+            setSelectedToken(data.data[0])
+          }
+        }
+      } catch (error) {
+        console.error('Failed to fetch tokens:', error)
+      }
+    }
+    fetchTokens()
+  }, [])
+
   // Fetch strategies when token changes
   useEffect(() => {
+    if (!selectedToken) return
+    
     const fetchStrategies = async () => {
       try {
         const res = await fetch(`/api/backtest/strategies?token=${selectedToken}`)
@@ -191,11 +212,15 @@ export function Backtesting() {
                   setSelectedStrategy('')
                 }}
                 className="w-full p-3 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-blue-500"
-                disabled={isRunning || isAnimating}
+                disabled={isRunning || isAnimating || availableTokens.length === 0}
               >
-                {tokens.map((token) => (
-                  <option key={token} value={token}>{token}</option>
-                ))}
+                {availableTokens.length === 0 ? (
+                  <option value="">Loading tokens...</option>
+                ) : (
+                  availableTokens.map((token) => (
+                    <option key={token} value={token}>{token}</option>
+                  ))
+                )}
               </select>
             </div>
 
