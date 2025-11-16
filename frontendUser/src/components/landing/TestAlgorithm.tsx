@@ -110,8 +110,10 @@ export function TestAlgorithm({ onNavigateToLogin, onLogin }: TestAlgorithmProps
 
   // Fetch available strategies when token changes
   useEffect(() => {
+    console.log('Fetching strategies for token:', selectedToken)
     const fetchStrategies = async () => {
       try {
+        console.error('Fetching strategies for token:', selectedToken)
         const response = await fetch(`/api/backtest/strategies?token=${selectedToken}`)
         const data = await response.json()
         if (data.success && data.data) {

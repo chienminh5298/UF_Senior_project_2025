@@ -8,6 +8,7 @@ type BacktestLogicType = {
     data: { [date: string]: candleType };
     token: Token;
     timeFrame: "1d" | "4h" | "1h";
+    initialCapital?: number;
 };
 
 type candleType = {
