@@ -7,29 +7,6 @@ import { BacktestCandleType, BacktestChartCandleType, BacktestCreateNewOrderType
 
 const router = express.Router();
 
-let tokenDataCache: {
-    [token: string]: {
-        [year: string]: {};
-    };
-} = {};
-
-let simulateCache: {
-    [token: string]: {
-        [year: string]: BacktestChartCandleType;
-    };
-} = {};
-
-setInterval(async () => {
-    const now = new Date();
-    const hour = now.getHours();
-    const minute = now.getMinutes();
-    const second = now.getSeconds();
-    if (hour === 0 && minute === 0 && second === 10) {
-        tokenDataCache = {};
-        delete simulateCache[now.getFullYear()];
-    }
-}, 1000);
-
 type IndexedCandle = BacktestCandleType & { ts: number };
 
 function prepareCandles(data: { [k: string]: BacktestCandleType }): IndexedCandle[] {

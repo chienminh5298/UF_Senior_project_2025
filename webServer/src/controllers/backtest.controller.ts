@@ -1,8 +1,7 @@
 import { Request, Response } from 'express';
 import { backtestingService } from '../services/backtesting.service';
 import prisma from '../models/prismaClient';
-import * as fs from 'fs';
-import * as path from 'path';
+
 import {
   BacktestLogicType,
   candleType,
@@ -12,6 +11,7 @@ import {
   OrderType,
 } from '../types/express';
 import { Target } from '@prisma/client';
+import { backtestLogic, getData1YearCandle } from './backtestLogic';
 
 export class BacktestController {
   /**
@@ -40,255 +40,60 @@ export class BacktestController {
    * POST /api/backtest/execute
    * Execute a backtest with given parameters using backtestLogic
    */
+
   async executeBacktest(req: Request, res: Response) {
     try {
       const {
         token,
-        strategy,
         year,
-        initialCapital = 10000,
-        renderSpeed = 1,
-      } = req.body;
+        strategyId,
+      }: { token: string; year: number; budget: number; strategyId: number } =
+        req.body;
+      let yearData = {};
 
-      // Get current year for validation and date calculations
-      const currentYear = new Date().getFullYear();
+      const queryData = await getData1YearCandle(token, year);
 
-      // Validate required parameters
-      if (!token || !strategy || !year) {
-        return res.status(400).json({
-          success: false,
-          message: 'Token, strategy, and year are required',
-        });
-      }
+      if (queryData.status === 200) {
+        yearData = queryData.data;
 
-      // Fetch all active tokens from database to validate token parameter
-      const activeTokens = await prisma.token.findMany({
-        where: {
-          isActive: true,
-        },
-        select: {
-          name: true,
-        },
-      });
-
-      const validTokenNames = activeTokens.map((t) => t.name);
-
-      // Validate token
-      if (!validTokenNames.includes(token)) {
-        return res.status(400).json({
-          success: false,
-          message: `Invalid token. Available tokens: ${validTokenNames.join(', ')}`,
-        });
-      }
-
-      // Validate year - allow current year and two years prior
-      const validYears = [currentYear - 2, currentYear - 1, currentYear];
-      if (!validYears.includes(year)) {
-        return res.status(400).json({
-          success: false,
-          message: `Invalid year. Must be one of: ${validYears.join(', ')}`,
-        });
-      }
-
-      // Validate initial capital
-      if (initialCapital < 100 || initialCapital > 1000000) {
-        return res.status(400).json({
-          success: false,
-          message: 'Initial capital must be between $100 and $1,000,000',
-        });
-      }
-
-      // Validate render speed
-      if (renderSpeed < 0.5 || renderSpeed > 10) {
-        return res.status(400).json({
-          success: false,
-          message: 'Render speed must be between 0.5x and 10x',
-        });
-      }
-
-      // Validate and fetch strategy from database
-      const strategyId = parseInt(String(strategy), 10);
-      if (isNaN(strategyId)) {
-        return res.status(400).json({
-          success: false,
-          message: 'Invalid strategy ID',
-        });
-      }
-
-      const dbStrategy = await prisma.strategy.findUnique({
-        where: { id: strategyId },
-        select: {
-          id: true,
-          description: true,
-          isActive: true,
-          parentStrategy: true,
-          tokenStrategies: {
-            select: {
-              token: {
-                select: {
-                  name: true,
-                },
-              },
-            },
-          },
-        },
-      });
-
-      if (!dbStrategy) {
-        return res.status(400).json({
-          success: false,
-          message: 'Strategy not found',
-        });
-      }
-
-      if (!dbStrategy.isActive) {
-        return res.status(400).json({
-          success: false,
-          message: 'Strategy is not active',
-        });
-      }
-
-      console.log(`Strategy ${strategyId} (${dbStrategy.description}): parentStrategy = ${dbStrategy.parentStrategy}`);
-
-      // Verify strategy is available for the selected token
-      // For child strategies (with parentStrategy), check parent's token availability
-      // For parent strategies, check their own tokenStrategies
-      let strategyTokens: string[] = [];
-      
-      if (dbStrategy.parentStrategy) {
-        // This is a child strategy - check parent's token availability
-        // Query TokenStrategy directly to get tokens linked to the parent strategy
-        console.log(`Querying TokenStrategy for parent strategy ${dbStrategy.parentStrategy}...`);
-        
-        const parentTokenStrategies = await prisma.tokenStrategy.findMany({
-          where: {
-            strategyId: dbStrategy.parentStrategy,
-            token: {
-              isActive: true,
-            },
-          },
-          select: {
-            token: {
-              select: {
-                name: true,
-                isActive: true,
-              },
-            },
-          },
-        });
-        
-        console.log(`Found ${parentTokenStrategies.length} TokenStrategy entries for parent ${dbStrategy.parentStrategy}`);
-        console.log(`Raw parentTokenStrategies:`, JSON.stringify(parentTokenStrategies, null, 2));
-        
-        strategyTokens = parentTokenStrategies
-          .filter((ts) => ts.token !== null && ts.token.isActive)
-          .map((ts) => ts.token!.name);
-        
-        console.log(`Child strategy ${strategyId} (parent: ${dbStrategy.parentStrategy}): Found tokens:`, strategyTokens);
-        
-        // Also check if parent strategy exists and is active
-        const parentStrategy = await prisma.strategy.findUnique({
-          where: { id: dbStrategy.parentStrategy },
-          select: { id: true, isActive: true, description: true },
-        });
-        console.log(`Parent strategy ${dbStrategy.parentStrategy} exists:`, !!parentStrategy, `isActive:`, parentStrategy?.isActive);
+        // // Cache
+        // tokenDataCache[token] = tokenDataCache[token] || {};
+        // tokenDataCache[token][year] = yearData;
       } else {
-        // This is a parent strategy - check its own tokenStrategies
-        strategyTokens = dbStrategy.tokenStrategies
-          .filter((ts) => ts.token !== null)
-          .map((ts) => ts.token!.name);
-        
-        console.log(`Parent strategy ${strategyId}: Found tokens:`, strategyTokens);
-        console.log(`Strategy ${strategyId} tokenStrategies count:`, dbStrategy.tokenStrategies.length);
-      }
-      
-      console.log(`Final strategyTokens for strategy ${strategyId}:`, strategyTokens);
-      console.log(`Requested token: ${token}, is included: ${strategyTokens.includes(token)}`);
-      
-      if (!strategyTokens.includes(token)) {
-        console.error(`Strategy ${strategyId} validation failed: token ${token} not in [${strategyTokens.join(', ')}]`);
-        return res.status(400).json({
-          success: false,
-          message: `Strategy is not available for ${token}. Available tokens: ${strategyTokens.length > 0 ? strategyTokens.join(', ') : 'none'}`,
-        });
+        return res.status(400).json({ message: 'Invalid token or year' });
       }
 
-      // Get full token object from database
       const queryToken = await prisma.token.findUnique({
-        where: {
-          name: token, // Use token abbreviation directly (matches DB)
-        },
+        where: { name: token },
       });
 
-      if (!queryToken) {
-        return res.status(400).json({
-          success: false,
-          message: `Token ${token} not found`,
-        });
-      }
+      // if (simulateCache[token]?.[year] && queryToken) {
+      //   return res.status(200).json({
+      //     message: 'Backtest done',
+      //     result: simulateCache[token]?.[year],
+      //     minQty: queryToken.minQty,
+      //     leverage: queryToken.leverage,
+      //   });
+      // }
 
-      // Fetch historical data for the year from local files
-      const getData1YearCandle = async (token: string, year: number | string): Promise<{ [date: string]: candleType }> => {
-        const historicalDataDir = path.join(process.cwd(), 'historical_data');
-        const filePath = path.join(historicalDataDir, token, `${token}${year}.json`);
+      const result = queryToken
+        ? await backtestLogic({
+            strategyId,
+            data: yearData,
+            token: queryToken,
+            timeFrame: '1d',
+          })
+        : {};
 
-        if (!fs.existsSync(filePath)) {
-          throw new Error(`Historical data file not found: ${filePath}`);
-        }
+      // // Cache
+      // simulateCache[token] = simulateCache[token] || {};
+      // simulateCache[token][year] = result;
 
-        try {
-          const fileContent = fs.readFileSync(filePath, 'utf-8');
-          const data = JSON.parse(fileContent);
-          
-          // The data should already be in the format { [date: string]: candleType }
-          // If it's an array, convert it to the expected format
-          if (Array.isArray(data)) {
-            const formattedData: { [date: string]: candleType } = {};
-            data.forEach((candle: any) => {
-              // Handle different possible date formats
-              let dateKey = candle.Date || candle.date || candle.timestamp;
-              if (typeof dateKey === 'number') {
-                dateKey = new Date(dateKey).toISOString();
-              }
-              formattedData[dateKey] = {
-                Date: dateKey,
-                Open: candle.Open || candle.open,
-                High: candle.High || candle.high,
-                Low: candle.Low || candle.low,
-                Close: candle.Close || candle.close,
-                Volume: candle.Volume || candle.volume || 0,
-              };
-            });
-            return formattedData;
-          }
-          
-          return data;
-        } catch (error) {
-          console.error(`Error reading historical data file ${filePath}:`, error);
-          throw new Error(`Failed to read historical data: ${error instanceof Error ? error.message : 'Unknown error'}`);
-        }
-      };
-
-      const yearData = await getData1YearCandle(token, year);
-
-      // Execute backtest using backtestLogic
-      const chartResult = await this.backtestLogic({
-        strategyId: dbStrategy.id,
-        data: yearData,
-        token: queryToken,
-        timeFrame: '1d',
-        initialCapital: initialCapital,
-      });
-
-      // Process the result to extract trades and calculate metrics
-      const processedResult = this.processBacktestResults(chartResult, initialCapital);
-
-      const response = {
-        success: true,
+       const response ={
         message: 'Backtest done',
-        result: processedResult,
-        minQty: queryToken.minQty,
-        leverage: queryToken.leverage,
+        result: result,
+        minQty: queryToken?.minQty,
+        leverage: queryToken?.leverage,
       };
 
       res.json(response);
@@ -350,9 +155,14 @@ export class BacktestController {
           },
         });
 
-        const linkedStrategyIds = tokenStrategies.map((ts) => ts.strategyId).filter((id): id is number => id !== null);
+        const linkedStrategyIds = tokenStrategies
+          .map((ts) => ts.strategyId)
+          .filter((id): id is number => id !== null);
 
-        console.log(`Token ${token}: Found ${linkedStrategyIds.length} directly linked strategies:`, linkedStrategyIds);
+        console.log(
+          `Token ${token}: Found ${linkedStrategyIds.length} directly linked strategies:`,
+          linkedStrategyIds
+        );
 
         if (linkedStrategyIds.length > 0) {
           whereClause = {
@@ -372,7 +182,10 @@ export class BacktestController {
               },
             ],
           };
-          console.log(`Where clause for token ${token}:`, JSON.stringify(whereClause, null, 2));
+          console.log(
+            `Where clause for token ${token}:`,
+            JSON.stringify(whereClause, null, 2)
+          );
         } else {
           // No strategies linked to this token
           whereClause = {
@@ -414,9 +227,14 @@ export class BacktestController {
         },
       });
 
-      console.log(`Found ${strategies.length} strategies for token ${token || 'all'}`);
+      console.log(
+        `Found ${strategies.length} strategies for token ${token || 'all'}`
+      );
       if (token) {
-        console.log(`Where clause for token ${token}:`, JSON.stringify(whereClause, null, 2));
+        console.log(
+          `Where clause for token ${token}:`,
+          JSON.stringify(whereClause, null, 2)
+        );
       }
 
       // Format strategies to match frontend expectations
@@ -427,7 +245,8 @@ export class BacktestController {
           .map((ts) => ts.token!.name);
 
         // Create a name from description (first part) or use description
-        const name = strategy.description.split(' - ')[0] || strategy.description;
+        const name =
+          strategy.description.split(' - ')[0] || strategy.description;
 
         return {
           id: String(strategy.id), // Convert to string to match frontend expectations
@@ -472,7 +291,8 @@ export class BacktestController {
       });
 
       const validTokenNames = activeTokens.map((t) => t.name);
-      const defaultToken = validTokenNames.length > 0 ? validTokenNames[0] : null;
+      const defaultToken =
+        validTokenNames.length > 0 ? validTokenNames[0] : null;
 
       const token = String(req.query.token || defaultToken || '');
       const year = Number(req.query.year || new Date().getFullYear());
@@ -607,7 +427,11 @@ export class BacktestController {
         const targets: Target[] = order.targets;
 
         // Check if targets exist and next target index is valid
-        if (!targets || targets.length === 0 || order.stoplossIdx + 1 >= targets.length) {
+        if (
+          !targets ||
+          targets.length === 0 ||
+          order.stoplossIdx + 1 >= targets.length
+        ) {
           continue;
         }
 
@@ -662,8 +486,14 @@ export class BacktestController {
         }
 
         // Check if targets exist and stoplossIdx is valid
-        if (!targets || targets.length === 0 || order.stoplossIdx >= targets.length) {
-          console.warn(`Order ${order.id} has invalid targets or stoplossIdx. Targets: ${targets?.length || 0}, stoplossIdx: ${order.stoplossIdx}`);
+        if (
+          !targets ||
+          targets.length === 0 ||
+          order.stoplossIdx >= targets.length
+        ) {
+          console.warn(
+            `Order ${order.id} has invalid targets or stoplossIdx. Targets: ${targets?.length || 0}, stoplossIdx: ${order.stoplossIdx}`
+          );
           continue;
         }
 
@@ -692,7 +522,7 @@ export class BacktestController {
       // Check if we have enough capital to create an order
       // Use strategy.contribution as the order size, or a default if not set
       const orderSize = strategy?.contribution || 1000;
-      
+
       if (availableCapital < orderSize) {
         // Not enough capital to create order
         return;
@@ -730,7 +560,7 @@ export class BacktestController {
     ) => {
       if (openOrder[order.id]) {
         const orderSize = strategy?.contribution || 1000;
-        
+
         // Calculate P&L based on entry and exit prices
         let pnl = 0;
         if (order.side === 'BUY') {
@@ -740,10 +570,10 @@ export class BacktestController {
           // For SELL: profit when price goes down
           pnl = ((order.entryPrice - markPrice) / order.entryPrice) * orderSize;
         }
-        
+
         // Add back the order size plus P&L to available capital
         availableCapital += orderSize + pnl;
-        
+
         const tempOrder = {
           ...openOrder[order.id],
           markPrice,
@@ -980,14 +810,18 @@ export class BacktestController {
       if (candleData.executedOrder && candleData.executedOrder.length > 0) {
         for (const order of candleData.executedOrder) {
           const orderSize = 1000; // Default order size, should match what's used in backtestLogic
-          
+
           // Calculate P&L for this order
           let pnl = 0;
           if (order.markPrice && order.entryPrice) {
             if (order.side === 'BUY') {
-              pnl = ((order.markPrice - order.entryPrice) / order.entryPrice) * orderSize;
+              pnl =
+                ((order.markPrice - order.entryPrice) / order.entryPrice) *
+                orderSize;
             } else {
-              pnl = ((order.entryPrice - order.markPrice) / order.entryPrice) * orderSize;
+              pnl =
+                ((order.entryPrice - order.markPrice) / order.entryPrice) *
+                orderSize;
             }
           }
 
@@ -1037,7 +871,9 @@ export class BacktestController {
     }
 
     const totalReturn = currentCapital - initialCapital;
-    const totalReturnPercent = ((totalReturn / initialCapital) * 100).toFixed(1);
+    const totalReturnPercent = ((totalReturn / initialCapital) * 100).toFixed(
+      1
+    );
 
     const winningTrades = completeTrades.filter((t) => t.pnl > 0);
     const losingTrades = completeTrades.filter((t) => t.pnl < 0);
@@ -1081,14 +917,19 @@ export class BacktestController {
         maxDrawdown = drawdown;
       }
     }
-    const maxDrawdownPercent = ((maxDrawdown / initialCapital) * 100).toFixed(1);
+    const maxDrawdownPercent = ((maxDrawdown / initialCapital) * 100).toFixed(
+      1
+    );
 
     // Calculate Sharpe ratio (simplified - would need risk-free rate for accurate calculation)
     const returns = equityCurve.slice(1).map((point, i) => {
       const prevValue = equityCurve[i].value;
       return prevValue > 0 ? (point.value - prevValue) / prevValue : 0;
     });
-    const avgReturn = returns.length > 0 ? returns.reduce((sum, r) => sum + r, 0) / returns.length : 0;
+    const avgReturn =
+      returns.length > 0
+        ? returns.reduce((sum, r) => sum + r, 0) / returns.length
+        : 0;
     const variance =
       returns.length > 0
         ? returns.reduce((sum, r) => sum + Math.pow(r - avgReturn, 2), 0) /

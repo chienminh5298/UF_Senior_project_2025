@@ -1,6 +1,7 @@
 import axios from 'axios';
 import * as fs from 'fs';
 import * as path from 'path';
+import prisma from '../models/prismaClient';
 
 // Types for market data and backtesting
 export interface CandleData {
@@ -871,11 +872,13 @@ export class BacktestingService {
    * Get available tokens for backtesting (USDT-M Perpetual Futures)
    */
   async getAvailableTokens(): Promise<string[]> {
-    return [
-      'BTCUSDT', // Bitcoin
-      'ETHUSDT', // Ethereum
-      'SOLUSDT', // Solana
-    ];
+    const tokens = await prisma.token.findMany({
+    where: {
+      isActive: true,
+    }
+  });
+
+  return tokens.map((t) => t.name + t.stable);
   }
 }
 
