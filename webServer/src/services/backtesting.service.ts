@@ -873,12 +873,24 @@ export class BacktestingService {
    */
   async getAvailableTokens(): Promise<string[]> {
     const tokens = await prisma.token.findMany({
-    where: {
-      isActive: true,
-    }
-  });
+      where: {
+        isActive: true,
+        tokenStrategies: {
+          some: {
+            strategy: {
+              isActive: true,
+            },
+          },
+        },
+      },
+      select: {
+        name: true,
+        stable: true,
+      },
+    });
 
-  return tokens.map((t) => t.name + t.stable);
+    // Return tokens as "BTCUSDT", "ETHUSDT" format (name + stable)
+    return tokens.map((t) => t.name + t.stable);
   }
 }
 

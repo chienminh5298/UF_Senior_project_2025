@@ -1,7 +1,16 @@
 import axios from "axios";
+import { promises as fs } from "fs";
+import path from "path";
 import prisma from "../models/prismaClient";
-import { BacktestLogicType, candleType, ChartCandleType, CreateNewOrderType, IndexedCandle, OrderType } from "../types/express";
-import { Target, Token } from "@prisma/client";
+import {
+  BacktestLogicType,
+  candleType,
+  ChartCandleType,
+  CreateNewOrderType,
+  IndexedCandle,
+  OrderType,
+} from "../types/express";
+import { Target } from "@prisma/client";
 
 // let tokenDataCache: {
 //   [token: string]: {
@@ -16,6 +25,7 @@ import { Target, Token } from "@prisma/client";
 // } = {};
 
 const randomId = () => Math.floor(100000000 + Math.random() * 900000000);
+const HISTORICAL_DATA_DIR = path.join(process.cwd(), "historical_data");
 
 function aggregateToMap(
   allCandles: IndexedCandle[],
@@ -158,10 +168,79 @@ function prepareCandles(data: { [k: string]: candleType }): IndexedCandle[] {
     .sort((a, b) => a.ts - b.ts);
 }
 
-export const getData1YearCandle = async (token: string, year: number | string) => {
-  return await axios.get(
-    `${process.env.GOOGLE_APP_SCRIPT}?action=readYear&token=${token}&year=${year}`
+const loadLocalYearData = async (token: string, year: number | string) => {
+  const normalizedToken = token.toUpperCase();
+  const normalizedYear = year.toString();
+  const candidateFiles = [
+    path.join(
+      HISTORICAL_DATA_DIR,
+      normalizedToken,
+      `${normalizedToken}${normalizedYear}.json`
+    ),
+    path.join(
+      HISTORICAL_DATA_DIR,
+      normalizedToken,
+      `${normalizedYear}.json`
+    ),
+  ];
+
+  for (const filePath of candidateFiles) {
+    try {
+      await fs.access(filePath);
+      const fileContents = await fs.readFile(filePath, "utf8");
+      const parsed = JSON.parse(fileContents);
+      console.log(
+        `📁 Loaded local backtest data: ${path.relative(
+          HISTORICAL_DATA_DIR,
+          filePath
+        )}`
+      );
+      return { status: 200, data: parsed };
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+        console.error(
+          `❌ Failed reading ${path.relative(
+            HISTORICAL_DATA_DIR,
+            filePath
+          )}:`,
+          error
+        );
+        throw error;
+      }
+    }
+  }
+
+  throw new Error(
+    `Local data file not found for ${normalizedToken} ${normalizedYear}`
   );
+};
+
+export const getData1YearCandle = async (
+  token: string,
+  year: number | string
+) => {
+  const normalizedToken = token.toUpperCase();
+  const scriptUrl = process.env.GOOGLE_APP_SCRIPT;
+
+  if (scriptUrl && /^https?:\/\//i.test(scriptUrl)) {
+    try {
+      return await axios.get(
+        `${scriptUrl}?action=readYear&token=${normalizedToken}&year=${year}`
+      );
+    } catch (error) {
+      console.warn(
+        `⚠️  Remote Google Script fetch failed for ${normalizedToken} ${year}: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }. Falling back to local files.`
+      );
+    }
+  } else {
+    console.warn(
+      "⚠️  GOOGLE_APP_SCRIPT env is not configured. Falling back to local historical data files."
+    );
+  }
+
+  return await loadLocalYearData(normalizedToken, year);
 };
 
 export const backtestLogic = async ({
@@ -229,8 +308,9 @@ export const backtestLogic = async ({
   });
 
   const strategyTargets: Target[] = strategy?.targets || [];
+  const primaryTriggerStrategy = triggerDefaultStrategies[0];
   const triggerDefaultTargets: Target[] =
-    triggerDefaultStrategies[0].targets || [];
+    primaryTriggerStrategy?.targets || [];
 
   const getPrevCandle = (candledate: string) => {
     const bucketKey = getBucketKey(candledate, timeFrame);
@@ -267,13 +347,34 @@ export const backtestLogic = async ({
   const checkHitTarget = (candle: candleType) => {
     for (const orderId in openOrder) {
       const order = openOrder[orderId];
+      if (!order) {
+        continue;
+      }
 
       const targets: Target[] = order.targets;
 
+      if (
+        !targets ||
+        targets.length === 0 ||
+        order.stoplossIdx + 1 >= targets.length
+      ) {
+        continue;
+      }
+
+      const nextTarget = targets[order.stoplossIdx + 1];
+      if (!nextTarget) {
+        console.warn(
+          `checkHitTarget: missing target at index ${
+            order.stoplossIdx + 1
+          } for order ${order.id}`,
+        );
+        continue;
+      }
+
       const markPrice = getMarkPrice(
-        targets[order.stoplossIdx + 1].targetPercent,
+        nextTarget.targetPercent,
         order.side,
-        order.entryPrice
+        order.entryPrice,
       );
 
       if (
@@ -292,7 +393,7 @@ export const backtestLogic = async ({
           if (!order.isTrigger) {
             // new trigger order
             let side: 'BUY' | 'SELL' = order.side;
-            if (triggerDefaultStrategies[0].direction === 'OPPOSITE') {
+            if (primaryTriggerStrategy?.direction === 'OPPOSITE') {
               if (side === 'BUY') side = 'SELL';
               else side = 'BUY';
             }
@@ -301,7 +402,7 @@ export const backtestLogic = async ({
               entryPrice: markPrice,
               isTrigger: true,
               side,
-              strategyId: 3,
+              strategyId: primaryTriggerStrategy?.id || strategyId,
             });
           }
           // Close order
@@ -314,16 +415,35 @@ export const backtestLogic = async ({
   const checkHitStoploss = (candle: candleType) => {
     for (const id in openOrder) {
       const order = openOrder[id];
+      if (!order) {
+        continue;
+      }
 
       let targets: Target[] = order.targets;
       if (order.isTrigger) {
         targets = triggerDefaultTargets;
       }
 
+      if (
+        !targets ||
+        targets.length === 0 ||
+        order.stoplossIdx >= targets.length
+      ) {
+        continue;
+      }
+
+      const slTarget = targets[order.stoplossIdx];
+      if (!slTarget) {
+        console.warn(
+          `checkHitStoploss: missing stoploss target at index ${order.stoplossIdx} for order ${order.id}`,
+        );
+        continue;
+      }
+
       const markPrice = getMarkPrice(
-        targets[order.stoplossIdx].stoplossPercent,
+        slTarget.stoplossPercent,
         order.side,
-        order.entryPrice
+        order.entryPrice,
       );
       if (
         (order.side === 'BUY' && candle.Low <= markPrice) ||
@@ -349,6 +469,11 @@ export const backtestLogic = async ({
       targets = triggerDefaultTargets;
     }
 
+    if (!targets || targets.length === 0) {
+      console.warn(`⚠️  Cannot create order: no targets for strategy ${strategyId}`);
+      return;
+    }
+
     openOrder[orderId] = {
       id: orderId,
       entryTime: candle.Date,
@@ -361,6 +486,8 @@ export const backtestLogic = async ({
       trend,
     };
 
+    console.log(`📝 Order #${orderId}: ${side} @ ${entryPrice.toFixed(2)} (${isTrigger ? 'TRIGGER' : 'MAIN'})`);
+
     response[candle.Date] = { ...response[candle.Date], openOrderSide: side }; // This is not a part of logic
   };
 
@@ -370,6 +497,12 @@ export const backtestLogic = async ({
     candle: candleType
   ) => {
     if (openOrder[order.id]) {
+      const pnl = order.side === 'BUY' 
+        ? ((markPrice - order.entryPrice) / order.entryPrice) * 100
+        : ((order.entryPrice - markPrice) / order.entryPrice) * 100;
+      
+      console.log(`💰 Order #${order.id} closed: ${order.side} entry ${order.entryPrice.toFixed(2)} → exit ${markPrice.toFixed(2)}, P&L: ${pnl.toFixed(2)}%`);
+
       const tempOrder = {
         ...openOrder[order.id],
         markPrice,
@@ -385,44 +518,68 @@ export const backtestLogic = async ({
   };
 
   //========================= Logic start from here ========================= //
-  for (let i = 481; i < dataKey.length; i++) {
+  console.log(`🔄 Starting backtest: ${dataValues.length} candles, starting at index 481`);
+  console.log(`📊 Strategy ${strategyId} for token ${token.name}, timeFrame: ${timeFrame}`);
+  console.log(`🎯 Main strategy targets: ${strategyTargets.length}, Trigger targets: ${triggerDefaultTargets.length}`);
+  
+  let totalTradesOpened = 0;
+  let totalTradesClosed = 0;
+
+  for (let i = 481; i < dataValues.length; i++) {
     const candle = dataValues[i];
     response[candle.Date] = { candle }; // This is not a part of logic
 
+    // First check if any existing orders hit their stoploss or targets
+    const openOrdersBefore = Object.keys(openOrder).length;
     checkHitStoploss(candle);
     checkHitTarget(candle);
+    const openOrdersAfter = Object.keys(openOrder).length;
+
+    // If an order was closed (count decreased) and no orders remain, immediately open a new one
+    const orderWasClosed = openOrdersBefore > openOrdersAfter;
+    const noOpenOrders = openOrdersAfter === 0;
+    
+    if (orderWasClosed) {
+      totalTradesClosed += (openOrdersBefore - openOrdersAfter);
+    }
 
     if (checkIsNewCandle(candle.Date, timeFrame)) {
-      // Check if exsist open order
+      // At the start of a new time period
       if (Object.keys(openOrder).length > 0) {
-        // Check setting is order close before new candle
         if (strategy?.isCloseBeforeNewCandle) {
-          // Close all order
+          // Close all orders at the start of new candle
           for (const orderId in openOrder) {
             const order = openOrder[orderId];
-            const markPrice = candle.Open; // We close order at mid night => markPrice is open price
+            const markPrice = candle.Open;
             closeOrder(order, markPrice, candle);
+            totalTradesClosed++;
           }
-
-          // Create new order
+          // Immediately create new order
           processCreateNewCandleOrder(candle);
-
-          // Check hit stoploss for new oder just opned (In case hit stoploss at first candle of the day)
+          totalTradesOpened++;
           checkHitStoploss(candle);
           checkHitTarget(candle);
-        } else {
-          // If order keep over night => Do nothing, let order keep running
         }
+        // If isCloseBeforeNewCandle is false, let orders run
       } else {
-        // Create new order
+        // No open orders at start of new candle - create one
         processCreateNewCandleOrder(candle);
-
-        // Check hit stoploss for new oder just opned (In case hit stoploss at first candle of the day)
+        totalTradesOpened++;
         checkHitStoploss(candle);
         checkHitTarget(candle);
       }
+    } else if (orderWasClosed && noOpenOrders) {
+      // Mid-candle: if an order just closed and we have no open orders, create a new one immediately
+      processCreateNewCandleOrder(candle);
+      totalTradesOpened++;
+      checkHitStoploss(candle);
+      checkHitTarget(candle);
     }
   }
+
+  console.log(`✅ Backtest complete: ${totalTradesOpened} trades opened, ${totalTradesClosed} trades closed`);
+  console.log(`📈 Final response has ${Object.keys(response).length} time points`);
+  
 
   response = convertTo1hChart(response);
 
