@@ -17,6 +17,8 @@ cd UF_Senior_project_2025
 docker-compose -f docker-compose.dev.yml up -d
 ```
 
+> **Important:** If you previously brought these containers up **before** pulling the latest repository (or after a schema change), your MySQL volume may still have the old structure. Run `docker-compose -f docker-compose.dev.yml down -v` once to drop the database volume so it gets recreated from `backupDB/db.sql`, then bring the stack back up with the command above.
+
 ### 3. Database Setup
 
 #### First Time Setup (Fresh Database)
@@ -91,7 +93,23 @@ After setup, verify everything is working:
 **Solution**: Run the database setup commands again, starting with `prisma migrate deploy`
 
 ### Issue: "adminNote column does not exist"
-**Solution**: Your database schema is out of sync. Run the database reset commands.
+**Solution**: Your database volume is out of sync with the Prisma schema. Run:
+
+```bash
+docker-compose -f docker-compose.dev.yml down -v      # drops the stale MySQL volume
+docker-compose -f docker-compose.dev.yml up -d        # recreates DB using backupDB/db.sql
+docker-compose -f docker-compose.dev.yml exec backend npx prisma migrate deploy
+docker-compose -f docker-compose.dev.yml exec backend npx prisma generate
+docker-compose -f docker-compose.dev.yml exec backend npm run db:seed
+```
+
+If you already have data you cannot drop, manually add the column instead:
+
+```bash
+docker-compose -f docker-compose.dev.yml exec ufdatabase \
+  mysql -u root -pmoneymachine moneymachine \
+  -e "ALTER TABLE Claim ADD COLUMN adminNote varchar(191) NULL;"
+```
 
 ### Issue: API returns 500 errors after migration
 **Solution**: Restart the backend service:
