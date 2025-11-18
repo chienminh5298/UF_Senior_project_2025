@@ -35,6 +35,20 @@ export interface BacktestResults {
     pnl?: number;
   }>;
   equityCurve: Array<{ timestamp: number; value: number }>;
+  chart: {
+    [date: string]: {
+      candle: {
+        Date: string;
+        Open: number;
+        High: number;
+        Low: number;
+        Close: number;
+        Volume: number;
+      };
+      executedOrder?: any[];
+      openOrderSide?: string;
+    };
+  };
 }
 
 export interface Strategy {

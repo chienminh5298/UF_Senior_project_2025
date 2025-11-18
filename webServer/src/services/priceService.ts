@@ -2,24 +2,25 @@ import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
-// Sample price data
+// Sample price data (used as fallback if no WebSocket data available)
+// Keys must match Token.name in the database (BTC, ETH, SOL, etc.)
 const SAMPLE_PRICES: Record<string, number> = {
-  Bitcoin: 45000.0,
-  Ethereum: 3200.0,
-  Cardano: 0.45,
-  Solana: 95.0,
-  Polygon: 0.85,
-  Chainlink: 15.5,
+  BTC: 45000.0,
+  ETH: 3200.0,
+  ADA: 0.45,
+  SOL: 95.0,
+  MATIC: 0.85,
+  LINK: 15.5,
 };
 
-// Price change simulation
+// Price change simulation for fallback prices
 const PRICE_CHANGES: Record<string, { min: number; max: number }> = {
-  Bitcoin: { min: -0.05, max: 0.05 },
-  Ethereum: { min: -0.08, max: 0.08 },
-  Cardano: { min: -0.12, max: 0.12 },
-  Solana: { min: -0.1, max: 0.1 },
-  Polygon: { min: -0.15, max: 0.15 },
-  Chainlink: { min: -0.09, max: 0.09 },
+  BTC: { min: -0.05, max: 0.05 },
+  ETH: { min: -0.08, max: 0.08 },
+  ADA: { min: -0.12, max: 0.12 },
+  SOL: { min: -0.1, max: 0.1 },
+  MATIC: { min: -0.15, max: 0.15 },
+  LINK: { min: -0.09, max: 0.09 },
 };
 
 export interface TokenPrice {

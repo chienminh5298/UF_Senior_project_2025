@@ -73,15 +73,17 @@ async function main() {
     // ------------------------
     // Tokens
     // ------------------------
+    // Using short names (BTC, ETH, SOL) to match original db.sql structure
+    // This ensures compatibility with backtesting API and historical data files
     const tokens = await Promise.all([
-      prisma.token.create({ data: { name: 'Bitcoin',  stable: 'USDT', minQty: 0.001, isActive: true,  leverage: 3 } }),
-      prisma.token.create({ data: { name: 'Ethereum', stable: 'USDT', minQty: 0.01,  isActive: true,  leverage: 3 } }),
-      prisma.token.create({ data: { name: 'Cardano',  stable: 'USDT', minQty: 1,     isActive: true,  leverage: 2 } }),
-      prisma.token.create({ data: { name: 'Solana',   stable: 'USDT', minQty: 0.1,   isActive: true,  leverage: 5 } }),
-      prisma.token.create({ data: { name: 'Polygon',  stable: 'USDT', minQty: 10,    isActive: true,  leverage: 2 } }),
-      prisma.token.create({ data: { name: 'Chainlink',stable: 'USDT', minQty: 1,     isActive: false, leverage: 1 } }),
+      prisma.token.create({ data: { name: 'BTC', stable: 'USDT', minQty: 0.002, isActive: true,  leverage: 2 } }),
+      prisma.token.create({ data: { name: 'ETH', stable: 'USDT', minQty: 0.01,  isActive: true,  leverage: 2 } }),
+      prisma.token.create({ data: { name: 'SOL', stable: 'USDT', minQty: 0.03,  isActive: true,  leverage: 1 } }),
+      prisma.token.create({ data: { name: 'ADA', stable: 'USDT', minQty: 1,     isActive: true,  leverage: 2 } }),
+      prisma.token.create({ data: { name: 'MATIC', stable: 'USDT', minQty: 10,    isActive: true,  leverage: 2 } }),
+      prisma.token.create({ data: { name: 'LINK', stable: 'USDT', minQty: 1,     isActive: false, leverage: 1 } }),
     ]);
-    const [BTC, ETH, ADA, SOL, MATIC] = tokens;
+    const [BTC, ETH, SOL, ADA, MATIC, LINK] = tokens;
     console.log(`Created ${tokens.length} tokens`);
 
     // ------------------------
@@ -218,7 +220,54 @@ async function main() {
     // ------------------------
     // Strategies + Targets + TokenStrategy
     // ------------------------
+    // Create multiple strategies for backtesting comparison
+    // Strategy 1: Original from db.sql - Main strategy
+    // Strategy 2: Original from db.sql - Trigger (child of 1)
+    // Strategy 3: Tight Scalping Main
+    // Strategy 4: Tight Scalping Trigger (child of 3)
+    // Strategy 5-7: Legacy swing/trend strategies
     const strategies = await Promise.all([
+      // Original strategies from db.sql
+      prisma.strategy.create({
+        data: {
+          description: '', // Original main strategy
+          contribution: 100,
+          isActive: true,
+          isCloseBeforeNewCandle: false,
+          direction: DirectionType.OPPOSITE,
+        },
+      }),
+      prisma.strategy.create({
+        data: {
+          description: 'trigger', // Original trigger strategy
+          contribution: 100,
+          isActive: true,
+          isCloseBeforeNewCandle: false,
+          direction: DirectionType.OPPOSITE,
+          parentStrategy: 1, // child of strategy 1
+        },
+      }),
+      // New scalping strategies with tighter stops
+      prisma.strategy.create({
+        data: {
+          description: 'Tight Scalping',
+          contribution: 100,
+          isActive: true,
+          isCloseBeforeNewCandle: false,
+          direction: DirectionType.SAME,
+        },
+      }),
+      prisma.strategy.create({
+        data: {
+          description: 'Tight Scalping Trigger',
+          contribution: 100,
+          isActive: true,
+          isCloseBeforeNewCandle: false,
+          direction: DirectionType.OPPOSITE,
+          parentStrategy: 3, // child of strategy 3
+        },
+      }),
+      // Legacy quick scalping strategy
       prisma.strategy.create({
         data: {
           description: 'Scalping Strategy - quick moves',
@@ -248,28 +297,254 @@ async function main() {
       }),
     ]);
 
+    const [
+      mainStrategy,
+      triggerStrategy,
+      scalpingStrategy,
+      scalpingTrigger,
+      legacyQuickScalp,
+      swingStrategy,
+      trendStrategy,
+    ] = strategies;
+
     const targets = await Promise.all([
-      prisma.target.create({ data: { targetPercent: 2.5, stoplossPercent: 1.0, tokenId: BTC.id,  strategyId: strategies[0].id } }),
-      prisma.target.create({ data: { targetPercent: 3.0, stoplossPercent: 1.5, tokenId: ETH.id,  strategyId: strategies[0].id } }),
-      prisma.target.create({ data: { targetPercent: 4.0, stoplossPercent: 2.0, tokenId: SOL.id,  strategyId: strategies[0].id } }),
-      prisma.target.create({ data: { targetPercent: 5.0, stoplossPercent: 2.0, tokenId: ETH.id,  strategyId: strategies[1].id } }),
-      prisma.target.create({ data: { targetPercent: 6.0, stoplossPercent: 2.5, tokenId: ADA.id,  strategyId: strategies[1].id } }),
-      prisma.target.create({ data: { targetPercent: 8.0, stoplossPercent: 3.0, tokenId: ADA.id,  strategyId: strategies[2].id } }),
-      prisma.target.create({ data: { targetPercent:10.0, stoplossPercent: 4.0, tokenId: BTC.id,  strategyId: strategies[2].id } }),
+      // ========== ORIGINAL STRATEGY (Strategy 1 & 2) - From db.sql ==========
+      // SOL targets for original main strategy
+      prisma.target.create({
+        data: {
+          targetPercent: 0,
+          stoplossPercent: -1.85,
+          tokenId: SOL.id,
+          strategyId: mainStrategy.id,
+        },
+      }),
+      prisma.target.create({
+        data: {
+          targetPercent: 0.6,
+          stoplossPercent: 0.6,
+          tokenId: SOL.id,
+          strategyId: mainStrategy.id,
+        },
+      }),
+      // SOL targets for original trigger strategy
+      prisma.target.create({
+        data: {
+          targetPercent: 0,
+          stoplossPercent: -1.5,
+          tokenId: SOL.id,
+          strategyId: triggerStrategy.id,
+        },
+      }),
+      prisma.target.create({
+        data: {
+          targetPercent: 3,
+          stoplossPercent: 3,
+          tokenId: SOL.id,
+          strategyId: triggerStrategy.id,
+        },
+      }),
+
+      // ========== TIGHT SCALPING STRATEGY (Strategy 3 & 4) ==========
+      // BTC - Tight scalping strategy (more frequent trades)
+      // Main strategy: tight 0.4% target, -0.5% stop
+      prisma.target.create({
+        data: {
+          targetPercent: 0,
+          stoplossPercent: -0.35,
+          tokenId: BTC.id,
+          strategyId: scalpingStrategy.id,
+        },
+      }),
+      prisma.target.create({
+        data: {
+          targetPercent: 0.7,
+          stoplossPercent: 0.7,
+          tokenId: BTC.id,
+          strategyId: scalpingStrategy.id,
+        },
+      }),
+      // Trigger: slightly wider 1.2% target
+      prisma.target.create({
+        data: {
+          targetPercent: 0,
+          stoplossPercent: -0.5,
+          tokenId: BTC.id,
+          strategyId: scalpingTrigger.id,
+        },
+      }),
+      prisma.target.create({
+        data: {
+          targetPercent: 1.2,
+          stoplossPercent: 1.2,
+          tokenId: BTC.id,
+          strategyId: scalpingTrigger.id,
+        },
+      }),
+
+      // ETH - Slightly more aggressive than BTC
+      // Main strategy: 0.5% target, -0.6% stop
+      prisma.target.create({
+        data: {
+          targetPercent: 0,
+          stoplossPercent: -0.45,
+          tokenId: ETH.id,
+          strategyId: scalpingStrategy.id,
+        },
+      }),
+      prisma.target.create({
+        data: {
+          targetPercent: 0.8,
+          stoplossPercent: 0.8,
+          tokenId: ETH.id,
+          strategyId: scalpingStrategy.id,
+        },
+      }),
+      // Trigger: 1.3% target
+      prisma.target.create({
+        data: {
+          targetPercent: 0,
+          stoplossPercent: -0.6,
+          tokenId: ETH.id,
+          strategyId: scalpingTrigger.id,
+        },
+      }),
+      prisma.target.create({
+        data: {
+          targetPercent: 1.3,
+          stoplossPercent: 1.3,
+          tokenId: ETH.id,
+          strategyId: scalpingTrigger.id,
+        },
+      }),
+
+      // SOL - Most aggressive (highest volatility)
+      // Main strategy: 0.6% target, -0.8% stop
+      prisma.target.create({
+        data: {
+          targetPercent: 0,
+          stoplossPercent: -0.55,
+          tokenId: SOL.id,
+          strategyId: scalpingStrategy.id,
+        },
+      }),
+      prisma.target.create({
+        data: {
+          targetPercent: 1.0,
+          stoplossPercent: 1.0,
+          tokenId: SOL.id,
+          strategyId: scalpingStrategy.id,
+        },
+      }),
+      // Trigger: 1.6% target
+      prisma.target.create({
+        data: {
+          targetPercent: 0,
+          stoplossPercent: -0.8,
+          tokenId: SOL.id,
+          strategyId: scalpingTrigger.id,
+        },
+      }),
+      prisma.target.create({
+        data: {
+          targetPercent: 1.6,
+          stoplossPercent: 1.6,
+          tokenId: SOL.id,
+          strategyId: scalpingTrigger.id,
+        },
+      }),
+
+      // ========== Legacy Strategies (Strategy 5-7) ==========
+      prisma.target.create({
+        data: {
+          targetPercent: 2.5,
+          stoplossPercent: -1.0,
+          tokenId: BTC.id,
+          strategyId: legacyQuickScalp.id,
+        },
+      }),
+      prisma.target.create({
+        data: {
+          targetPercent: 3.0,
+          stoplossPercent: -1.5,
+          tokenId: ETH.id,
+          strategyId: legacyQuickScalp.id,
+        },
+      }),
+      prisma.target.create({
+        data: {
+          targetPercent: 4.0,
+          stoplossPercent: -2.0,
+          tokenId: SOL.id,
+          strategyId: legacyQuickScalp.id,
+        },
+      }),
+      prisma.target.create({
+        data: {
+          targetPercent: 5.0,
+          stoplossPercent: -2.0,
+          tokenId: ETH.id,
+          strategyId: swingStrategy.id,
+        },
+      }),
+      prisma.target.create({
+        data: {
+          targetPercent: 10.0,
+          stoplossPercent: -4.0,
+          tokenId: BTC.id,
+          strategyId: trendStrategy.id,
+        },
+      }),
     ]);
 
     await Promise.all([
-      prisma.tokenStrategy.create({ data: { tokenId: BTC.id,  strategyId: strategies[0].id } }),
-      prisma.tokenStrategy.create({ data: { tokenId: ETH.id,  strategyId: strategies[0].id } }),
-      prisma.tokenStrategy.create({ data: { tokenId: SOL.id,  strategyId: strategies[0].id } }),
-      prisma.tokenStrategy.create({ data: { tokenId: ETH.id,  strategyId: strategies[1].id } }),
-      prisma.tokenStrategy.create({ data: { tokenId: ADA.id,  strategyId: strategies[1].id } }),
-      prisma.tokenStrategy.create({ data: { tokenId: MATIC.id,strategyId: strategies[1].id } }),
-      prisma.tokenStrategy.create({ data: { tokenId: BTC.id,  strategyId: strategies[2].id } }),
-      prisma.tokenStrategy.create({ data: { tokenId: ADA.id,  strategyId: strategies[2].id } }),
+      // Original strategy (1 & 2) - SOL only
+      prisma.tokenStrategy.create({
+        data: { tokenId: SOL.id, strategyId: mainStrategy.id },
+      }),
+      prisma.tokenStrategy.create({
+        data: { tokenId: SOL.id, strategyId: triggerStrategy.id },
+      }),
+      
+      // Scalping strategy (3 & 4) - BTC, ETH, SOL
+      prisma.tokenStrategy.create({
+        data: { tokenId: BTC.id, strategyId: scalpingStrategy.id },
+      }),
+      prisma.tokenStrategy.create({
+        data: { tokenId: BTC.id, strategyId: scalpingTrigger.id },
+      }),
+      prisma.tokenStrategy.create({
+        data: { tokenId: ETH.id, strategyId: scalpingStrategy.id },
+      }),
+      prisma.tokenStrategy.create({
+        data: { tokenId: ETH.id, strategyId: scalpingTrigger.id },
+      }),
+      prisma.tokenStrategy.create({
+        data: { tokenId: SOL.id, strategyId: scalpingStrategy.id },
+      }),
+      prisma.tokenStrategy.create({
+        data: { tokenId: SOL.id, strategyId: scalpingTrigger.id },
+      }),
+      // Legacy strategies connections
+      prisma.tokenStrategy.create({
+        data: { tokenId: BTC.id, strategyId: legacyQuickScalp.id },
+      }),
+      prisma.tokenStrategy.create({
+        data: { tokenId: ETH.id, strategyId: legacyQuickScalp.id },
+      }),
+      prisma.tokenStrategy.create({
+        data: { tokenId: SOL.id, strategyId: legacyQuickScalp.id },
+      }),
+      prisma.tokenStrategy.create({
+        data: { tokenId: ETH.id, strategyId: swingStrategy.id },
+      }),
+      prisma.tokenStrategy.create({
+        data: { tokenId: BTC.id, strategyId: trendStrategy.id },
+      }),
     ]);
 
-    console.log(`Created ${strategies.length} strategies, ${targets.length} targets, and tokenStrategy connections`);
+    console.log(
+      `Created ${strategies.length} strategies (Original + Tight Scalping + Legacy), ${targets.length} targets, and token-strategy connections`,
+    );
 
     // ------------------------
     // UserToken
@@ -383,8 +658,8 @@ async function main() {
         status: Status.FINISHED,
         netProfit: o4_net, // 44.55
         markPrice: o4_exit,
-        strategyId: strategies[2].id,
-        currentTargetId: targets[5].id,
+        strategyId: strategies[0].id,
+        currentTargetId: targets[1].id,
         tokenId: ADA.id,
         fee: 0.45,
         leverage: 2,
@@ -479,8 +754,8 @@ async function main() {
         status: Status.FINISHED,
         netProfit: o8_net,
         markPrice: o8_exit,
-        strategyId: strategies[2].id,
-        currentTargetId: targets[6].id,
+        strategyId: strategies[0].id,
+        currentTargetId: targets[1].id,
         tokenId: BTC.id,
         fee: 3.36,
         leverage: 3,
@@ -504,7 +779,7 @@ async function main() {
         netProfit: o9_net,
         markPrice: o9_exit,
         strategyId: strategies[1].id,
-        currentTargetId: targets[4].id,
+        currentTargetId: targets[3].id,
         tokenId: ADA.id,
         fee: 0.336,
         leverage: 1,
@@ -579,7 +854,7 @@ async function main() {
         status: Status.EXPIRED,
         netProfit: -12,
         markPrice: 0.456,
-        strategyId: strategies[2].id,
+        strategyId: strategies[1].id,
         tokenId: ADA.id,
         fee: 0.24,
         leverage: 1,

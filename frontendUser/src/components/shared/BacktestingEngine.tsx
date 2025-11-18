@@ -18,7 +18,32 @@ interface Trade {
   pnl?: number
 }
 
-export function useBacktestingEngine({ token, year, onBacktestRun, onTradeAnimated, showChart = true }: BacktestingEngineProps) {
+interface ChartCandle {
+  Date: string
+  Open: number
+  High: number
+  Low: number
+  Close: number
+  Volume: number
+}
+
+interface ChartEntry {
+  candle: ChartCandle
+  executedOrder?: Array<{
+    id: number
+    entryTime: string
+    executedTime?: string
+    side: 'BUY' | 'SELL'
+    entryPrice: number
+    markPrice?: number
+    pnl?: number
+  }>
+  openOrderSide?: 'BUY' | 'SELL'
+}
+
+type ChartResponse = Record<string, ChartEntry>
+
+export function useBacktestingEngine({ token: _token, year: _year, onBacktestRun, onTradeAnimated, showChart = true }: BacktestingEngineProps) {
   const chartContainerRef = useRef<HTMLDivElement | null>(null)
   const chartRef = useRef<IChartApi | null>(null)
   const seriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null)
@@ -111,7 +136,7 @@ export function useBacktestingEngine({ token, year, onBacktestRun, onTradeAnimat
   }, [])
 
   // Aggregate candles to reduce count for better performance
-  const aggregateCandles = (candles: any[], targetCount: number = 2000) => {
+  const aggregateCandles = (candles: any[], targetCount: number = 20000) => {
     if (candles.length <= targetCount) return candles
 
     const ratio = Math.ceil(candles.length / targetCount)
@@ -134,7 +159,7 @@ export function useBacktestingEngine({ token, year, onBacktestRun, onTradeAnimat
   }
 
   // Aggregate trades proportionally based on candle aggregation
-  // If we're showing ~3000 candles (1 month equivalent), we keep proportional trades
+  // Keep trades roughly in sync with the (lightly) downsampled candle count
   const aggregateTrades = (trades: Trade[], originalCandleCount: number, aggregatedCandleCount: number): Trade[] => {
     // Calculate the aggregation ratio
     const ratio = aggregatedCandleCount / originalCandleCount
@@ -157,54 +182,23 @@ export function useBacktestingEngine({ token, year, onBacktestRun, onTradeAnimat
     return aggregatedTrades
   }
 
-  // Fetch candles for the selected token and year
-  const fetchCandles = useCallback(async () => {
-    try {
-      console.log(`Fetching candles for ${token} ${year}...`)
-      const res = await fetch(`/api/backtest/candles?token=${encodeURIComponent(token)}&year=${year}`)
-      
-      if (!res.ok) {
-        console.error(`HTTP ${res.status}: ${res.statusText}`)
-        return []
-      }
-      
-      const data = await res.json()
-      
-      if (!data?.success) {
-        console.error('API returned error:', data?.message || 'Unknown error')
-        return []
-      }
-      
-      const rawCandles = data?.data || []
-      console.log(`Received ${rawCandles.length} raw candles`)
-      
-      if (rawCandles.length === 0) {
-        console.warn('No candles returned from API')
-        return []
-      }
-      
-      let candles = rawCandles.map((c: any) => ({
-        time: Math.floor(c.timestamp / 1000),
-        open: c.open,
-        high: c.high,
-        low: c.low,
-        close: c.close
+  const formatChartCandles = (chart: ChartResponse) => {
+    const candles = Object.values(chart || {})
+      .filter((entry) => entry?.candle)
+      .sort(
+        (a, b) =>
+          new Date(a.candle.Date).getTime() - new Date(b.candle.Date).getTime()
+      )
+      .map((entry) => ({
+        time: Math.floor(new Date(entry.candle.Date).getTime() / 1000),
+        open: entry.candle.Open,
+        high: entry.candle.High,
+        low: entry.candle.Low,
+        close: entry.candle.Close,
       }))
 
-      // Aggregate to ~1 month of data at a time (3000 candles = ~1 month)
-      // This was the sweet spot that rendered without lag
-      if (candles.length > 3000) {
-        console.log(`Aggregating ${candles.length} candles to ~3000 (monthly view) for smooth animation...`)
-        candles = aggregateCandles(candles, 3000)
-      }
-      
-      console.log('Formatted', candles.length, 'candles for chart')
-      return candles
-    } catch (e) {
-      console.error('Failed to fetch candles:', e)
-      return []
-    }
-  }, [token, year])
+    return candles
+  }
 
   // Animate chart with trades
   const animateChart = useCallback((candles: any[], trades: Trade[], renderSpeed: number) => {
@@ -336,12 +330,6 @@ export function useBacktestingEngine({ token, year, onBacktestRun, onTradeAnimat
       
       console.log('Starting backtest with config:', requestBody)
       
-      // Fetch candles first
-      const candles = await fetchCandles()
-      if (candles.length === 0) {
-        throw new Error('No candle data available')
-      }
-
       // Get auth token for authenticated requests
       const authData = localStorage.getItem('auth')
       const token = authData ? JSON.parse(authData).token : null
@@ -366,20 +354,31 @@ export function useBacktestingEngine({ token, year, onBacktestRun, onTradeAnimat
       if (response.ok && data.message === 'Backtest done' && data.result) {
         console.log('Backtest completed:', data.result)
         const results = data.result
-        
-        // Fetch the original candle count to calculate aggregation ratio
-        const originalCandleCount = candles.length
-        
-        // Aggregate trades proportionally to candle aggregation
+        const chartData: ChartResponse = results.chart || {}
+        const chartCandles = formatChartCandles(chartData)
+
+        if (chartCandles.length === 0) {
+          throw new Error('No candle data available')
+        }
+
+        let candles = chartCandles
+        if (candles.length > 20000) {
+          console.log(
+            `Aggregating ${candles.length} candles down to ~20000 for smoother rendering...`
+          )
+          candles = aggregateCandles(candles, 20000)
+        }
+
         const trades = results.trades || []
-        const aggregatedTrades = aggregateTrades(trades, originalCandleCount, candles.length)
-        
-        // Start animation with candles and proportionally aggregated trades
+        const aggregatedTrades = aggregateTrades(
+          trades,
+          chartCandles.length,
+          candles.length
+        )
+
         await animateChart(candles, aggregatedTrades, config.renderSpeed)
-        
+
         onBacktestRun?.()
-        // Return original results with all trades for the trade history table
-        // Include minQty and leverage if provided
         return {
           ...results,
           minQty: data.minQty,

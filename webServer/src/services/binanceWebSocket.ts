@@ -4,22 +4,6 @@ import { priceService, TokenPrice } from './priceService';
 
 const prisma = new PrismaClient();
 
-const TOKEN_TO_SYMBOL: Record<string, string> = {
-  Bitcoin: 'btcusdt',
-  Ethereum: 'ethusdt',
-  Cardano: 'adausdt',
-  Solana: 'solusdt',
-  Polygon: 'maticusdt',
-  Chainlink: 'linkusdt',
-};
-
-const SYMBOL_TO_TOKEN: Record<string, string> = Object.fromEntries(
-  Object.entries(TOKEN_TO_SYMBOL).map(([token, symbol]) => [
-    symbol.toLowerCase(),
-    token,
-  ])
-);
-
 interface BinanceTickerData {
   e: string; // Event type
   E: number; // Event time
@@ -53,6 +37,11 @@ class BinanceWebSocketService {
   private isConnected = false;
   private activeTokenSymbols = new Set<string>();
   private pingInterval: NodeJS.Timeout | null = null;
+  /**
+   * Mapping from Binance symbol (e.g. 'btcusdt') to our Token.name (e.g. 'BTC')
+   * Populated from the database when establishing the WebSocket connection.
+   */
+  private symbolToTokenName: Map<string, string> = new Map();
 
   /**
    * Get active tokens from database and map to Binance symbols
@@ -61,15 +50,19 @@ class BinanceWebSocketService {
     try {
       const activeTokens = await prisma.token.findMany({
         where: { isActive: true },
-        select: { name: true },
+        select: { name: true, stable: true },
       });
 
       const symbols = new Set<string>();
+      this.symbolToTokenName.clear();
+
       for (const token of activeTokens) {
-        const symbol = TOKEN_TO_SYMBOL[token.name];
-        if (symbol) {
-          symbols.add(symbol.toLowerCase());
-        }
+        const normalizedName = token.name.trim().toUpperCase(); // e.g. BTC
+        const stable = token.stable.trim().toUpperCase(); // e.g. USDT
+        const binanceSymbol = `${normalizedName}${stable}`.toLowerCase(); // e.g. btcusdt
+
+        symbols.add(binanceSymbol);
+        this.symbolToTokenName.set(binanceSymbol, normalizedName);
       }
 
       return symbols;
@@ -165,7 +158,7 @@ class BinanceWebSocketService {
         continue;
       }
 
-      const tokenName = SYMBOL_TO_TOKEN[symbolLower];
+      const tokenName = this.symbolToTokenName.get(symbolLower);
       if (!tokenName) {
         continue;
       }
