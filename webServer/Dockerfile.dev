@@ -1,0 +1,21 @@
+FROM node:lts-slim
+
+# ✅ Install netcat
+RUN apt-get update && apt-get install -y netcat-openbsd
+
+# Create app directory
+WORKDIR /app
+
+# Install app dependencies
+COPY package*.json ./
+
+RUN npm install
+
+# Copy source code (bao gồm prisma/)
+COPY . .
+
+# 🟢 Generate Prisma Client inside container (important!)
+RUN npx prisma generate
+
+# Run dev mode (you’re using nodemon via npm script)
+CMD [ "npm", "run", "dev" ]

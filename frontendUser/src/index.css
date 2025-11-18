@@ -43,7 +43,7 @@
 }
 
 ::-webkit-scrollbar-track {
-  background: #000000 !important; /* Pure black to match landing page */
+  background: #030712 !important; /* gray-950 to match landing page */
 }
 
 ::-webkit-scrollbar-thumb {
@@ -58,5 +58,19 @@
 /* Firefox */
 html {
   scrollbar-width: thick !important;
-  scrollbar-color: #374151 #000000 !important;
+  scrollbar-color: #374151 #030712 !important;
+}
+
+/* Crypto Prices Ticker Animation */
+@keyframes scroll {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+.animate-scroll {
+  animation: scroll 30s linear infinite;
 }

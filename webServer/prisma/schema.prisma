@@ -16,36 +16,30 @@ model User {
   username          String             @unique
   email             String             @unique
   password          String
-  availableBalance  Float              @default(0)
-  commissionPercent Float              @default(30)
-  commission        Float              @default(0)
-  insurance         Float              @default(0)
+  adminCommissionPercent               Float              @default(0.3)
+  referralCommissionPercent               Float              @default(0)
+  adminInsurance         Float              @default(0)
+  referralInsurance         Float              @default(0)
+  insurancePercent  Float              @default(0)
   profit            Float              @default(0)
-  isActive          Boolean            @default(true)
+  isActive          Boolean            @default(false)
   isVerified        Boolean            @default(false)
   avatar            Int                @default(0)
-  transactions      Transaction[]
-  assets            Asset[]
+  bills             Bill[]
   vouchers          Voucher[]
-  notifications     Notification[]
   userTokens        UserToken[]
-  userOrders        UserOrder[]
-  activies          Activity[]
+  orders            Order[]
+  claims            Claim[]
+  notifications     Notification[]
+  apiKey            String              @unique
+  apiSecret            String              @unique
+  apiPassphrase            String?              @unique
+  referralUserId     Int?
+  referralCode      String              @unique
   createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-  tradeBalance      Int                @default(0)
-}
-
-model Activity {
-  id                Int         @id @default(autoincrement())
-  type              Int         
-  userId            Int         
-  user              User?       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  availableBalance  Float?
-  tradeBalance      Float?
-  value             Float?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  updatedAt         DateTime @default(now())  @updatedAt
+  tradeBalance       Int                @default(0)
+  telegramChatId    String?
 }
 
 model Token {
@@ -54,12 +48,49 @@ model Token {
   stable          String
   minQty          Float       @default(0)
   isActive        Boolean     @default(true)
-  orders          Order[]
+  orders      Order[]
   targets         Target[]
   userTokens      UserToken[]
   tokenStrategies TokenStrategy[]
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  leverage    Int   @default(1)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @default(now())  @updatedAt
+}
+
+model Claim {
+  id                    Int                 @id @default(autoincrement())
+  bills                 Bill[]
+  status                ClaimStatus         @default(NEW)
+  amount                Float               @default(0)
+  userId                Int?
+  user                  User?               @relation(fields: [userId], references: [id])
+  hashId                String?             
+  network               Network
+  address               String
+  adminNote             String?             // Admin comments/notes for approval/rejection
+  notifications         Notification[]
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @default(now()) @updatedAt
+}
+
+model Bill {
+  id                    Int                 @id @default(autoincrement())
+  adminCommissionPercent       Float               @default(30)
+  referralCommissionPercent    Float               @default(0)
+  referralUserId        Int?
+  status                BillStatus
+  hashId                String?
+  userId                Int?
+  user                  User?               @relation(fields: [userId], references: [id])
+  orders                 Order[]
+  from                  DateTime 
+  to                    DateTime
+  note                  String?
+  netProfit             Float               @default(0)
+  claimId               Int?
+  claim                 Claim?              @relation(fields: [claimId], references: [id])
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @default(now()) @updatedAt
 }
 
 model Target {
@@ -72,20 +103,7 @@ model Target {
   strategyId            Int?
   strategy              Strategy? @relation(fields: [strategyId], references: [id], onDelete: Cascade)
   createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
-}
-
-model Transaction {
-  id          Int      @id @default(autoincrement())
-  amount      Int
-  type        TransactionType
-  status      TransactionStatus
-  info        String?
-  invoices    Invoice[]
-  userId      Int?
-  user        User?    @relation(fields: [userId], references: [id])
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  updatedAt             DateTime @default(now())  @updatedAt
 }
 
 model Order {
@@ -97,20 +115,25 @@ model Order {
   qty         Float
   budget      Float
   status      Status  @default(ACTIVE)
-  netProfit   Float   @default(0)
+  netProfit      Float   @default(0)
   markPrice   Float?
-  userOrders  UserOrder[]
   strategyId  Int
   strategy    Strategy? @relation(fields: [strategyId], references: [id])
   currentTargetId Int?
   target      Target? @relation(fields: [currentTargetId], references: [id], onDelete: SetNull)
   tokenId     Int
   token       Token?   @relation(fields: [tokenId], references: [id])
-  fee         Float     @default(0)
+  fee  Float     @default(0)
   stoplossOrderId   String?
-  last5HeikinAshi   HeikinAshiType @default(MIXED)
+  leverage    Int   @default(1)
+  userId      Int  
+  user        User?    @relation(fields: [userId], references: [id])  
+  billId      Int?   
+  bill        Bill?    @relation(fields: [billId], references: [id])  
+  buyDate       DateTime   @default(now())
+  sellDate      DateTime?  
   createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  updatedAt         DateTime @default(now())  @updatedAt
 }
 
 model Strategy {
@@ -121,40 +144,11 @@ model Strategy {
   isCloseBeforeNewCandle  Boolean  @default(false)
   tokenStrategies         TokenStrategy[]
   targets                 Target[]
-  order                   Order[]
-  triggerBy               Int?
+  order               Order[]
+  parentStrategy               Int?
   direction               DirectionType @default(SAME)
   createdAt               DateTime @default(now())
-  updatedAt               DateTime @updatedAt
-}
-
-model Invoice {
-  id             Int          @id @default(autoincrement())
-  link           String
-  transactionId  Int?
-  transaction    Transaction? @relation(fields: [transactionId], references: [id], onDelete: Cascade)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-}
-
-model Asset {
-  id            Int      @id @default(autoincrement())
-  asset         Float
-  userId        Int?
-  user          User?    @relation(fields: [userId], references: [id])
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-}
-
-model Notification {
-  id          Int      @id @default(autoincrement())
-  type        NotificationType
-  message     String
-  status      Boolean
-  userId      Int?
-  user        User?    @relation(fields: [userId], references: [id])
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  updatedAt               DateTime @default(now())  @updatedAt
 }
 
 model UserToken {
@@ -164,20 +158,7 @@ model UserToken {
   user          User?    @relation(fields: [userId], references: [id])
   token         Token?   @relation(fields: [tokenId], references: [id])
   createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-}
-
-model UserOrder {
-  id            Int      @id @default(autoincrement())
-  contributionPercent       Float
-  commission          Float   @default(0)
-  commissionPercent           Float
-  orderId   String
-  order     Order @relation(fields: [orderId], references: [orderId], onDelete: Cascade)
-  userId        Int
-  user          User    @relation(fields: [userId], references: [id])
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  updatedAt             DateTime @default(now())  @updatedAt
 }
 
 model TokenStrategy {
@@ -213,8 +194,8 @@ enum VoucherStatus {
 }
 
 enum Side {
-  short
-  long
+  SELL
+  BUY
 }
 
 enum DirectionType {
@@ -228,25 +209,49 @@ enum Status {
   FINISHED
 }
 
-enum TransactionType {
-  WITHDRAW
-  DEPOSIT
-}
-
-enum TransactionStatus {
-  PENDING
-  FINISHED
-  CANCELLED
-}
-
-enum NotificationType {
-  PROFIT
-  LOSS 
-  INFO
+enum Network {
+  ERC20
+  SOLANA
+  BEP20
 }
 
 enum HeikinAshiType {
   GREEN
   RED
   MIXED
+}
+
+enum ClaimStatus {
+  NEW
+  FINISHED
+}
+
+enum BillStatus {
+  NEW
+  FINISHED
+  REJECTED
+  PROCESSING
+  CLAIMED
+}
+
+model Notification {
+  id          Int       @id @default(autoincrement())
+  type        NotificationType
+  title       String
+  message     String
+  isRead      Boolean   @default(false)
+  userId      Int?
+  user        User?     @relation(fields: [userId], references: [id])
+  claimId     Int?      // Link to claim if payment-related
+  claim       Claim?    @relation(fields: [claimId], references: [id])
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @default(now()) @updatedAt
+}
+
+enum NotificationType {
+  PAYMENT_APPROVED
+  PAYMENT_REJECTED
+  PAYMENT_PENDING
+  TRADE_COMPLETE
+  SYSTEM
 }
