@@ -40,6 +40,7 @@ function App() {
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [unreadCount, setUnreadCount] = useState(0)
   const [loadingNotifications, setLoadingNotifications] = useState(false)
+  const [userData, setUserData] = useState<{ fullname: string; username: string; email: string } | null>(null)
   const userMenuRef = useRef<HTMLDivElement>(null)
   const notificationMenuRef = useRef<HTMLDivElement>(null)
 
@@ -89,12 +90,24 @@ function App() {
   const handleNavigateToLanding = () => { setCurrentPage('landing') }
   const handleLogin = () => { 
     setCurrentPage('dashboard')
+    // Load user data from localStorage
+    try {
+      const auth = localStorage.getItem('auth')
+      if (auth) {
+        const { user } = JSON.parse(auth)
+        setUserData(user)
+      }
+    } catch (e) {
+      console.error('Failed to load user data:', e)
+    }
     fetchPortfolioValue()
   }
   const handleSignOut = () => { 
     setCurrentPage('landing')
     setActiveTab('dashboard')
     setPortfolioValue(0)
+    setUserData(null)
+    localStorage.removeItem('auth')
   }
 
   const fetchPortfolioValue = async () => {
@@ -153,6 +166,21 @@ function App() {
       document.removeEventListener('mousedown', handleClickOutside)
     }
   }, [])
+
+  // Load user data on mount if already logged in
+  useEffect(() => {
+    if (currentPage === 'dashboard') {
+      try {
+        const auth = localStorage.getItem('auth')
+        if (auth) {
+          const { user } = JSON.parse(auth)
+          setUserData(user)
+        }
+      } catch (e) {
+        console.error('Failed to load user data:', e)
+      }
+    }
+  }, [currentPage])
 
   // Refresh portfolio value when switching tabs
   useEffect(() => {
@@ -474,8 +502,8 @@ function App() {
                     <User className="w-3 h-3 sm:w-4 sm:h-4 text-white" />
                   </div>
                   <div className="text-left hidden sm:block">
-                    <div className="text-sm font-medium text-white">John Doe</div>
-                    <div className="text-xs text-gray-400">INVESTOR</div>
+                    <div className="text-sm font-medium text-white">{userData?.fullname || 'User'}</div>
+                    <div className="text-xs text-gray-400">@{userData?.username || 'user'}</div>
                   </div>
                   <ChevronDown className={`w-3 h-3 sm:w-4 sm:h-4 text-gray-400 transition-transform ${isUserMenuOpen ? 'rotate-180' : ''}`} />
                 </button>
@@ -489,8 +517,8 @@ function App() {
                           <User className="w-5 h-5 text-white" />
                         </div>
                         <div>
-                          <div className="font-medium text-white">John Doe</div>
-                          <div className="text-sm text-gray-400">john@example.com</div>
+                          <div className="font-medium text-white">{userData?.fullname || 'User'}</div>
+                          <div className="text-sm text-gray-400">{userData?.email || 'user@example.com'}</div>
                         </div>
                       </div>
                     </div>
