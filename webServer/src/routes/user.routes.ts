@@ -407,38 +407,64 @@ router.get('/trading/positions', requireAuth, async (req, res) => {
       },
     });
 
+    // Import price service to get current prices for accurate P&L calculation
+    const { priceService } = await import('../services/priceService');
+
     // Create positions for each selected token (not just active orders)
-    const activePositions = userTokens.map((userToken) => {
-      // Find if there's an active order for this token
-      const activeOrder = activeOrders.find(
-        (order) => order.tokenId === userToken.token?.id
-      );
+    const activePositions = await Promise.all(
+      userTokens.map(async (userToken) => {
+        // Find if there's an active order for this token
+        const activeOrder = activeOrders.find(
+          (order) => order.tokenId === userToken.token?.id
+        );
 
-      if (activeOrder && userToken.token) {
-        // Token has an active order
-        const currentValue =
-          activeOrder.qty * (activeOrder.markPrice || activeOrder.entryPrice);
-        const pnl = activeOrder.netProfit;
-        const pnlColor = pnl >= 0 ? 'text-green-400' : 'text-red-400';
+        if (activeOrder && userToken.token) {
+          // Token has an active order - calculate P&L using current market price
+          let currentPrice = activeOrder.markPrice || activeOrder.entryPrice;
+          
+          // Get current market price for accurate P&L
+          try {
+            const tokenPrices = await priceService.getTokenPrices([userToken.token.name]);
+            if (tokenPrices.length > 0 && tokenPrices[0].currentPrice) {
+              currentPrice = tokenPrices[0].currentPrice;
+            }
+          } catch (error) {
+            console.error(`Error fetching price for ${userToken.token.name}:`, error);
+          }
 
-        return {
-          id: activeOrder.id,
-          orderId: activeOrder.orderId,
-          pair: `${userToken.token.name}/USDT`,
-          type: activeOrder.side === 'BUY' ? 'Long' : 'Short',
-          size: `${activeOrder.qty} ${userToken.token.name}`,
-          pnl: `${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}`,
-          pnlColor,
-          entry: `$${activeOrder.entryPrice.toLocaleString()}`,
-          strategy: activeOrder.strategy
-            ? activeOrder.strategy.description
-            : 'Active Trading',
-          investment: `$${activeOrder.budget.toFixed(2)}`,
-          startDate: new Date(activeOrder.timestamp).toLocaleDateString(),
-          currentValue,
-          markPrice: activeOrder.markPrice || activeOrder.entryPrice,
-          hasActiveOrder: true,
-        };
+          // Calculate current value and unrealized P&L
+          const currentValue = activeOrder.qty * currentPrice;
+          
+          // Calculate unrealized P&L based on current price
+          let unrealizedPnL = 0;
+          if (activeOrder.side === 'BUY') {
+            unrealizedPnL = (currentPrice - activeOrder.entryPrice) * activeOrder.qty;
+          } else {
+            // SELL (short)
+            unrealizedPnL = (activeOrder.entryPrice - currentPrice) * activeOrder.qty;
+          }
+          
+          const pnlColor = unrealizedPnL >= 0 ? 'text-green-400' : 'text-red-400';
+
+          return {
+            id: activeOrder.id,
+            orderId: activeOrder.orderId,
+            pair: `${userToken.token.name}/USDT`,
+            type: activeOrder.side === 'BUY' ? 'Long' : 'Short',
+            size: `${activeOrder.qty} ${userToken.token.name}`,
+            pnl: `${unrealizedPnL >= 0 ? '+' : ''}$${unrealizedPnL.toFixed(2)}`,
+            pnlValue: unrealizedPnL, 
+            pnlColor,
+            entry: `$${activeOrder.entryPrice.toLocaleString()}`,
+            strategy: activeOrder.strategy
+              ? activeOrder.strategy.description
+              : 'Active Trading',
+            investment: `$${activeOrder.budget.toFixed(2)}`,
+            startDate: new Date(activeOrder.timestamp).toLocaleDateString(),
+            currentValue,
+            markPrice: currentPrice,
+            hasActiveOrder: true,
+          };
       } else if (userToken.token) {
         // Token is selected but no active order (available for trading)
         return {
@@ -476,13 +502,17 @@ router.get('/trading/positions', requireAuth, async (req, res) => {
           hasActiveOrder: false,
         };
       }
-    });
+      })
+    );
 
     // Calculate summary statistics (consistent with dashboard)
-    const activePositionsPnL = activeOrders.reduce(
-      (sum, order) => sum + order.netProfit,
-      0
-    );
+    // Sum up the calculated P&L from active positions
+    const activePositionsPnL = activePositions.reduce((sum, position) => {
+      if (position.hasActiveOrder && typeof position.pnlValue === 'number') {
+        return sum + position.pnlValue;
+      }
+      return sum;
+    }, 0);
 
     // Total P&L = user's historical profit + current active positions P&L (same as dashboard)
     const totalPnL = (userData?.profit || 0) + activePositionsPnL;
@@ -725,14 +755,41 @@ router.get('/portfolio', requireAuth, async (req, res) => {
     let activePositionsPnL = 0;
     const activeTokensFromOrders = new Set();
 
-    activeOrders.forEach((order) => {
-      const currentValue = order.qty * (order.markPrice || order.entryPrice);
+    // Import price service to get current prices for accurate P&L calculation
+    const { priceService } = await import('../services/priceService');
+
+    // Calculate P&L
+    for (const order of activeOrders) {
+      if (!order.token) continue;
+
+      // Get current market price for the token
+      let currentPrice = order.markPrice || order.entryPrice;
+      try {
+        const tokenPrices = await priceService.getTokenPrices([order.token.name]);
+        if (tokenPrices.length > 0 && tokenPrices[0].currentPrice) {
+          currentPrice = tokenPrices[0].currentPrice;
+        }
+      } catch (error) {
+        console.error(`Error fetching price for ${order.token.name}:`, error);
+      }
+
+      // Calculate current value of the position
+      const currentValue = order.qty * currentPrice;
       activePositionsValue += currentValue;
-      activePositionsPnL += order.netProfit;
+
+      // Calculate unrealized P&L based on current price
+      let unrealizedPnL = 0;
+      if (order.side === 'BUY') {
+        unrealizedPnL = (currentPrice - order.entryPrice) * order.qty;
+      } else {
+        unrealizedPnL = (order.entryPrice - currentPrice) * order.qty;
+      }
+      activePositionsPnL += unrealizedPnL;
+
       if (order.token) {
         activeTokensFromOrders.add(order.token.id);
       }
-    });
+    }
 
     // Total portfolio value = trade balance + current value of active positions
     const totalValue = (userData?.tradeBalance || 0) + activePositionsValue;

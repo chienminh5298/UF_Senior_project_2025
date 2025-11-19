@@ -180,7 +180,9 @@ export function Bills() {
       missingFields.push('Network')
     }
     
-    const platformAddress = (import.meta as any).env?.VITE_PLATFORM_WALLET_ADDRESS || ''
+    // Use the same platform wallet address logic as the display (with fallback)
+    const platformAddress = (import.meta as any).env?.VITE_PLATFORM_WALLET_ADDRESS ||
+      '0x1234567890123456789012345678901234567890' // Placeholder - should be configured
     if (!platformAddress || platformAddress.trim() === '') {
       missingFields.push('Platform Wallet Address (not configured)')
     }

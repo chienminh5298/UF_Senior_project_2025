@@ -234,7 +234,7 @@ export function Dashboard() {
 
   const activeTokens = portfolioData?.userTokens || [];
   return (
-    <div className="p-4 sm:p-6 space-y-4 sm:space-y-6 flex flex-col h-full overflow-hidden">
+    <div className="p-4 sm:p-6 space-y-4 sm:space-y-6 flex flex-col">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
@@ -257,7 +257,7 @@ export function Dashboard() {
               <BarChart className="w-5 h-5 text-blue-400" />
             </div>
             <p className={`text-sm mt-1 ${(portfolioData?.totalPnLPercent ?? 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-              {(portfolioData?.totalPnLPercent ?? 0) >= 0 ? '+' : ''}{(portfolioData?.totalPnLPercent ?? 0).toFixed(2)}% today
+              {(portfolioData?.totalPnLPercent ?? 0) >= 0 ? '+' : ''}{(portfolioData?.totalPnLPercent ?? 0).toFixed(2)}% total gain
             </p>
           </CardContent>
         </Card>
