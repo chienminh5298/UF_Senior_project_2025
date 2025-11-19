@@ -3,6 +3,35 @@ export interface JwtUser {
   email: string;
 }
 
+type BacktestChartCandleType = {
+    [date: string]: {
+        candle: BacktestCandleType;
+        executedOrder?: BacktestOrderType[];
+        openOrderSide?: $Enums.Side;
+    };
+};
+
+type BacktestOrderType = {
+    id: number;
+    entryTime: string;
+    executedTime?: string; // Optional
+    isTrigger: boolean;
+    entryPrice: number;
+    markPrice?: number; // Optional
+    side: $Enums.Side;
+    stoplossIdx: number;
+    strategyId: number;
+    targets: Target[];
+};
+
+type BacktestCreateNewOrderType = {
+    candle: candleType;
+    entryPrice: number;
+    isTrigger: boolean;
+    side: $Enums.Side;
+    strategyId: number;
+};
+
 type BacktestLogicType = {
     strategyId: number;
     data: { [date: string]: candleType };
@@ -41,7 +70,6 @@ type OrderType = {
     stoplossIdx: number;
     strategyId: number;
     targets: Target[];
-    trend: "MIXED" | "GREEN" | "RED";
 };
 
 type CreateNewOrderType = {

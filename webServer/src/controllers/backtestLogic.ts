@@ -1,16 +1,16 @@
-import axios from "axios";
-import { promises as fs } from "fs";
-import path from "path";
-import prisma from "../models/prismaClient";
+import axios from 'axios';
+import prisma from '../models/prismaClient';
 import {
+  BacktestChartCandleType,
+  BacktestCreateNewOrderType,
   BacktestLogicType,
+  BacktestOrderType,
   candleType,
   ChartCandleType,
-  CreateNewOrderType,
   IndexedCandle,
   OrderType,
-} from "../types/express";
-import { Target } from "@prisma/client";
+} from '../types/express';
+import { Target } from '@prisma/client';
 
 // let tokenDataCache: {
 //   [token: string]: {
@@ -25,37 +25,26 @@ import { Target } from "@prisma/client";
 // } = {};
 
 const randomId = () => Math.floor(100000000 + Math.random() * 900000000);
-const HISTORICAL_DATA_DIR = path.join(process.cwd(), "historical_data");
 
-function aggregateToMap(
-  allCandles: IndexedCandle[],
-  timeFrame: '1h' | '4h' | '1d'
-) {
-  const map: Record<string, candleType> = {};
-  for (const c of allCandles) {
-    const key = getBucketKey(c.Date, timeFrame);
-    if (!map[key]) {
-      map[key] = {
-        Date: key,
-        Open: c.Open,
-        High: c.High,
-        Low: c.Low,
-        Close: c.Close,
-        Volume: c.Volume,
-      };
-    } else {
-      const agg = map[key];
-      agg.High = Math.max(agg.High, c.High);
-      agg.Low = Math.min(agg.Low, c.Low);
-      agg.Close = c.Close;
-      agg.Volume += c.Volume;
+function aggregateToMap(allCandles: IndexedCandle[], timeFrame: "1h" | "4h" | "1d") {
+    const map: Record<string, candleType> = {};
+    for (const c of allCandles) {
+        const key = getBucketKey(c.Date, timeFrame);
+        if (!map[key]) {
+            map[key] = { Date: key, Open: c.Open, High: c.High, Low: c.Low, Close: c.Close, Volume: c.Volume };
+        } else {
+            const agg = map[key];
+            agg.High = Math.max(agg.High, c.High);
+            agg.Low = Math.min(agg.Low, c.Low);
+            agg.Close = c.Close;
+            agg.Volume += c.Volume;
+        }
     }
-  }
-  return map;
+    return map;
 }
 
 const convertTo1hChart = (chart5m: ChartCandleType): ChartCandleType => {
-  let response: ChartCandleType = {};
+  const response: ChartCandleType = {};
 
   // Convert the object values to an array and sort them by date ascending.
   const data5m = Object.values(chart5m).sort(
@@ -168,420 +157,194 @@ function prepareCandles(data: { [k: string]: candleType }): IndexedCandle[] {
     .sort((a, b) => a.ts - b.ts);
 }
 
-const loadLocalYearData = async (token: string, year: number | string) => {
-  const normalizedToken = token.toUpperCase();
-  const normalizedYear = year.toString();
-  const candidateFiles = [
-    path.join(
-      HISTORICAL_DATA_DIR,
-      normalizedToken,
-      `${normalizedToken}${normalizedYear}.json`
-    ),
-    path.join(
-      HISTORICAL_DATA_DIR,
-      normalizedToken,
-      `${normalizedYear}.json`
-    ),
-  ];
-
-  for (const filePath of candidateFiles) {
-    try {
-      await fs.access(filePath);
-      const fileContents = await fs.readFile(filePath, "utf8");
-      const parsed = JSON.parse(fileContents);
-      console.log(
-        `📁 Loaded local backtest data: ${path.relative(
-          HISTORICAL_DATA_DIR,
-          filePath
-        )}`
-      );
-      return { status: 200, data: parsed };
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-        console.error(
-          `❌ Failed reading ${path.relative(
-            HISTORICAL_DATA_DIR,
-            filePath
-          )}:`,
-          error
-        );
-        throw error;
-      }
-    }
-  }
-
-  throw new Error(
-    `Local data file not found for ${normalizedToken} ${normalizedYear}`
-  );
+export const getData1YearCandle = async (token: string, year: number | string) => {
+    return await axios.get(`${process.env.GOOGLE_APP_SCRIPT}?action=readYear&token=${token}&year=${year}`);
 };
 
-export const getData1YearCandle = async (
-  token: string,
-  year: number | string
-) => {
-  const normalizedToken = token.toUpperCase();
-  const scriptUrl = process.env.GOOGLE_APP_SCRIPT;
+export const backtestLogic = async ({ strategyId, data, token, timeFrame }: BacktestLogicType) => {
+    const allCandles = prepareCandles(data);
 
-  if (scriptUrl && /^https?:\/\//i.test(scriptUrl)) {
-    try {
-      return await axios.get(
-        `${scriptUrl}?action=readYear&token=${normalizedToken}&year=${year}`
-      );
-    } catch (error) {
-      console.warn(
-        `⚠️  Remote Google Script fetch failed for ${normalizedToken} ${year}: ${
-          error instanceof Error ? error.message : "Unknown error"
-        }. Falling back to local files.`
-      );
-    }
-  } else {
-    console.warn(
-      "⚠️  GOOGLE_APP_SCRIPT env is not configured. Falling back to local historical data files."
-    );
-  }
+    const chartData = aggregateToMap(allCandles, timeFrame);
 
-  return await loadLocalYearData(normalizedToken, year);
-};
+    const sortedBucketKeysChartData = Object.keys(chartData).sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
 
-export const backtestLogic = async ({
-  strategyId,
-  data,
-  token,
-  timeFrame,
-}: BacktestLogicType) => {
-  const allCandles = prepareCandles(data);
+    const dataKey = Object.keys(data);
+    const dataValues = Object.values(data);
+    const openOrder: { [orderId: number]: BacktestOrderType } = {};
+    let response: BacktestChartCandleType = {};
 
-  const chartData = aggregateToMap(allCandles, timeFrame);
-
-  const sortedBucketKeysChartData = Object.keys(chartData).sort(
-    (a, b) => new Date(a).getTime() - new Date(b).getTime()
-  );
-  const chartArr = Object.values(chartData).sort(
-    (a, b) => new Date(a.Date).getTime() - new Date(b.Date).getTime()
-  );
-
-  const dataKey = Object.keys(data);
-  const dataValues = Object.values(data);
-  let openOrder: { [orderId: number]: OrderType } = {};
-  let response: ChartCandleType = {};
-
-  const getLastFiveCandle = (pivotUTC: string) => {
-    const pivotKey = getBucketKey(pivotUTC, timeFrame);
-    const idx = sortedBucketKeysChartData.indexOf(pivotKey);
-    if (idx === -1 || idx < 5) {
-      // Không tìm thấy pivotKey hoặc không đủ dữ liệu trước pivot
-      return 'MIXED';
-    }
-    // Bỏ mọi nến 5 m **>= pivot** (chỉ lấy dữ liệu trước pivot)
-    const series = chartArr.slice(idx - 5, idx);
-    const allGreen = series.every((c) => c.Close > c.Open);
-    if (allGreen) return 'GREEN';
-
-    const allRed = series.every((c) => c.Close < c.Open);
-    if (allRed) return 'RED';
-
-    return 'MIXED';
-  };
-
-  const strategy = await prisma.strategy.findUnique({
-    where: { id: strategyId },
-    include: {
-      targets: {
-        where: { tokenId: token.id },
-        orderBy: {
-          targetPercent: 'asc',
+    const strategy = await prisma.strategy.findUnique({
+        where: { id: strategyId },
+        include: {
+            targets: {
+                where: { tokenId: token.id },
+                orderBy: {
+                    targetPercent: "asc",
+                },
+            },
         },
-      },
-    },
-  });
+    });
 
-  const triggerDefaultStrategies = await prisma.strategy.findMany({
-    where: { parentStrategy: strategyId },
-    include: {
-      targets: {
-        where: { tokenId: token.id },
-        orderBy: {
-          targetPercent: 'asc',
+    const triggerStrategies = await prisma.strategy.findMany({
+        where: { parentStrategy: strategyId },
+        include: {
+            targets: {
+                where: { tokenId: token.id },
+                orderBy: {
+                    targetPercent: "asc",
+                },
+            },
         },
-      },
-    },
-  });
+    });
 
-  const strategyTargets: Target[] = strategy?.targets || [];
-  const primaryTriggerStrategy = triggerDefaultStrategies[0];
-  const triggerDefaultTargets: Target[] =
-    primaryTriggerStrategy?.targets || [];
+    const strategyTargets: Target[] = strategy?.targets || [];
+    const triggerDefaultTargets: Target[] = triggerStrategies[0].targets || [];
 
-  const getPrevCandle = (candledate: string) => {
-    const bucketKey = getBucketKey(candledate, timeFrame);
-    const idx = sortedBucketKeysChartData.indexOf(bucketKey);
-    if (idx === -1 || idx === 0) {
-      return null;
-    }
-    return chartData[sortedBucketKeysChartData[idx - 1]];
-  };
-
-  const processCreateNewCandleOrder = (candle: candleType) => {
-    const prevCandle = getPrevCandle(candle.Date);
-
-    if (prevCandle && strategy) {
-      let side: 'BUY' | 'SELL' = 'BUY';
-      if (prevCandle.Close > prevCandle.Open) {
-        if (strategy.direction === 'SAME') side = 'BUY';
-        else side = 'SELL';
-      } else {
-        if (strategy.direction === 'SAME') side = 'SELL';
-        else side = 'BUY';
-      }
-
-      createNewOrder({
-        candle,
-        entryPrice: candle.Open,
-        isTrigger: false,
-        side,
-        strategyId: strategy.id,
-      });
-    }
-  };
-
-  const checkHitTarget = (candle: candleType) => {
-    for (const orderId in openOrder) {
-      const order = openOrder[orderId];
-      if (!order) {
-        continue;
-      }
-
-      const targets: Target[] = order.targets;
-
-      if (
-        !targets ||
-        targets.length === 0 ||
-        order.stoplossIdx + 1 >= targets.length
-      ) {
-        continue;
-      }
-
-      const nextTarget = targets[order.stoplossIdx + 1];
-      if (!nextTarget) {
-        console.warn(
-          `checkHitTarget: missing target at index ${
-            order.stoplossIdx + 1
-          } for order ${order.id}`,
-        );
-        continue;
-      }
-
-      const markPrice = getMarkPrice(
-        nextTarget.targetPercent,
-        order.side,
-        order.entryPrice,
-      );
-
-      if (
-        (order.side === 'BUY' && candle.High >= markPrice) ||
-        (order.side === 'SELL' && candle.Low <= markPrice)
-      ) {
-        const currentSLIdx = order.stoplossIdx;
-        // Move stoploss by update stoplossIdx
-        openOrder[order.id] = {
-          ...openOrder[order.id],
-          stoplossIdx: order.stoplossIdx + 1,
-        };
-
-        // Check is last target
-        if (currentSLIdx + 1 === targets.length - 1) {
-          if (!order.isTrigger) {
-            // new trigger order
-            let side: 'BUY' | 'SELL' = order.side;
-            if (primaryTriggerStrategy?.direction === 'OPPOSITE') {
-              if (side === 'BUY') side = 'SELL';
-              else side = 'BUY';
-            }
-            createNewOrder({
-              candle,
-              entryPrice: markPrice,
-              isTrigger: true,
-              side,
-              strategyId: primaryTriggerStrategy?.id || strategyId,
-            });
-          }
-          // Close order
-          closeOrder(order, markPrice, candle);
+    const getPrevCandle = (candledate: string) => {
+        const bucketKey = getBucketKey(candledate, timeFrame);
+        const idx = sortedBucketKeysChartData.indexOf(bucketKey);
+        if (idx === -1 || idx === 0) {
+            return null;
         }
-      }
-    }
-  };
-
-  const checkHitStoploss = (candle: candleType) => {
-    for (const id in openOrder) {
-      const order = openOrder[id];
-      if (!order) {
-        continue;
-      }
-
-      let targets: Target[] = order.targets;
-      if (order.isTrigger) {
-        targets = triggerDefaultTargets;
-      }
-
-      if (
-        !targets ||
-        targets.length === 0 ||
-        order.stoplossIdx >= targets.length
-      ) {
-        continue;
-      }
-
-      const slTarget = targets[order.stoplossIdx];
-      if (!slTarget) {
-        console.warn(
-          `checkHitStoploss: missing stoploss target at index ${order.stoplossIdx} for order ${order.id}`,
-        );
-        continue;
-      }
-
-      const markPrice = getMarkPrice(
-        slTarget.stoplossPercent,
-        order.side,
-        order.entryPrice,
-      );
-      if (
-        (order.side === 'BUY' && candle.Low <= markPrice) ||
-        (order.side === 'SELL' && candle.High >= markPrice)
-      ) {
-        // close order
-        closeOrder(order, markPrice, candle);
-      }
-    }
-  };
-
-  const createNewOrder = ({
-    candle,
-    entryPrice,
-    isTrigger,
-    side,
-    strategyId,
-  }: CreateNewOrderType) => {
-    const orderId = randomId();
-    let targets: Target[] = strategyTargets;
-    const trend = getLastFiveCandle(candle.Date);
-    if (isTrigger) {
-      targets = triggerDefaultTargets;
-    }
-
-    if (!targets || targets.length === 0) {
-      console.warn(`⚠️  Cannot create order: no targets for strategy ${strategyId}`);
-      return;
-    }
-
-    openOrder[orderId] = {
-      id: orderId,
-      entryTime: candle.Date,
-      entryPrice,
-      isTrigger,
-      side,
-      stoplossIdx: 0,
-      strategyId,
-      targets,
-      trend,
+        return chartData[sortedBucketKeysChartData[idx - 1]];
     };
 
-    console.log(`📝 Order #${orderId}: ${side} @ ${entryPrice.toFixed(2)} (${isTrigger ? 'TRIGGER' : 'MAIN'})`);
+    const processCreateNewCandleOrder = (candle: candleType) => {
+        const prevCandle = getPrevCandle(candle.Date);
 
-    response[candle.Date] = { ...response[candle.Date], openOrderSide: side }; // This is not a part of logic
-  };
+        if (prevCandle && strategy) {
+            let side: "BUY" | "SELL" = "BUY";
+            if (prevCandle.Close > prevCandle.Open) {
+                if (strategy.direction === "SAME") side = "BUY";
+                else side = "SELL";
+            } else {
+                if (strategy.direction === "SAME") side = "SELL";
+                else side = "BUY";
+            }
 
-  const closeOrder = (
-    order: OrderType,
-    markPrice: number,
-    candle: candleType
-  ) => {
-    if (openOrder[order.id]) {
-      const pnl = order.side === 'BUY' 
-        ? ((markPrice - order.entryPrice) / order.entryPrice) * 100
-        : ((order.entryPrice - markPrice) / order.entryPrice) * 100;
-      
-      console.log(`💰 Order #${order.id} closed: ${order.side} entry ${order.entryPrice.toFixed(2)} → exit ${markPrice.toFixed(2)}, P&L: ${pnl.toFixed(2)}%`);
-
-      const tempOrder = {
-        ...openOrder[order.id],
-        markPrice,
-        executedTime: candle.Date,
-      };
-      delete openOrder[order.id];
-
-      response[candle.Date] = {
-        ...response[candle.Date],
-        executedOrder: [tempOrder],
-      }; // This is not a part of logic
-    }
-  };
-
-  //========================= Logic start from here ========================= //
-  console.log(`🔄 Starting backtest: ${dataValues.length} candles, starting at index 481`);
-  console.log(`📊 Strategy ${strategyId} for token ${token.name}, timeFrame: ${timeFrame}`);
-  console.log(`🎯 Main strategy targets: ${strategyTargets.length}, Trigger targets: ${triggerDefaultTargets.length}`);
-  
-  let totalTradesOpened = 0;
-  let totalTradesClosed = 0;
-
-  for (let i = 481; i < dataValues.length; i++) {
-    const candle = dataValues[i];
-    response[candle.Date] = { candle }; // This is not a part of logic
-
-    // First check if any existing orders hit their stoploss or targets
-    const openOrdersBefore = Object.keys(openOrder).length;
-    checkHitStoploss(candle);
-    checkHitTarget(candle);
-    const openOrdersAfter = Object.keys(openOrder).length;
-
-    // If an order was closed (count decreased) and no orders remain, immediately open a new one
-    const orderWasClosed = openOrdersBefore > openOrdersAfter;
-    const noOpenOrders = openOrdersAfter === 0;
-    
-    if (orderWasClosed) {
-      totalTradesClosed += (openOrdersBefore - openOrdersAfter);
-    }
-
-    if (checkIsNewCandle(candle.Date, timeFrame)) {
-      // At the start of a new time period
-      if (Object.keys(openOrder).length > 0) {
-        if (strategy?.isCloseBeforeNewCandle) {
-          // Close all orders at the start of new candle
-          for (const orderId in openOrder) {
-            const order = openOrder[orderId];
-            const markPrice = candle.Open;
-            closeOrder(order, markPrice, candle);
-            totalTradesClosed++;
-          }
-          // Immediately create new order
-          processCreateNewCandleOrder(candle);
-          totalTradesOpened++;
-          checkHitStoploss(candle);
-          checkHitTarget(candle);
+            createNewOrder({ candle, entryPrice: candle.Open, isTrigger: false, side, strategyId: strategy.id });
         }
-        // If isCloseBeforeNewCandle is false, let orders run
-      } else {
-        // No open orders at start of new candle - create one
-        processCreateNewCandleOrder(candle);
-        totalTradesOpened++;
+    };
+
+    const checkHitTarget = (candle: candleType) => {
+        for (const orderId in openOrder) {
+            const order = openOrder[orderId];
+
+            const targets: Target[] = order.targets;
+
+            const markPrice = getMarkPrice(targets[order.stoplossIdx + 1].targetPercent, order.side, order.entryPrice);
+
+            if ((order.side === "BUY" && candle.High >= markPrice) || (order.side === "SELL" && candle.Low <= markPrice)) {
+                const currentSLIdx = order.stoplossIdx;
+                // Move stoploss by update stoplossIdx
+                openOrder[order.id] = { ...openOrder[order.id], stoplossIdx: order.stoplossIdx + 1 };
+
+                // Check is last target
+                if (currentSLIdx + 1 === targets.length - 1) {
+                    if (!order.isTrigger) {
+                        // new trigger order
+                        let side: "BUY" | "SELL" = order.side;
+                        if (triggerStrategies[0].direction === "OPPOSITE") {
+                            if (side === "BUY") side = "SELL";
+                            else side = "BUY";
+                        }
+                        createNewOrder({ candle, entryPrice: markPrice, isTrigger: true, side, strategyId: 1 });
+                    }
+                    // Close order
+                    closeOrder(order, markPrice, candle);
+                }
+            }
+        }
+    };
+
+    const checkHitStoploss = (candle: candleType) => {
+        for (const id in openOrder) {
+            const order = openOrder[id];
+
+            let targets: Target[] = order.targets;
+            if (order.isTrigger) {
+                targets = triggerDefaultTargets;
+            }
+
+            const markPrice = getMarkPrice(targets[order.stoplossIdx].stoplossPercent, order.side, order.entryPrice);
+            if ((order.side === "BUY" && candle.Low <= markPrice) || (order.side === "SELL" && candle.High >= markPrice)) {
+                // close order
+                closeOrder(order, markPrice, candle);
+            }
+        }
+    };
+
+    const createNewOrder = ({ candle, entryPrice, isTrigger, side, strategyId }: BacktestCreateNewOrderType) => {
+        const orderId = randomId();
+        let targets: Target[] = strategyTargets;
+        if (isTrigger) {
+            targets = triggerDefaultTargets;
+        }
+
+        openOrder[orderId] = {
+            id: orderId,
+            entryTime: candle.Date,
+            entryPrice,
+            isTrigger,
+            side,
+            stoplossIdx: 0,
+            strategyId,
+            targets,
+        };
+
+        response[candle.Date] = { ...response[candle.Date], openOrderSide: side }; // This is not a part of logic
+    };
+
+    const closeOrder = (order: BacktestOrderType, markPrice: number, candle: candleType) => {
+        if (openOrder[order.id]) {
+            const tempOrder = { ...openOrder[order.id], markPrice, executedTime: candle.Date };
+            delete openOrder[order.id];
+
+            response[candle.Date] = { ...response[candle.Date], executedOrder: [tempOrder] }; // This is not a part of logic
+        }
+    };
+
+    //========================= Logic start from here ========================= //
+    for (let i = 481; i < dataKey.length; i++) {
+        const candle = dataValues[i];
+        response[candle.Date] = { candle }; // This is not a part of logic
+
         checkHitStoploss(candle);
         checkHitTarget(candle);
-      }
-    } else if (orderWasClosed && noOpenOrders) {
-      // Mid-candle: if an order just closed and we have no open orders, create a new one immediately
-      processCreateNewCandleOrder(candle);
-      totalTradesOpened++;
-      checkHitStoploss(candle);
-      checkHitTarget(candle);
+
+        if (checkIsNewCandle(candle.Date, timeFrame)) {
+            // Check if exsist open order
+            if (Object.keys(openOrder).length > 0) {
+                // Check setting is order close before new candle
+                if (strategy?.isCloseBeforeNewCandle) {
+                    // Close all order
+                    for (const orderId in openOrder) {
+                        const order = openOrder[orderId];
+                        const markPrice = candle.Open; // We close order at mid night => markPrice is open price
+                        closeOrder(order, markPrice, candle);
+                    }
+
+                    // Create new order
+                    processCreateNewCandleOrder(candle);
+
+                    // Check hit stoploss for new oder just opned (In case hit stoploss at first candle of the day)
+                    checkHitStoploss(candle);
+                    checkHitTarget(candle);
+                } else {
+                    // If order keep over night => Do nothing, let order keep running
+                }
+            } else {
+                // Create new order
+                processCreateNewCandleOrder(candle);
+
+                // Check hit stoploss for new oder just opned (In case hit stoploss at first candle of the day)
+                checkHitStoploss(candle);
+                checkHitTarget(candle);
+            }
+        }
     }
-  }
 
-  console.log(`✅ Backtest complete: ${totalTradesOpened} trades opened, ${totalTradesClosed} trades closed`);
-  console.log(`📈 Final response has ${Object.keys(response).length} time points`);
-  
+    response = convertTo1hChart(response);
 
-  response = convertTo1hChart(response);
-
-  return response;
+    return response;
 };
