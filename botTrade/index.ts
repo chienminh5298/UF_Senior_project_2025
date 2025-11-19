@@ -82,20 +82,6 @@ const startServer = async () => {
     }
 };
 
-// const test = async () => {
-//     let yearData;
-//     const queryData = await getData1YearCandle("SOL", "2025");
-
-//     if (queryData.status === 200) {
-//         console.log("Data fetched successfully");
-//         yearData = queryData.data;
-//         const result = await backtestLogic({ strategyId: 1, data: yearData, token: "SOL", timeFrame: "1d" });
-//         console.log(result);
-//     }
-//     console.log("Done" );
-// };
-// test();
-
 startServer();
 
 const checkTokens = async () => {
