@@ -1,8 +1,8 @@
--- MySQL dump 10.13  Distrib 9.4.0, for Linux (x86_64)
+-- MySQL dump 10.13  Distrib 9.5.0, for Linux (aarch64)
 --
 -- Host: localhost    Database: moneymachine
 -- ------------------------------------------------------
--- Server version	9.4.0
+-- Server version	9.5.0
 
 /*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;
 /*!40101 SET @OLD_CHARACTER_SET_RESULTS=@@CHARACTER_SET_RESULTS */;
@@ -14,6 +14,14 @@
 /*!40014 SET @OLD_FOREIGN_KEY_CHECKS=@@FOREIGN_KEY_CHECKS, FOREIGN_KEY_CHECKS=0 */;
 /*!40101 SET @OLD_SQL_MODE=@@SQL_MODE, SQL_MODE='NO_AUTO_VALUE_ON_ZERO' */;
 /*!40111 SET @OLD_SQL_NOTES=@@SQL_NOTES, SQL_NOTES=0 */;
+SET @MYSQLDUMP_TEMP_LOG_BIN = @@SESSION.SQL_LOG_BIN;
+SET @@SESSION.SQL_LOG_BIN= 0;
+
+--
+-- GTID state at the beginning of the backup 
+--
+
+SET @@GLOBAL.GTID_PURGED=/*!80000 '+'*/ 'd82a34ca-c557-11f0-9d54-0242ac120002:1-61';
 
 --
 -- Table structure for table `Bill`
@@ -72,6 +80,7 @@ CREATE TABLE `Claim` (
   `address` varchar(191) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
   `createdAt` datetime(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   `updatedAt` datetime(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  `adminNote` varchar(191) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   PRIMARY KEY (`id`),
   KEY `Claim_userId_fkey` (`userId`),
   CONSTRAINT `Claim_userId_fkey` FOREIGN KEY (`userId`) REFERENCES `User` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
@@ -85,6 +94,40 @@ CREATE TABLE `Claim` (
 LOCK TABLES `Claim` WRITE;
 /*!40000 ALTER TABLE `Claim` DISABLE KEYS */;
 /*!40000 ALTER TABLE `Claim` ENABLE KEYS */;
+UNLOCK TABLES;
+
+--
+-- Table structure for table `Notification`
+--
+
+DROP TABLE IF EXISTS `Notification`;
+/*!40101 SET @saved_cs_client     = @@character_set_client */;
+/*!50503 SET character_set_client = utf8mb4 */;
+CREATE TABLE `Notification` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `type` enum('PAYMENT_APPROVED','PAYMENT_REJECTED','PAYMENT_PENDING','TRADE_COMPLETE','SYSTEM') COLLATE utf8mb4_unicode_ci NOT NULL,
+  `title` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `message` varchar(191) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `isRead` tinyint(1) NOT NULL DEFAULT '0',
+  `userId` int DEFAULT NULL,
+  `claimId` int DEFAULT NULL,
+  `createdAt` datetime(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  `updatedAt` datetime(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (`id`),
+  KEY `Notification_userId_fkey` (`userId`),
+  KEY `Notification_claimId_fkey` (`claimId`),
+  CONSTRAINT `Notification_claimId_fkey` FOREIGN KEY (`claimId`) REFERENCES `Claim` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
+  CONSTRAINT `Notification_userId_fkey` FOREIGN KEY (`userId`) REFERENCES `User` (`id`) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+/*!40101 SET character_set_client = @saved_cs_client */;
+
+--
+-- Dumping data for table `Notification`
+--
+
+LOCK TABLES `Notification` WRITE;
+/*!40000 ALTER TABLE `Notification` DISABLE KEYS */;
+/*!40000 ALTER TABLE `Notification` ENABLE KEYS */;
 UNLOCK TABLES;
 
 --
@@ -169,7 +212,7 @@ CREATE TABLE `Strategy` (
 
 LOCK TABLES `Strategy` WRITE;
 /*!40000 ALTER TABLE `Strategy` DISABLE KEYS */;
-INSERT INTO `Strategy` VALUES (1,'',100,1,0,'OPPOSITE','2025-09-08 19:03:58.929','2025-09-08 19:03:58.929',NULL),(2,'trigger',100,1,0,'OPPOSITE','2025-09-08 19:03:58.929','2025-09-08 19:03:58.929',1);
+INSERT INTO `Strategy` VALUES (1,'Momentume',100,1,0,'OPPOSITE','2025-09-08 19:03:58.929','2025-09-08 19:03:58.929',NULL),(2,'Trigger-Momentume',100,1,0,'OPPOSITE','2025-09-08 19:03:58.929','2025-09-08 19:03:58.929',1);
 /*!40000 ALTER TABLE `Strategy` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -315,7 +358,7 @@ CREATE TABLE `User` (
 
 LOCK TABLES `User` WRITE;
 /*!40000 ALTER TABLE `User` DISABLE KEYS */;
-INSERT INTO `User` VALUES (1,'minh c nguyen','chienminh5298','chienminh5298@gmail.com','$2a$12$44N/zbAmXf5PebSuJ8vUH.nT3Aze45k4O.Maul019bIjojxFOAysO',44.474696665,1,0,0,'2025-09-08 19:13:42.122','2025-11-15 00:00:05.645',133,NULL,0.3,0,0,'a',0,0,NULL,'UJ4FK08d0mij32wOMXJPs6BRWaM3HuY5d2MOuJw3DvX0uq0vcIIjdiD22lfoAHIB',NULL,'ySv2ZjeULNRxO5IQ9JdCw1m5vWwtNOOwqtvy0weV5IDFnN3vA5vxeVv7TIKcXBx2');
+INSERT INTO `User` VALUES (1,'minh c nguyen','chienminh5298','chienminh5298@gmail.com','$2a$12$Y8um/T.ekVJzo64TJ8QpKOACioSxODV6TG9XP37eKiUzXdkvrddVS',44.474696665,1,0,0,'2025-09-08 19:13:42.122','2025-11-15 00:00:05.645',133,NULL,0.3,0,0,'a',0,0,NULL,'UJ4FK08d0mij32wOMXJPs6BRWaM3HuY5d2MOuJw3DvX0uq0vcIIjdiD22lfoAHIB',NULL,'ySv2ZjeULNRxO5IQ9JdCw1m5vWwtNOOwqtvy0weV5IDFnN3vA5vxeVv7TIKcXBx2');
 /*!40000 ALTER TABLE `User` ENABLE KEYS */;
 UNLOCK TABLES;
 
@@ -385,6 +428,7 @@ LOCK TABLES `Voucher` WRITE;
 /*!40000 ALTER TABLE `Voucher` DISABLE KEYS */;
 /*!40000 ALTER TABLE `Voucher` ENABLE KEYS */;
 UNLOCK TABLES;
+SET @@SESSION.SQL_LOG_BIN = @MYSQLDUMP_TEMP_LOG_BIN;
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
 
 /*!40101 SET SQL_MODE=@OLD_SQL_MODE */;
@@ -395,4 +439,4 @@ UNLOCK TABLES;
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2025-11-16 11:04:55
+-- Dump completed on 2025-11-19 16:57:53
