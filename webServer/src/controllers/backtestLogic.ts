@@ -26,21 +26,31 @@ import { Target } from '@prisma/client';
 
 const randomId = () => Math.floor(100000000 + Math.random() * 900000000);
 
-function aggregateToMap(allCandles: IndexedCandle[], timeFrame: "1h" | "4h" | "1d") {
-    const map: Record<string, candleType> = {};
-    for (const c of allCandles) {
-        const key = getBucketKey(c.Date, timeFrame);
-        if (!map[key]) {
-            map[key] = { Date: key, Open: c.Open, High: c.High, Low: c.Low, Close: c.Close, Volume: c.Volume };
-        } else {
-            const agg = map[key];
-            agg.High = Math.max(agg.High, c.High);
-            agg.Low = Math.min(agg.Low, c.Low);
-            agg.Close = c.Close;
-            agg.Volume += c.Volume;
-        }
+function aggregateToMap(
+  allCandles: IndexedCandle[],
+  timeFrame: '1h' | '4h' | '1d'
+) {
+  const map: Record<string, candleType> = {};
+  for (const c of allCandles) {
+    const key = getBucketKey(c.Date, timeFrame);
+    if (!map[key]) {
+      map[key] = {
+        Date: key,
+        Open: c.Open,
+        High: c.High,
+        Low: c.Low,
+        Close: c.Close,
+        Volume: c.Volume,
+      };
+    } else {
+      const agg = map[key];
+      agg.High = Math.max(agg.High, c.High);
+      agg.Low = Math.min(agg.Low, c.Low);
+      agg.Close = c.Close;
+      agg.Volume += c.Volume;
     }
-    return map;
+  }
+  return map;
 }
 
 const convertTo1hChart = (chart5m: ChartCandleType): ChartCandleType => {
@@ -157,194 +167,252 @@ function prepareCandles(data: { [k: string]: candleType }): IndexedCandle[] {
     .sort((a, b) => a.ts - b.ts);
 }
 
-export const getData1YearCandle = async (token: string, year: number | string) => {
-    return await axios.get(`${process.env.GOOGLE_APP_SCRIPT}?action=readYear&token=${token}&year=${year}`);
+export const getData1YearCandle = async (
+  token: string,
+  year: number | string
+) => {
+  return await axios.get(
+    `${process.env.GOOGLE_APP_SCRIPT}?action=readYear&token=${token}&year=${year}`
+  );
 };
 
-export const backtestLogic = async ({ strategyId, data, token, timeFrame }: BacktestLogicType) => {
-    const allCandles = prepareCandles(data);
+export const backtestLogic = async ({
+  strategyId,
+  data,
+  token,
+  timeFrame,
+}: BacktestLogicType) => {
+  const allCandles = prepareCandles(data);
 
-    const chartData = aggregateToMap(allCandles, timeFrame);
+  const chartData = aggregateToMap(allCandles, timeFrame);
 
-    const sortedBucketKeysChartData = Object.keys(chartData).sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
+  const sortedBucketKeysChartData = Object.keys(chartData).sort(
+    (a, b) => new Date(a).getTime() - new Date(b).getTime()
+  );
 
-    const dataKey = Object.keys(data);
-    const dataValues = Object.values(data);
-    const openOrder: { [orderId: number]: BacktestOrderType } = {};
-    let response: BacktestChartCandleType = {};
+  const dataKey = Object.keys(data);
+  const dataValues = Object.values(data);
+  const openOrder: { [orderId: number]: BacktestOrderType } = {};
+  let response: BacktestChartCandleType = {};
 
-    const strategy = await prisma.strategy.findUnique({
-        where: { id: strategyId },
-        include: {
-            targets: {
-                where: { tokenId: token.id },
-                orderBy: {
-                    targetPercent: "asc",
-                },
-            },
+  const strategy = await prisma.strategy.findUnique({
+    where: { id: strategyId },
+    include: {
+      targets: {
+        where: { tokenId: token.id },
+        orderBy: {
+          targetPercent: 'asc',
         },
-    });
+      },
+    },
+  });
 
-    const triggerStrategies = await prisma.strategy.findMany({
-        where: { parentStrategy: strategyId },
-        include: {
-            targets: {
-                where: { tokenId: token.id },
-                orderBy: {
-                    targetPercent: "asc",
-                },
-            },
+  const triggerStrategies = await prisma.strategy.findMany({
+    where: { parentStrategy: strategyId },
+    include: {
+      targets: {
+        where: { tokenId: token.id },
+        orderBy: {
+          targetPercent: 'asc',
         },
-    });
+      },
+    },
+  });
 
-    const strategyTargets: Target[] = strategy?.targets || [];
-    const triggerDefaultTargets: Target[] = triggerStrategies[0].targets || [];
+  const strategyTargets: Target[] = strategy?.targets || [];
+  const triggerDefaultTargets: Target[] = triggerStrategies[0].targets || [];
 
-    const getPrevCandle = (candledate: string) => {
-        const bucketKey = getBucketKey(candledate, timeFrame);
-        const idx = sortedBucketKeysChartData.indexOf(bucketKey);
-        if (idx === -1 || idx === 0) {
-            return null;
-        }
-        return chartData[sortedBucketKeysChartData[idx - 1]];
-    };
+  const getPrevCandle = (candledate: string) => {
+    const bucketKey = getBucketKey(candledate, timeFrame);
+    const idx = sortedBucketKeysChartData.indexOf(bucketKey);
+    if (idx === -1 || idx === 0) {
+      return null;
+    }
+    return chartData[sortedBucketKeysChartData[idx - 1]];
+  };
 
-    const processCreateNewCandleOrder = (candle: candleType) => {
-        const prevCandle = getPrevCandle(candle.Date);
+  const processCreateNewCandleOrder = (candle: candleType) => {
+    const prevCandle = getPrevCandle(candle.Date);
 
-        if (prevCandle && strategy) {
-            let side: "BUY" | "SELL" = "BUY";
-            if (prevCandle.Close > prevCandle.Open) {
-                if (strategy.direction === "SAME") side = "BUY";
-                else side = "SELL";
-            } else {
-                if (strategy.direction === "SAME") side = "SELL";
-                else side = "BUY";
-            }
+    if (prevCandle && strategy) {
+      let side: 'BUY' | 'SELL' = 'BUY';
+      if (prevCandle.Close > prevCandle.Open) {
+        if (strategy.direction === 'SAME') side = 'BUY';
+        else side = 'SELL';
+      } else {
+        if (strategy.direction === 'SAME') side = 'SELL';
+        else side = 'BUY';
+      }
 
-            createNewOrder({ candle, entryPrice: candle.Open, isTrigger: false, side, strategyId: strategy.id });
-        }
-    };
+      createNewOrder({
+        candle,
+        entryPrice: candle.Open,
+        isTrigger: false,
+        side,
+        strategyId: strategy.id,
+      });
+    }
+  };
 
-    const checkHitTarget = (candle: candleType) => {
-        for (const orderId in openOrder) {
-            const order = openOrder[orderId];
+  const checkHitTarget = (candle: candleType) => {
+    for (const orderId in openOrder) {
+      const order = openOrder[orderId];
 
-            const targets: Target[] = order.targets;
+      const targets: Target[] = order.targets;
 
-            const markPrice = getMarkPrice(targets[order.stoplossIdx + 1].targetPercent, order.side, order.entryPrice);
+      const markPrice = getMarkPrice(
+        targets[order.stoplossIdx + 1].targetPercent,
+        order.side,
+        order.entryPrice
+      );
 
-            if ((order.side === "BUY" && candle.High >= markPrice) || (order.side === "SELL" && candle.Low <= markPrice)) {
-                const currentSLIdx = order.stoplossIdx;
-                // Move stoploss by update stoplossIdx
-                openOrder[order.id] = { ...openOrder[order.id], stoplossIdx: order.stoplossIdx + 1 };
-
-                // Check is last target
-                if (currentSLIdx + 1 === targets.length - 1) {
-                    if (!order.isTrigger) {
-                        // new trigger order
-                        let side: "BUY" | "SELL" = order.side;
-                        if (triggerStrategies[0].direction === "OPPOSITE") {
-                            if (side === "BUY") side = "SELL";
-                            else side = "BUY";
-                        }
-                        createNewOrder({ candle, entryPrice: markPrice, isTrigger: true, side, strategyId: 1 });
-                    }
-                    // Close order
-                    closeOrder(order, markPrice, candle);
-                }
-            }
-        }
-    };
-
-    const checkHitStoploss = (candle: candleType) => {
-        for (const id in openOrder) {
-            const order = openOrder[id];
-
-            let targets: Target[] = order.targets;
-            if (order.isTrigger) {
-                targets = triggerDefaultTargets;
-            }
-
-            const markPrice = getMarkPrice(targets[order.stoplossIdx].stoplossPercent, order.side, order.entryPrice);
-            if ((order.side === "BUY" && candle.Low <= markPrice) || (order.side === "SELL" && candle.High >= markPrice)) {
-                // close order
-                closeOrder(order, markPrice, candle);
-            }
-        }
-    };
-
-    const createNewOrder = ({ candle, entryPrice, isTrigger, side, strategyId }: BacktestCreateNewOrderType) => {
-        const orderId = randomId();
-        let targets: Target[] = strategyTargets;
-        if (isTrigger) {
-            targets = triggerDefaultTargets;
-        }
-
-        openOrder[orderId] = {
-            id: orderId,
-            entryTime: candle.Date,
-            entryPrice,
-            isTrigger,
-            side,
-            stoplossIdx: 0,
-            strategyId,
-            targets,
+      if (
+        (order.side === 'BUY' && candle.High >= markPrice) ||
+        (order.side === 'SELL' && candle.Low <= markPrice)
+      ) {
+        const currentSLIdx = order.stoplossIdx;
+        // Move stoploss by update stoplossIdx
+        openOrder[order.id] = {
+          ...openOrder[order.id],
+          stoplossIdx: order.stoplossIdx + 1,
         };
 
-        response[candle.Date] = { ...response[candle.Date], openOrderSide: side }; // This is not a part of logic
-    };
-
-    const closeOrder = (order: BacktestOrderType, markPrice: number, candle: candleType) => {
-        if (openOrder[order.id]) {
-            const tempOrder = { ...openOrder[order.id], markPrice, executedTime: candle.Date };
-            delete openOrder[order.id];
-
-            response[candle.Date] = { ...response[candle.Date], executedOrder: [tempOrder] }; // This is not a part of logic
-        }
-    };
-
-    //========================= Logic start from here ========================= //
-    for (let i = 481; i < dataKey.length; i++) {
-        const candle = dataValues[i];
-        response[candle.Date] = { candle }; // This is not a part of logic
-
-        checkHitStoploss(candle);
-        checkHitTarget(candle);
-
-        if (checkIsNewCandle(candle.Date, timeFrame)) {
-            // Check if exsist open order
-            if (Object.keys(openOrder).length > 0) {
-                // Check setting is order close before new candle
-                if (strategy?.isCloseBeforeNewCandle) {
-                    // Close all order
-                    for (const orderId in openOrder) {
-                        const order = openOrder[orderId];
-                        const markPrice = candle.Open; // We close order at mid night => markPrice is open price
-                        closeOrder(order, markPrice, candle);
-                    }
-
-                    // Create new order
-                    processCreateNewCandleOrder(candle);
-
-                    // Check hit stoploss for new oder just opned (In case hit stoploss at first candle of the day)
-                    checkHitStoploss(candle);
-                    checkHitTarget(candle);
-                } else {
-                    // If order keep over night => Do nothing, let order keep running
-                }
-            } else {
-                // Create new order
-                processCreateNewCandleOrder(candle);
-
-                // Check hit stoploss for new oder just opned (In case hit stoploss at first candle of the day)
-                checkHitStoploss(candle);
-                checkHitTarget(candle);
+        // Check is last target
+        if (currentSLIdx + 1 === targets.length - 1) {
+          if (!order.isTrigger) {
+            // new trigger order
+            let side: 'BUY' | 'SELL' = order.side;
+            if (triggerStrategies[0].direction === 'OPPOSITE') {
+              if (side === 'BUY') side = 'SELL';
+              else side = 'BUY';
             }
+            createNewOrder({
+              candle,
+              entryPrice: markPrice,
+              isTrigger: true,
+              side,
+              strategyId: 1,
+            });
+          }
+          // Close order
+          closeOrder(order, markPrice, candle);
         }
+      }
+    }
+  };
+
+  const checkHitStoploss = (candle: candleType) => {
+    for (const id in openOrder) {
+      const order = openOrder[id];
+
+      let targets: Target[] = order.targets;
+      if (order.isTrigger) {
+        targets = triggerDefaultTargets;
+      }
+
+      const markPrice = getMarkPrice(
+        targets[order.stoplossIdx].stoplossPercent,
+        order.side,
+        order.entryPrice
+      );
+      if (
+        (order.side === 'BUY' && candle.Low <= markPrice) ||
+        (order.side === 'SELL' && candle.High >= markPrice)
+      ) {
+        // close order
+        closeOrder(order, markPrice, candle);
+      }
+    }
+  };
+
+  const createNewOrder = ({
+    candle,
+    entryPrice,
+    isTrigger,
+    side,
+    strategyId,
+  }: BacktestCreateNewOrderType) => {
+    const orderId = randomId();
+    let targets: Target[] = strategyTargets;
+    if (isTrigger) {
+      targets = triggerDefaultTargets;
     }
 
-    response = convertTo1hChart(response);
+    openOrder[orderId] = {
+      id: orderId,
+      entryTime: candle.Date,
+      entryPrice,
+      isTrigger,
+      side,
+      stoplossIdx: 0,
+      strategyId,
+      targets,
+    };
 
-    return response;
+    response[candle.Date] = { ...response[candle.Date], openOrderSide: side }; // This is not a part of logic
+  };
+
+  const closeOrder = (
+    order: BacktestOrderType,
+    markPrice: number,
+    candle: candleType
+  ) => {
+    if (openOrder[order.id]) {
+      const tempOrder = {
+        ...openOrder[order.id],
+        markPrice,
+        executedTime: candle.Date,
+      };
+      delete openOrder[order.id];
+
+      response[candle.Date] = {
+        ...response[candle.Date],
+        executedOrder: [tempOrder],
+      }; // This is not a part of logic
+    }
+  };
+
+  //========================= Logic start from here ========================= //
+  for (let i = 481; i < dataKey.length; i++) {
+    const candle = dataValues[i];
+    response[candle.Date] = { candle }; // This is not a part of logic
+
+    checkHitStoploss(candle);
+    checkHitTarget(candle);
+
+    if (checkIsNewCandle(candle.Date, timeFrame)) {
+      // Check if exsist open order
+      if (Object.keys(openOrder).length > 0) {
+        // Check setting is order close before new candle
+        if (strategy?.isCloseBeforeNewCandle) {
+          // Close all order
+          for (const orderId in openOrder) {
+            const order = openOrder[orderId];
+            const markPrice = candle.Open; // We close order at mid night => markPrice is open price
+            closeOrder(order, markPrice, candle);
+          }
+
+          // Create new order
+          processCreateNewCandleOrder(candle);
+
+          // Check hit stoploss for new oder just opned (In case hit stoploss at first candle of the day)
+          checkHitStoploss(candle);
+          checkHitTarget(candle);
+        } else {
+          // If order keep over night => Do nothing, let order keep running
+        }
+      } else {
+        // Create new order
+        processCreateNewCandleOrder(candle);
+
+        // Check hit stoploss for new oder just opned (In case hit stoploss at first candle of the day)
+        checkHitStoploss(candle);
+        checkHitTarget(candle);
+      }
+    }
+  }
+
+  response = convertTo1hChart(response);
+
+  return response;
 };

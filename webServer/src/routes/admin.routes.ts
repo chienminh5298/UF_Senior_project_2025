@@ -2106,7 +2106,7 @@ router.patch('/claims/:id/approve', requireAuth, async (req, res) => {
     // Update all bills to FINISHED status (approved)
     await prisma.bill.updateMany({
       where: {
-        id: { in: claimWithBills.bills.map(b => b.id) },
+        id: { in: claimWithBills.bills.map((b) => b.id) },
       },
       data: {
         status: 'FINISHED',
@@ -2120,7 +2120,7 @@ router.patch('/claims/:id/approve', requireAuth, async (req, res) => {
         data: {
           type: 'PAYMENT_APPROVED',
           title: 'Payment Approved',
-          message: note 
+          message: note
             ? `Your payment of $${updatedClaim.amount.toFixed(2)} has been approved. ${note}`
             : `Your payment of $${updatedClaim.amount.toFixed(2)} has been approved.`,
           userId: claimWithBills.user.id,
@@ -2265,7 +2265,7 @@ router.patch('/claims/:id/reject', requireAuth, async (req, res) => {
     // Update all bills to REJECTED status and add admin note
     await prisma.bill.updateMany({
       where: {
-        id: { in: claimWithBills.bills.map(b => b.id) },
+        id: { in: claimWithBills.bills.map((b) => b.id) },
       },
       data: {
         status: 'REJECTED',
@@ -2279,7 +2279,7 @@ router.patch('/claims/:id/reject', requireAuth, async (req, res) => {
         data: {
           type: 'PAYMENT_REJECTED',
           title: 'Payment Rejected',
-          message: note 
+          message: note
             ? `Your payment of $${updatedClaim.amount.toFixed(2)} has been rejected. ${note} Please check the Bills page for details.`
             : `Your payment of $${updatedClaim.amount.toFixed(2)} has been rejected. Please check the Bills page for details.`,
           userId: claimWithBills.user.id,

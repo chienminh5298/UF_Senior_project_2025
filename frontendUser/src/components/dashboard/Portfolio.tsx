@@ -64,7 +64,10 @@ export function Portfolio() {
 
       if (response.ok) {
         const data = await response.json();
-        setActiveOrders(data.data.activePositions);
+        const validActiveOrders = (data.data.activePositions || []).filter(
+          (order: any) => order.orderId !== null && order.orderId !== undefined && order.hasActiveOrder === true
+        );
+        setActiveOrders(validActiveOrders);
       } else {
         console.error('Failed to fetch active orders');
       }
@@ -194,10 +197,21 @@ export function Portfolio() {
             </div>
           ) : (
             <div className="space-y-4">
-              {portfolioData?.userTokens.map((userToken, index) => {
-                // Find if there's an active order for this token
+              {portfolioData?.userTokens
+                .filter((userToken) => {
+                  // Only show tokens that have active orders
+                  const activeOrder = activeOrders.find(order => 
+                    order.pair === `${userToken.token.name}/USDT` && 
+                    order.orderId !== null && 
+                    order.hasActiveOrder === true
+                  );
+                  return activeOrder !== undefined;
+                })
+                .map((userToken, index) => {
                 const activeOrder = activeOrders.find(order => 
-                  order.pair === `${userToken.token.name}/USDT`
+                  order.pair === `${userToken.token.name}/USDT` && 
+                  order.orderId !== null && 
+                  order.hasActiveOrder === true
                 );
                 
                 return (

@@ -2,7 +2,7 @@ import { Router } from 'express';
 import prisma from '../models/prismaClient';
 import { requireAuth } from '../middleware/auth';
 import bcrypt from 'bcrypt';
-import { BillStatus, VoucherStatus, NotificationType } from '@prisma/client';
+import { BillStatus, VoucherStatus } from '@prisma/client';
 const router = Router();
 
 // POST /api/user/tokens
@@ -368,7 +368,7 @@ router.get('/trading/positions', requireAuth, async (req, res) => {
     });
 
     // Get user's active orders with related data
-    const activeOrders = await prisma.order.findMany({
+    const allActiveOrders = await prisma.order.findMany({
       where: {
         userId: user.id,
         status: 'ACTIVE',
@@ -393,6 +393,11 @@ router.get('/trading/positions', requireAuth, async (req, res) => {
       },
     });
 
+    // Filter out orders with null tokenId or null token
+    const activeOrders = allActiveOrders.filter(
+      (order) => order.tokenId !== null && order.token !== null
+    );
+
     // Get user's selected tokens (consistent with dashboard)
     const userTokens = await prisma.userToken.findMany({
       where: { userId: user.id },
@@ -415,36 +420,45 @@ router.get('/trading/positions', requireAuth, async (req, res) => {
       userTokens.map(async (userToken) => {
         // Find if there's an active order for this token
         const activeOrder = activeOrders.find(
-          (order) => order.tokenId === userToken.token?.id
+          (order) =>
+            order.tokenId === userToken.token?.id && order.token !== null
         );
 
-        if (activeOrder && userToken.token) {
+        if (activeOrder && userToken.token && activeOrder.token) {
           // Token has an active order - calculate P&L using current market price
           let currentPrice = activeOrder.markPrice || activeOrder.entryPrice;
-          
+
           // Get current market price for accurate P&L
           try {
-            const tokenPrices = await priceService.getTokenPrices([userToken.token.name]);
+            const tokenPrices = await priceService.getTokenPrices([
+              userToken.token.name,
+            ]);
             if (tokenPrices.length > 0 && tokenPrices[0].currentPrice) {
               currentPrice = tokenPrices[0].currentPrice;
             }
           } catch (error) {
-            console.error(`Error fetching price for ${userToken.token.name}:`, error);
+            console.error(
+              `Error fetching price for ${userToken.token.name}:`,
+              error
+            );
           }
 
           // Calculate current value and unrealized P&L
           const currentValue = activeOrder.qty * currentPrice;
-          
+
           // Calculate unrealized P&L based on current price
           let unrealizedPnL = 0;
           if (activeOrder.side === 'BUY') {
-            unrealizedPnL = (currentPrice - activeOrder.entryPrice) * activeOrder.qty;
+            unrealizedPnL =
+              (currentPrice - activeOrder.entryPrice) * activeOrder.qty;
           } else {
             // SELL (short)
-            unrealizedPnL = (activeOrder.entryPrice - currentPrice) * activeOrder.qty;
+            unrealizedPnL =
+              (activeOrder.entryPrice - currentPrice) * activeOrder.qty;
           }
-          
-          const pnlColor = unrealizedPnL >= 0 ? 'text-green-400' : 'text-red-400';
+
+          const pnlColor =
+            unrealizedPnL >= 0 ? 'text-green-400' : 'text-red-400';
 
           return {
             id: activeOrder.id,
@@ -453,7 +467,7 @@ router.get('/trading/positions', requireAuth, async (req, res) => {
             type: activeOrder.side === 'BUY' ? 'Long' : 'Short',
             size: `${activeOrder.qty} ${userToken.token.name}`,
             pnl: `${unrealizedPnL >= 0 ? '+' : ''}$${unrealizedPnL.toFixed(2)}`,
-            pnlValue: unrealizedPnL, 
+            pnlValue: unrealizedPnL,
             pnlColor,
             entry: `$${activeOrder.entryPrice.toLocaleString()}`,
             strategy: activeOrder.strategy
@@ -465,49 +479,47 @@ router.get('/trading/positions', requireAuth, async (req, res) => {
             markPrice: currentPrice,
             hasActiveOrder: true,
           };
-      } else if (userToken.token) {
-        // Token is selected but no active order (available for trading)
-        return {
-          id: userToken.id,
-          orderId: null,
-          pair: `${userToken.token.name}/USDT`,
-          type: 'Available',
-          size: `0 ${userToken.token.name}`,
-          pnl: '$0.00',
-          pnlColor: 'text-gray-400',
-          entry: 'Not started',
-          strategy: 'Ready to trade',
-          investment: '$0.00',
-          startDate: 'Not started',
-          currentValue: 0,
-          markPrice: 0,
-          hasActiveOrder: false,
-        };
-      } else {
-        // Fallback for null token
-        return {
-          id: userToken.id,
-          orderId: null,
-          pair: 'Unknown/USDT',
-          type: 'Available',
-          size: '0 Unknown',
-          pnl: '$0.00',
-          pnlColor: 'text-gray-400',
-          entry: 'Not started',
-          strategy: 'Ready to trade',
-          investment: '$0.00',
-          startDate: 'Not started',
-          currentValue: 0,
-          markPrice: 0,
-          hasActiveOrder: false,
-        };
-      }
+        } else if (userToken.token) {
+          // Token is selected but no active order (available for trading)
+          return {
+            id: userToken.id,
+            orderId: null,
+            pair: `${userToken.token.name}/USDT`,
+            type: 'Available',
+            size: `0 ${userToken.token.name}`,
+            pnl: '$0.00',
+            pnlColor: 'text-gray-400',
+            entry: 'Not started',
+            strategy: 'Ready to trade',
+            investment: '$0.00',
+            startDate: 'Not started',
+            currentValue: 0,
+            markPrice: 0,
+            hasActiveOrder: false,
+          };
+        } else {
+          return null;
+        }
       })
     );
 
+    // Filter out null positions
+    const validActivePositions = activePositions
+      .filter((position) => position !== null)
+      .filter((position) => {
+        if (position.hasActiveOrder) {
+          return (
+            position.orderId !== null &&
+            position.orderId !== undefined &&
+            position.pair !== 'Unknown/USDT'
+          );
+        }
+        return true;
+      });
+
     // Calculate summary statistics (consistent with dashboard)
     // Sum up the calculated P&L from active positions
-    const activePositionsPnL = activePositions.reduce((sum, position) => {
+    const activePositionsPnL = validActivePositions.reduce((sum, position) => {
       if (position.hasActiveOrder && typeof position.pnlValue === 'number') {
         return sum + position.pnlValue;
       }
@@ -536,7 +548,7 @@ router.get('/trading/positions', requireAuth, async (req, res) => {
       success: true,
       message: 'Trading positions retrieved successfully',
       data: {
-        activePositions,
+        activePositions: validActivePositions,
         summary: {
           totalPositions: userTokens.length, // Same as active tokens count
           activeTokensCount: userTokens.length, // Same as dashboard
@@ -765,7 +777,9 @@ router.get('/portfolio', requireAuth, async (req, res) => {
       // Get current market price for the token
       let currentPrice = order.markPrice || order.entryPrice;
       try {
-        const tokenPrices = await priceService.getTokenPrices([order.token.name]);
+        const tokenPrices = await priceService.getTokenPrices([
+          order.token.name,
+        ]);
         if (tokenPrices.length > 0 && tokenPrices[0].currentPrice) {
           currentPrice = tokenPrices[0].currentPrice;
         }
@@ -1836,7 +1850,8 @@ router.post('/bills/pay', requireAuth, async (req, res) => {
     if (bills.length === 0) {
       return res.status(400).json({
         success: false,
-        message: 'No valid payable bills found. Bills must be unpaid (NEW) or rejected (REJECTED) status.',
+        message:
+          'No valid payable bills found. Bills must be unpaid (NEW) or rejected (REJECTED) status.',
       });
     }
 
@@ -1855,19 +1870,22 @@ router.post('/bills/pay', requireAuth, async (req, res) => {
 
     let totalCommission = 0;
     for (const bill of bills) {
-      const adminCommissionPercent = bill.adminCommissionPercent > 1
-        ? bill.adminCommissionPercent / 100
-        : bill.adminCommissionPercent;
-      const referralCommissionPercent = bill.referralCommissionPercent > 1
-        ? bill.referralCommissionPercent / 100
-        : bill.referralCommissionPercent;
+      const adminCommissionPercent =
+        bill.adminCommissionPercent > 1
+          ? bill.adminCommissionPercent / 100
+          : bill.adminCommissionPercent;
+      const referralCommissionPercent =
+        bill.referralCommissionPercent > 1
+          ? bill.referralCommissionPercent / 100
+          : bill.referralCommissionPercent;
 
       if (bill.netProfit > 0) {
-        const billCommission = bill.netProfit * (adminCommissionPercent + referralCommissionPercent);
+        const billCommission =
+          bill.netProfit * (adminCommissionPercent + referralCommissionPercent);
         totalCommission += billCommission;
       }
     }
-    
+
     // Round up the total commission to 2 decimal places
     totalCommission = roundUpToCents(totalCommission);
 
@@ -1911,7 +1929,8 @@ router.post('/bills/pay', requireAuth, async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: 'Payment submitted successfully. Claim created and pending admin approval.',
+      message:
+        'Payment submitted successfully. Claim created and pending admin approval.',
       data: {
         claimId: claim.id,
         billsUpdated: bills.length,
