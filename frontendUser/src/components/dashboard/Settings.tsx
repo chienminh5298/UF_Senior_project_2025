@@ -1,9 +1,8 @@
-import React, { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card'
 import { Button } from '../ui/button'
 import { Badge } from '../ui/badge'
 import { 
-  Settings as SettingsIcon,
   User,
   Shield,
   Bell,
@@ -37,6 +36,12 @@ export function Settings() {
   const [passwordError, setPasswordError] = useState<string | null>(null)
   const [passwordSuccess, setPasswordSuccess] = useState<string | null>(null)
 
+  const [apiKey, setApiKey] = useState('')
+  const [currentApiKey, setCurrentApiKey] = useState<string | null>(null)
+  const [savingApiKey, setSavingApiKey] = useState(false)
+  const [apiKeyError, setApiKeyError] = useState<string | null>(null)
+  const [apiKeySuccess, setApiKeySuccess] = useState<string | null>(null)
+
   useEffect(() => {
     // Load user data from localStorage
     try {
@@ -49,6 +54,9 @@ export function Settings() {
         setLastName(nameParts.slice(1).join(' ') || '')
         setUsername(user.username || '')
         setEmail(user.email || '')
+        if (user.apiKey) {
+          setCurrentApiKey(user.apiKey)
+        }
       }
     } catch (e) {
       console.error('Failed to load user data:', e)
@@ -346,6 +354,46 @@ export function Settings() {
   )
 
 
+  const handleSetApiKey = async () => {
+    if (savingApiKey) return
+    setApiKeyError(null)
+    setApiKeySuccess(null)
+    try {
+      if (!apiKey || !apiKey.trim()) {
+        throw new Error('Please enter an API key')
+      }
+      setSavingApiKey(true)
+      const auth = localStorage.getItem('auth')
+      const token = auth ? JSON.parse(auth).token : null
+      const res = await fetch('/api/user/api-key', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ apiKey: apiKey.trim() }),
+      })
+      const data = await res.json()
+      if (!res.ok || !data?.success) {
+        throw new Error(data?.message || 'Failed to update API key')
+      }
+      setCurrentApiKey(apiKey.trim())
+      setApiKey('')
+      setShowApiKeys(false)
+      setApiKeySuccess('API key updated successfully')
+      // Update local storage auth user
+      const authObj = auth ? JSON.parse(auth) : null
+      if (authObj) {
+        authObj.user.apiKey = apiKey.trim()
+        localStorage.setItem('auth', JSON.stringify(authObj))
+      }
+    } catch (e: any) {
+      setApiKeyError(e?.message || 'Failed to update API key')
+    } finally {
+      setSavingApiKey(false)
+    }
+  }
+
   const renderApiSection = () => (
     <div className="space-y-6">
       <Card className="bg-gray-800/50 border-gray-700">
@@ -364,31 +412,69 @@ export function Settings() {
             </div>
           </div>
 
-          <div className="space-y-3">
-            <div className="flex items-center justify-between p-4 bg-gray-800 rounded-lg">
-              <div>
-                <p className="text-white font-medium">Trading Bot API Key</p>
-                <p className="text-sm text-gray-400">
-                  {showApiKeys ? 'sk_live_1234567890abcdef...' : '••••••••••••••••••••••••'}
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-sm font-medium text-gray-300">
+                  {currentApiKey ? 'API Key' : 'Enter API Key'}
+                </label>
+                {currentApiKey && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setShowApiKeys(!showApiKeys)
+                      if (!showApiKeys && !apiKey) {
+                        setApiKey(currentApiKey)
+                      }
+                    }}
+                    className="h-6 px-2"
+                  >
+                    {showApiKeys ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                  </Button>
+                )}
+              </div>
+              <input
+                type={showApiKeys ? "text" : "password"}
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+                placeholder={currentApiKey ? "Modify your API key" : "Enter your API key"}
+                className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500 font-mono text-sm"
+                onFocus={() => {
+                  // When user focuses and there's a current key but no input, populate it
+                  if (currentApiKey && !apiKey) {
+                    setApiKey(currentApiKey)
+                    setShowApiKeys(true)
+                  }
+                }}
+              />
+              {currentApiKey && !apiKey && (
+                <p className="text-xs text-gray-400">
+                  Current API key is set. Click the eye icon or focus the field to view/modify it.
                 </p>
-              </div>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setShowApiKeys(!showApiKeys)}
-                >
-                  {showApiKeys ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </Button>
-                <Button variant="ghost" size="sm">Regenerate</Button>
-              </div>
+              )}
             </div>
-          </div>
 
-          <Button className="bg-blue-600 hover:bg-blue-700">
-            <Key className="w-4 h-4 mr-2" />
-            Generate New API Key
-          </Button>
+            {apiKeyError && (
+              <div className="p-3 bg-red-900/20 border border-red-800 rounded-lg text-sm text-red-400" role="alert">
+                {apiKeyError}
+              </div>
+            )}
+            {apiKeySuccess && (
+              <div className="p-3 bg-green-900/20 border border-green-800 rounded-lg text-sm text-green-400" role="status">
+                {apiKeySuccess}
+              </div>
+            )}
+
+            <Button 
+              onClick={handleSetApiKey} 
+              disabled={savingApiKey || !apiKey} 
+              className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50"
+            >
+              <Save className="w-4 h-4 mr-2" />
+              {savingApiKey ? 'Saving...' : currentApiKey ? 'Update API Key' : 'Set API Key'}
+            </Button>
+          </div>
         </CardContent>
       </Card>
     </div>

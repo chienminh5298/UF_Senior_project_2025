@@ -77,7 +77,8 @@ export function History() {
       const pnlNum = typeof o.netProfit === 'number' ? o.netProfit : 0
       const pnl = `${pnlNum >= 0 ? '+' : ''}$${pnlNum.toFixed(2)}`
       const pnlColor = pnlNum > 0 ? 'text-green-400' : pnlNum < 0 ? 'text-red-400' : 'text-gray-400'
-      const date = new Date(o.timestamp).toLocaleString()
+      // Handle date parsing with fallback (same as admin frontend)
+      const date = new Date(o.buyDate || o.timestamp || o.createdAt).toLocaleString()
       return {
         id: o.id,
         date,

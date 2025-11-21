@@ -157,6 +157,7 @@ router.get('/users/:id', requireAuth, async (req, res) => {
       tradeBalance: true,
       profit: true,
       createdAt: true,
+      apiKey: true,
     },
   });
 

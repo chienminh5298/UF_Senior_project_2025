@@ -1945,3 +1945,41 @@ router.post('/bills/pay', requireAuth, async (req, res) => {
     });
   }
 });
+
+// POST /api/user/api-key
+/**
+ * @swagger
+ * /api/user/api-key:
+ *   post:
+ *     summary: Store user API key
+ *     tags: [User]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: API key stored successfully
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Failed to store API key
+ */
+router.post('/api-key', requireAuth, async (req, res) => {
+  const { user } = req;
+
+  if (!user) {
+    return res.status(401).json({ success: false, message: 'Unauthorized' });
+  }
+
+  try {
+    const { apiKey } = req.body;
+
+  const updatedUser = await prisma.user.update({
+    where: { id: user.id },
+    data: { apiKey: apiKey },
+  });
+
+  return res.status(200).json({ success: true, message: 'API key stored successfully', data: { apiKey: updatedUser.apiKey } });
+} catch (error) {
+  return res.status(500).json({ success: false, message: 'Failed to store API key' });
+  }
+});

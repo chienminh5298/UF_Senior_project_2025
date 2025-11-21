@@ -16,7 +16,10 @@ import {
   Trash2,
   Clock,
   AlertCircle,
-  Copy
+  Copy,
+  Eye,
+  EyeOff,
+  Key
 } from 'lucide-react'
 
 // API Configuration
@@ -620,6 +623,7 @@ export function Admin() {
   // User Details State
   const [userDetails, setUserDetails] = useState<any>(null)
   const [loadingUserDetails, setLoadingUserDetails] = useState(false)
+  const [showApiKey, setShowApiKey] = useState(false)
   const [updatingUserStatus, setUpdatingUserStatus] = useState(false)
   
   // Strategy delete functions
@@ -1753,6 +1757,7 @@ export function Admin() {
       if (selectedUser?.id === user.id) {
         setSelectedUser(null)
         setUserDetails(null)
+        setShowApiKey(false)
       } else {
         // Convert API user to display format
         const displayUser = {
@@ -1772,6 +1777,7 @@ export function Admin() {
           }),
         }
         setSelectedUser(displayUser as any)
+        setShowApiKey(false)
         
         // Fetch detailed user information
         setLoadingUserDetails(true)
@@ -1934,6 +1940,7 @@ export function Admin() {
                     onClick={() => {
                       setSelectedUser(null)
                       setUserDetails(null)
+                      setShowApiKey(false)
                     }}
                     className="hover:bg-gray-800"
                   >
@@ -2007,6 +2014,29 @@ export function Admin() {
                           })}
                         </p>
                       </div>
+
+                      {/* API Key */}
+                      {userDetails.apiKey && (
+                        <div className="p-3 bg-gray-800 rounded-lg">
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center gap-2">
+                              <Key className="w-4 h-4 text-gray-400" />
+                              <p className="text-gray-400 text-sm">API Key</p>
+                            </div>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setShowApiKey(!showApiKey)}
+                              className="h-6 px-2"
+                            >
+                              {showApiKey ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                            </Button>
+                          </div>
+                          <p className="text-white font-mono text-xs break-all">
+                            {showApiKey ? userDetails.apiKey : '••••••••••••••••••••••••'}
+                          </p>
+                        </div>
+                      )}
                     </div>
                   ) : (
                     <div className="text-center py-8">
