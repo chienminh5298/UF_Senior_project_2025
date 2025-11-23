@@ -1,293 +1,381 @@
 import { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card'
 import { Button } from '../ui/button'
-import { Badge } from '../ui/badge'
-import { 
-  TrendingUp, 
-  Target,
-  Activity,
-  Plus,
-  DollarSign,
-  ShoppingCart,
-  Eye
-} from 'lucide-react'
+import { CheckCircle, RefreshCw, X, DollarSign, Coins } from 'lucide-react'
 
-interface ActivePosition {
-  id: number;
-  orderId: string | null;
-  pair: string;
-  type: string;
-  size: string;
-  pnl: string;
-  pnlColor: string;
-  entry: string;
-  strategy: string;
-  investment: string;
-  startDate: string;
-  currentValue: number;
-  markPrice: number;
-  hasActiveOrder?: boolean;
+interface Token {
+  id: number
+  name: string
+  stable: string
+  minQty: number
+  leverage: number
+  isActive: boolean
 }
 
-interface TradingSummary {
-  totalPositions: number;
-  activeTokensCount: number;
-  totalPnL: number;
-  totalInvestment: number;
-  winRate: number;
-  availableCash: number;
+interface UserToken {
+  id: number
+  token: {
+    id: number
+    name: string
+    isActive: boolean
+  }
 }
 
 export function Trading() {
-  const [isAutoTrading, setIsAutoTrading] = useState(true)
-  const [selectedToken, setSelectedToken] = useState('')
-  const [orderAmount, setOrderAmount] = useState('')
-  const [summary, setSummary] = useState<TradingSummary | null>(null)
-  const [availableTokens, setAvailableTokens] = useState<any[]>([])
+  const [tradeBalance, setTradeBalance] = useState<number>(0)
+  const [tradeBalanceInput, setTradeBalanceInput] = useState<string>('')
   const [loading, setLoading] = useState(true)
+  const [savingBalance, setSavingBalance] = useState(false)
   
-  useEffect(() => {
-    fetchTradingData();
-    fetchAvailableTokens();
-  }, []);
+  // Token selector state
+  const [showTokenSelector, setShowTokenSelector] = useState(false)
+  const [availableTokens, setAvailableTokens] = useState<Token[]>([])
+  const [userTokens, setUserTokens] = useState<UserToken[]>([])
+  const [selectedTokenIds, setSelectedTokenIds] = useState<number[]>([])
+  const [tokenSelectorLoading, setTokenSelectorLoading] = useState(false)
 
-  const fetchTradingData = async () => {
+  // Fetch user data on mount
+  useEffect(() => {
+    fetchUserData()
+    fetchAvailableTokens()
+  }, [])
+
+  const fetchUserData = async () => {
     try {
-      const authData = localStorage.getItem('auth');
-      const token = authData ? JSON.parse(authData).token : null;
-      
-      const response = await fetch('/api/user/trading/positions', {
+      const authData = localStorage.getItem('auth')
+      const token = authData ? JSON.parse(authData).token : null
+
+      const response = await fetch('/api/user/portfolio', {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
-      });
-      
+      })
+
       if (response.ok) {
-        const data = await response.json();
-        setSummary(data.data.summary);
-      } else {
-        console.error('Failed to fetch trading data');
+        const data = await response.json()
+        const balance = data.data?.tradeBalance || 0
+        setTradeBalance(balance)
+        setTradeBalanceInput(balance.toString())
+        setUserTokens(data.data?.userTokens || [])
+        // Pre-select user's current tokens
+        const currentTokenIds = (data.data?.userTokens || []).map((ut: UserToken) => ut.token.id)
+        setSelectedTokenIds(currentTokenIds)
       }
     } catch (error) {
-      console.error('Error fetching trading data:', error);
+      console.error('Error fetching user data:', error)
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
-  };
+  }
 
   const fetchAvailableTokens = async () => {
     try {
-      const authData = localStorage.getItem('auth');
-      const token = authData ? JSON.parse(authData).token : null;
-      
+      const authData = localStorage.getItem('auth')
+      const token = authData ? JSON.parse(authData).token : null
+
       const response = await fetch('/api/user/tokens/available', {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
-      });
-      
+      })
+
       if (response.ok) {
-        const data = await response.json();
-        setAvailableTokens(data.data);
-      } else {
-        console.error('Failed to fetch available tokens');
+        const data = await response.json()
+        setAvailableTokens(data.data || [])
       }
     } catch (error) {
-      console.error('Error fetching available tokens:', error);
+      console.error('Error fetching available tokens:', error)
     }
-  };
+  }
 
-  const handlePlaceOrder = () => {
-    const amount = parseFloat(orderAmount)
-    const maxAmount = summary?.availableCash || 0
-    if (selectedToken && orderAmount && amount > 0 && amount <= maxAmount) {
-      console.log(`Placing order for ${selectedToken} with amount $${amount}`)
-      // Reset form
-      setSelectedToken('')
-      setOrderAmount('')
+  const handleSaveTradeBalance = async () => {
+    const balance = parseInt(tradeBalanceInput, 10)
+    
+    if (isNaN(balance) || balance < 0) {
+      alert('Please enter a valid non-negative whole number')
+      return
     }
+
+    setSavingBalance(true)
+    try {
+      const authData = localStorage.getItem('auth')
+      const token = authData ? JSON.parse(authData).token : null
+
+      const response = await fetch('/api/user/trade-balance', {
+        method: 'PATCH',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ tradeBalance: balance }),
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        setTradeBalance(data.data.tradeBalance)
+        setTradeBalanceInput(data.data.tradeBalance.toString())
+        alert('Trade balance updated successfully')
+      } else {
+        const errorData = await response.json()
+        alert(errorData.message || 'Failed to update trade balance')
+      }
+    } catch (error) {
+      console.error('Error updating trade balance:', error)
+      alert('Failed to update trade balance')
+    } finally {
+      setSavingBalance(false)
+    }
+  }
+
+  const handleOpenTokenSelector = () => {
+    setShowTokenSelector(true)
+    // Pre-select user's current tokens
+    const currentTokenIds = userTokens.map(ut => ut.token.id)
+    setSelectedTokenIds(currentTokenIds)
+  }
+
+  const handleCloseTokenSelector = () => {
+    setShowTokenSelector(false)
+    // Reset to current user tokens
+    const currentTokenIds = userTokens.map(ut => ut.token.id)
+    setSelectedTokenIds(currentTokenIds)
+  }
+
+  const toggleToken = (tokenId: number) => {
+    setSelectedTokenIds(prev =>
+      prev.includes(tokenId)
+        ? prev.filter(id => id !== tokenId)
+        : [...prev, tokenId]
+    )
+  }
+
+  const handleSaveTokenSelection = async () => {
+    setTokenSelectorLoading(true)
+
+    try {
+      const authData = localStorage.getItem('auth')
+      const token = authData ? JSON.parse(authData).token : null
+
+      const response = await fetch('/api/user/tokens/bulk', {
+        method: 'PATCH',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ tokenIds: selectedTokenIds }),
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        setUserTokens(data.data.userTokens || [])
+        setShowTokenSelector(false)
+        alert('Token selection updated successfully')
+      } else {
+        const errorData = await response.json()
+        alert(errorData.message || 'Failed to update token selection')
+      }
+    } catch (error) {
+      console.error('Error updating token selection:', error)
+      alert('Failed to update token selection')
+    } finally {
+      setTokenSelectorLoading(false)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <RefreshCw className="w-8 h-8 animate-spin text-gray-400" />
+      </div>
+    )
   }
 
   return (
     <div className="h-full flex flex-col p-4 sm:p-6 overflow-hidden">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 flex-shrink-0 mb-4 sm:mb-6">
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-white">Trading</h1>
-          <p className="text-sm sm:text-base text-gray-400">Place orders for any available token</p>
-        </div>
-        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4">
-          <Badge className={`text-xs sm:text-sm ${isAutoTrading ? 'bg-green-500/20 text-green-400 border-green-500/30' : 'bg-red-500/20 text-red-400 border-red-500/30'}`}>
-            Auto Trading {isAutoTrading ? 'Active' : 'Paused'}
-          </Badge>
-          <label className="relative inline-flex items-center cursor-pointer">
-            <input
-              type="checkbox"
-              checked={isAutoTrading}
-              onChange={(e) => setIsAutoTrading(e.target.checked)}
-              className="sr-only peer"
-            />
-            <div className="w-9 h-5 sm:w-11 sm:h-6 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 sm:after:h-5 sm:after:w-5 after:transition-all peer-checked:bg-green-600"></div>
-          </label>
-        </div>
+      <div className="flex-shrink-0 mb-6">
+        <h1 className="text-2xl sm:text-3xl font-bold text-white">Trading Settings</h1>
+        <p className="text-sm sm:text-base text-gray-400 mt-1">Configure your trade balance and token selection</p>
       </div>
 
-      {/* Place Orders Section */}
-      <div className="flex-1 grid grid-cols-1 xl:grid-cols-3 gap-4 sm:gap-6 min-h-0 overflow-hidden items-stretch">
-        {/* Left Column - Account Balance & Order Form */}
-        <div className="xl:col-span-2 flex flex-col gap-4 sm:gap-6 h-full">
-          {/* Order Placement Form */}
-          <Card className="bg-gray-900 border-gray-800 flex-shrink-0">
-                <CardHeader>
-              <CardTitle className="text-white">Place Token Order</CardTitle>
-              <p className="text-sm text-gray-400">Choose a token and investment amount to start trading</p>
-                </CardHeader>
-                <CardContent className="space-y-6">
-              {/* Token Selection */}
-                  <div className="space-y-3">
-                <label className="text-sm font-medium text-gray-300">Select Token</label>
-                <select 
-                  value={selectedToken}
-                  onChange={(e) => setSelectedToken(e.target.value)}
-                  className="w-full p-3 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-blue-500"
-                >
-                  <option value="">Choose a token...</option>
-                  {availableTokens.map((token, index) => (
-                    <option key={`select-${token.id}-${index}`} value={token.name}>
-                      {token.name}/{token.stable} (Leverage: {token.leverage}x)
-                        </option>
-                      ))}
-                </select>
+      {/* Main Content */}
+      <div className="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-6 min-h-0">
+        {/* Trade Balance Selector */}
+        <Card className="bg-gray-900 border-gray-800">
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <DollarSign className="w-5 h-5 text-blue-400" />
+              <CardTitle className="text-white">Trade Balance</CardTitle>
+            </div>
+            <p className="text-sm text-gray-400 mt-1">Set your trading balance (whole number only)</p>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-gray-300">Current Balance</label>
+              <div className="text-2xl font-bold text-white">
+                ${tradeBalance.toLocaleString()}
               </div>
+            </div>
+            <div className="space-y-2">
+              <label htmlFor="tradeBalance" className="text-sm font-medium text-gray-300">
+                New Trade Balance
+              </label>
+              <input
+                id="tradeBalance"
+                type="number"
+                min="0"
+                step="1"
+                value={tradeBalanceInput}
+                onChange={(e) => {
+                  const value = e.target.value
+                  // Only allow whole numbers
+                  if (value === '' || /^\d+$/.test(value)) {
+                    setTradeBalanceInput(value)
+                  }
+                }}
+                placeholder="Enter trade balance..."
+                className="w-full p-3 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
+              />
+            </div>
+            <Button
+              onClick={handleSaveTradeBalance}
+              disabled={savingBalance || tradeBalanceInput === '' || parseInt(tradeBalanceInput, 10) === tradeBalance}
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              {savingBalance ? (
+                <>
+                  <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                'Save Trade Balance'
+              )}
+            </Button>
+          </CardContent>
+        </Card>
 
-                  {/* Investment Amount */}
-                  <div className="space-y-3">
-                    <label className="text-sm font-medium text-gray-300">Investment Amount (USD)</label>
-                  <input
-                    type="number"
-                      value={orderAmount}
-                      onChange={(e) => setOrderAmount(e.target.value)}
-                      placeholder="Enter amount..."
-                  max={summary?.availableCash || 0}
-                    className="w-full p-3 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
-                  />
-                    <div className="flex justify-between items-center">
-                      <p className="text-sm text-green-400">
-                    Maximum investment: ${(summary?.availableCash || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                      </p>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                    onClick={() => setOrderAmount((summary?.availableCash || 0).toString())}
-                        className="text-blue-400 hover:text-white text-xs"
-                      >
-                        Use Max
-                      </Button>
-                    </div>
+        {/* Token Selector */}
+        <Card className="bg-gray-900 border-gray-800">
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <Coins className="w-5 h-5 text-blue-400" />
+              <CardTitle className="text-white">Token Selection</CardTitle>
+            </div>
+            <p className="text-sm text-gray-400 mt-1">Select tokens you want to trade with</p>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-gray-300">Selected Tokens</label>
+              <div className="text-2xl font-bold text-white">
+                {userTokens.length} token{userTokens.length !== 1 ? 's' : ''}
               </div>
-
-              {/* Place Order Button */}
-              <div className="space-y-2">
-                <Button 
-                      onClick={handlePlaceOrder}
-                  disabled={!selectedToken || !orderAmount || parseFloat(orderAmount) <= 0 || parseFloat(orderAmount) > (summary?.availableCash || 0)}
-                      className="w-full bg-green-600 hover:bg-green-700 py-3 text-base font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+              {userTokens.length > 0 && (
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {userTokens.map((ut) => (
+                    <span
+                      key={ut.id}
+                      className="px-3 py-1 bg-blue-600/20 text-blue-400 border border-blue-600/50 rounded-full text-sm"
                     >
-                      <Plus className="w-4 h-4 mr-2" />
-                  Place Token Order
-                </Button>
-                {orderAmount && parseFloat(orderAmount) > (summary?.availableCash || 0) && (
-                  <p className="text-sm text-red-400 text-center">
-                    Amount exceeds available cash (${(summary?.availableCash || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })})
+                      {ut.token.name}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+            <Button
+              onClick={handleOpenTokenSelector}
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              <Coins className="w-4 h-4 mr-2" />
+              Select Tokens
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Token Selection Modal */}
+      {showTokenSelector && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <Card className="bg-gray-900 border-gray-800 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            <CardHeader className="flex flex-row items-center justify-between border-b border-gray-800">
+              <CardTitle className="text-white">Select Trading Tokens</CardTitle>
+              <Button
+                onClick={handleCloseTokenSelector}
+                variant="ghost"
+                size="sm"
+                className="text-gray-400 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </Button>
+            </CardHeader>
+            <CardContent className="p-6">
+              {tokenSelectorLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <RefreshCw className="w-6 h-6 animate-spin text-gray-400" />
+                  <span className="ml-2 text-gray-400">Loading tokens...</span>
+                </div>
+              ) : (
+                <>
+                  <p className="text-sm text-gray-400 mb-4">
+                    Select tokens to trade with. Only selected tokens will be used for trading.
                   </p>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Account Summary */}
-          <Card className="bg-gray-900 border-gray-800 flex-1 flex flex-col">
-            <CardHeader>
-              <CardTitle className="text-white">Account Balance</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3 flex-1 flex flex-col justify-center">
-              <div className="flex justify-between">
-                <span className="text-gray-400">Available Balance</span>
-                <span className="text-white font-bold">${(summary?.availableCash ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                  <div className="grid grid-cols-2 gap-2 mb-6">
+                    {Array.isArray(availableTokens) && availableTokens.length > 0 ? (
+                      availableTokens.map((token) => (
+                        <div
+                          key={token.id}
+                          className={`p-3 rounded-lg border cursor-pointer transition-colors ${
+                            selectedTokenIds.includes(token.id)
+                              ? 'bg-blue-600/20 border-blue-600 text-blue-400'
+                              : 'bg-gray-800 border-gray-700 hover:bg-gray-700'
+                          }`}
+                          onClick={() => toggleToken(token.id)}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="text-white font-medium">{token.name}</span>
+                            {selectedTokenIds.includes(token.id) && (
+                              <CheckCircle className="w-4 h-4 text-blue-400" />
+                            )}
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="col-span-2 text-center py-8 text-gray-400">
+                        <p>No tokens available</p>
                       </div>
-              <div className="flex justify-between">
-                <span className="text-gray-400">Invested in Strategies</span>
-                <span className="text-white font-medium">${(summary?.totalInvestment ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-400">Total P&L</span>
-                <span className={`font-medium ${(summary?.totalPnL ?? 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                  {(summary?.totalPnL ?? 0) >= 0 ? '+' : ''}${(summary?.totalPnL ?? 0).toFixed(2)}
-                </span>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Right Column - Available Tokens */}
-        <div className="flex flex-col h-full">
-          {/* Available Tokens */}
-          <Card className="bg-gray-900 border-gray-800 h-full flex flex-col">
-            <CardHeader className="flex-shrink-0">
-              <CardTitle className="text-white">Available Tokens</CardTitle>
-              <p className="text-sm text-gray-400">All tokens available for trading</p>
-            </CardHeader>
-            <CardContent className="flex-1 overflow-y-auto min-h-0">
-              <div className="space-y-3">
-                {availableTokens.map((token, index) => {
-                  const isSelected = selectedToken === token.name;
-                  return (
-                    <div 
-                      key={`card-${token.id}-${index}`} 
-                      className={`p-3 rounded-lg border transition-all cursor-pointer ${
-                        isSelected 
-                          ? 'bg-blue-500/20 border-blue-500/50 shadow-lg shadow-blue-500/10' 
-                          : 'bg-gray-800/50 border-gray-700 hover:bg-gray-800/70'
-                      }`}
-                      onClick={() => setSelectedToken(token.name)}
+                    )}
+                  </div>
+                  <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-800">
+                    <Button
+                      onClick={handleCloseTokenSelector}
+                      variant="outline"
+                      className="border-gray-700 text-gray-300 hover:text-white"
                     >
-                      <div className="flex items-center justify-between mb-2">
-                        <h4 className={`font-medium text-sm ${isSelected ? 'text-blue-400' : 'text-white'}`}>
-                          {token.name}
-                        </h4>
-                        <Badge className={`${
-                          isSelected 
-                            ? 'bg-blue-500/30 text-blue-300 border-blue-500/50' 
-                            : 'bg-blue-500/20 text-blue-400 border-blue-500/30'
-                        }`}>
-                          Available
-                        </Badge>
-                      </div>
-                      <div className="grid grid-cols-2 gap-2 text-xs">
-                        <div>
-                          <p className="text-gray-400">Min Quantity</p>
-                          <p className={`font-medium ${isSelected ? 'text-blue-300' : 'text-white'}`}>
-                            {token.minQty}
-                          </p>
-                        </div>
-                        <div>
-                          <p className="text-gray-400">Leverage</p>
-                          <p className={`font-medium ${isSelected ? 'text-blue-300' : 'text-white'}`}>
-                            {token.leverage}x
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+                      Cancel
+                    </Button>
+                    <Button
+                      onClick={handleSaveTokenSelection}
+                      disabled={tokenSelectorLoading}
+                      className="bg-blue-600 hover:bg-blue-700 text-white"
+                    >
+                      {tokenSelectorLoading ? (
+                        <>
+                          <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                          Saving...
+                        </>
+                      ) : (
+                        'Save Changes'
+                      )}
+                    </Button>
+                  </div>
+                </>
+              )}
             </CardContent>
           </Card>
         </div>
-      </div>
+      )}
     </div>
   )
 }

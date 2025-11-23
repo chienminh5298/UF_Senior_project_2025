@@ -1067,6 +1067,206 @@ router.get('/tokens/available', requireAuth, async (req, res) => {
   }
 });
 
+// PATCH /api/user/trade-balance
+/**
+ * @swagger
+ * /api/user/trade-balance:
+ *   patch:
+ *     summary: Update user trade balance
+ *     tags: [User]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               tradeBalance:
+ *                 type: integer
+ *                 description: The new trade balance value (whole number)
+ *                 example: 1000
+ *     responses:
+ *       200:
+ *         description: Trade balance updated successfully
+ *       400:
+ *         description: Invalid trade balance value
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Failed to update trade balance
+ */
+router.patch('/trade-balance', requireAuth, async (req, res) => {
+  const { user } = req;
+
+  if (!user) {
+    return res.status(401).json({
+      success: false,
+      message: 'Unauthorized',
+    });
+  }
+
+  try {
+    const { tradeBalance } = req.body;
+
+    if (
+      typeof tradeBalance !== 'number' ||
+      tradeBalance < 0 ||
+      !Number.isInteger(tradeBalance)
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: 'Trade balance must be a non-negative whole number',
+      });
+    }
+
+    const updatedUser = await prisma.user.update({
+      where: { id: user.id },
+      data: { tradeBalance },
+      select: {
+        id: true,
+        tradeBalance: true,
+      },
+    });
+
+    res.status(200).json({
+      success: true,
+      message: 'Trade balance updated successfully',
+      data: updatedUser,
+    });
+  } catch (error) {
+    console.error('Error updating trade balance:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update trade balance',
+    });
+  }
+});
+
+// PATCH /api/user/tokens/bulk
+/**
+ * @swagger
+ * /api/user/tokens/bulk:
+ *   patch:
+ *     summary: Update user tokens in bulk
+ *     tags: [User]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               tokenIds:
+ *                 type: array
+ *                 items:
+ *                   type: integer
+ *                 description: Array of token IDs to associate with the user
+ *                 example: [1, 2, 3]
+ *     responses:
+ *       200:
+ *         description: User tokens updated successfully
+ *       400:
+ *         description: Invalid token IDs
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Failed to update user tokens
+ */
+router.patch('/tokens/bulk', requireAuth, async (req, res) => {
+  const { user } = req;
+
+  if (!user) {
+    return res.status(401).json({
+      success: false,
+      message: 'Unauthorized',
+    });
+  }
+
+  try {
+    const { tokenIds } = req.body;
+
+    if (!Array.isArray(tokenIds)) {
+      return res.status(400).json({
+        success: false,
+        message: 'tokenIds must be an array',
+      });
+    }
+
+    // Validate all tokenIds are valid integers
+    const validTokenIds = tokenIds.filter(
+      (id) => typeof id === 'number' && Number.isInteger(id) && id > 0
+    );
+
+    // Verify all tokens exist and are active
+    const tokens = await prisma.token.findMany({
+      where: {
+        id: { in: validTokenIds },
+        isActive: true,
+      },
+      select: { id: true },
+    });
+
+    const foundTokenIds = tokens.map((t) => t.id);
+    const missingTokenIds = validTokenIds.filter(
+      (id) => !foundTokenIds.includes(id)
+    );
+
+    if (missingTokenIds.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `Some tokens not found or inactive: ${missingTokenIds.join(', ')}`,
+      });
+    }
+
+    // Delete all existing user tokens
+    await prisma.userToken.deleteMany({
+      where: { userId: user.id },
+    });
+
+    // Create new user tokens
+    if (validTokenIds.length > 0) {
+      await prisma.userToken.createMany({
+        data: validTokenIds.map((tokenId) => ({
+          userId: user.id,
+          tokenId,
+        })),
+      });
+    }
+
+    // Fetch updated user tokens
+    const updatedUserTokens = await prisma.userToken.findMany({
+      where: { userId: user.id },
+      include: {
+        token: {
+          select: {
+            id: true,
+            name: true,
+            isActive: true,
+          },
+        },
+      },
+    });
+
+    res.status(200).json({
+      success: true,
+      message: 'User tokens updated successfully',
+      data: {
+        userTokens: updatedUserTokens,
+      },
+    });
+  } catch (error) {
+    console.error('Error updating user tokens:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update user tokens',
+    });
+  }
+});
+
 // GET /api/user/orders/price-data
 /**
  * @swagger
@@ -1973,13 +2173,24 @@ router.post('/api-key', requireAuth, async (req, res) => {
   try {
     const { apiKey } = req.body;
 
-  const updatedUser = await prisma.user.update({
-    where: { id: user.id },
-    data: { apiKey: apiKey },
-  });
+    if (!apiKey) {
+      return res
+        .status(400)
+        .json({ success: false, message: 'API key is required' });
+    }
 
-  return res.status(200).json({ success: true, message: 'API key stored successfully', data: { apiKey: updatedUser.apiKey } });
-} catch (error) {
-  return res.status(500).json({ success: false, message: 'Failed to store API key' });
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { apiKey: apiKey },
+    });
+
+    return res
+      .status(200)
+      .json({ success: true, message: 'API key stored successfully' });
+  } catch (error) {
+    console.error('Error storing API key:', error);
+    return res
+      .status(500)
+      .json({ success: false, message: 'Failed to store API key' });
   }
 });
