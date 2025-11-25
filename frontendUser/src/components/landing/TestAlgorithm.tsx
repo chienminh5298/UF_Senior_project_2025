@@ -1,7 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { Button } from '../ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card'
-import { Badge } from '../ui/badge'
 import { 
   Shield, 
   Zap,
@@ -9,7 +8,6 @@ import {
   Lock,
   Play,
   RefreshCw,
-  Activity
 } from 'lucide-react'
 import { useBacktestingEngine } from '../shared/BacktestingEngine'
 import { DailyTradeSummary } from '../shared/DailyTradeSummary'

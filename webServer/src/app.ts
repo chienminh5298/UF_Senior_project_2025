@@ -14,14 +14,13 @@ const app = express();
 // CORS configuration - allow all origins in development/Docker
 app.use(
   cors({
-    origin:
-      process.env.NODE_ENV === 'production'
-        ? [
-            'http://localhost:3000',
-            'http://localhost:3001',
-            'http://localhost:3002',
-          ]
-        : true, // Allow all origins in development/Docker
+    origin: [
+      'http://localhost:3000', // Adjust port as needed
+      'http://localhost:3001',
+      'https://moneymachine.work',
+      'https://admin.moneymachine.work',
+      // Add more as needed
+    ],
     credentials: true,
   })
 );

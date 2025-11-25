@@ -548,7 +548,7 @@ export function Admin() {
   const [realtimeSummary, setRealtimeSummary] = useState<any>(null)
   const [priceData, setPriceData] = useState<any[]>([])
   const [autoRefresh, setAutoRefresh] = useState(false)
-  const [refreshInterval, setRefreshInterval] = useState<NodeJS.Timeout | null>(null)
+  const [refreshInterval, setRefreshInterval] = useState<any | null>(null)
   
   // Strategy Form State
   const [showNewStrategyForm, setShowNewStrategyForm] = useState(false)

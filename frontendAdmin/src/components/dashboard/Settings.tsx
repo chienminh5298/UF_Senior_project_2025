@@ -1,9 +1,8 @@
-import React, { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card'
 import { Button } from '../ui/button'
 import { Badge } from '../ui/badge'
 import { 
-  Settings as SettingsIcon,
   User,
   Shield,
   Bell,
@@ -31,7 +30,6 @@ export function Settings() {
   const [pushNotifications, setPushNotifications] = useState(false)
   const [twoFactorEnabled, setTwoFactorEnabled] = useState(false)
   const [showApiKeys, setShowApiKeys] = useState(false)
-  const [userData, setUserData] = useState<{ fullname: string; username: string; email: string } | null>(null)
   const [firstName, setFirstName] = useState('')
   const [lastName, setLastName] = useState('')
   const [username, setUsername] = useState('')
@@ -54,7 +52,6 @@ export function Settings() {
       const adminToken = localStorage.getItem('adminToken')
       if (adminToken) {
         // Admin might not have profile data, set defaults
-        setUserData({ fullname: 'Admin User', username: 'admin', email: 'admin@example.com' })
         setFirstName('Admin')
         setLastName('User')
         setUsername('admin')
@@ -92,7 +89,6 @@ export function Settings() {
       if (!res.ok || !data?.success) {
         throw new Error(data?.message || 'Failed to update profile')
       }
-      setUserData(data.data)
       setProfileSuccess('Profile updated successfully')
     } catch (e: any) {
       setProfileError(e?.message || 'Failed to update profile')

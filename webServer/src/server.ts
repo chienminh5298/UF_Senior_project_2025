@@ -5,7 +5,7 @@ import { connectDatabase } from '../prisma/database';
 import { binanceWebSocketService } from './services/binanceWebSocket';
 import prisma from './models/prismaClient';
 
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT || 1234;
 
 const server = http.createServer(app);
 const io = new SocketIOServer(server);

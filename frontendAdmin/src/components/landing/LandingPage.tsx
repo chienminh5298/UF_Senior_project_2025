@@ -2,7 +2,6 @@ import { useState } from 'react'
 import { Button } from '../ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card'
 import { About } from './About'
-import { TestAlgorithm } from './TestAlgorithm'
 import { 
   TrendingUp, 
   Shield, 
@@ -53,10 +52,6 @@ export function LandingPage({ onNavigateToLogin, onLogin }: LandingPageProps) {
 
     if (showAbout) {
         return <About onBack={toggleAbout} />
-    }
-
-    if (showTestAlgorithm) {
-        return <TestAlgorithm onBack={toggleTestAlgorithm} />
     }
 
     return (

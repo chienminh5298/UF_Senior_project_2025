@@ -20,7 +20,6 @@ export function Settings() {
   const [pushNotifications, setPushNotifications] = useState(false)
   const [twoFactorEnabled, setTwoFactorEnabled] = useState(false)
   const [showApiKeys, setShowApiKeys] = useState(false)
-  const [userData, setUserData] = useState<{ fullname: string; username: string; email: string } | null>(null)
   const [firstName, setFirstName] = useState('')
   const [lastName, setLastName] = useState('')
   const [username, setUsername] = useState('')
@@ -48,7 +47,6 @@ export function Settings() {
       const auth = localStorage.getItem('auth')
       if (auth) {
         const { user } = JSON.parse(auth)
-        setUserData(user)
         const nameParts = (user.fullname || '').split(' ')
         setFirstName(nameParts[0] || '')
         setLastName(nameParts.slice(1).join(' ') || '')
@@ -96,7 +94,6 @@ export function Settings() {
       if (authObj) {
         authObj.user = data.data
         localStorage.setItem('auth', JSON.stringify(authObj))
-        setUserData(data.data)
       }
       setProfileSuccess('Profile updated successfully')
     } catch (e: any) {

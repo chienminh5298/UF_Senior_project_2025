@@ -7,9 +7,7 @@ import { loadTargetToStorage } from "@src/handleOrders/handleTarget";
 import express, { NextFunction, Request, Response } from "express";
 import brokerInstancePool from "@src/classes/brokerInstancePool";
 import prisma, { connectDatabase } from "@root/prisma/database";
-import handleBacktestRoute, { backtestLogic } from "@src/routes/backtest/backtest";
 import handleOrderRoute from "@src/routes/handleOrder";
-import { getData1YearCandle, mutationUpdateData } from "@root/src/API/ultil";
 import { isAuthorization } from "@src/middleware";
 import { logging } from "@src/utils/log";
 // import { loadDEK } from "@src/utils/aws";
@@ -36,7 +34,6 @@ server.use((req: Request, res: Response, next: NextFunction) => {
 });
 
 // ROUTES
-server.use("/backtest", handleBacktestRoute);
 server.use("/order", isAuthorization, handleOrderRoute);
 
 server.listen(parseInt(process.env.SERVER_PORT || "3000", 10));

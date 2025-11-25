@@ -1,11 +1,10 @@
-import React, { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card'
 import { Button } from '../ui/button'
 import { Badge } from '../ui/badge'
 import { 
   Play,
   RefreshCw,
-  Activity,
   Zap
 } from 'lucide-react'
 import { useBacktestingEngine } from '../shared/BacktestingEngine'

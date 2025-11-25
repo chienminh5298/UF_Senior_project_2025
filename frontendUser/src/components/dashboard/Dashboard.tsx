@@ -58,7 +58,6 @@ const fetchPriceData = async () => {
 export function Dashboard() {
   const [portfolioData, setPortfolioData] = useState<PortfolioData | null>(null);
   const [performanceData, setPerformanceData] = useState<PerformanceData[]>([]);
-  const [availableTokens, setAvailableTokens] = useState<any[]>([]);
   const [cryptoPrices, setCryptoPrices] = useState<any[]>([]);
   const [priceLoading, setPriceLoading] = useState(false);
   const [priceError, setPriceError] = useState<string | null>(null);
@@ -213,20 +212,6 @@ export function Dashboard() {
         return;
       }
       
-      const response = await fetch('/api/user/tokens/available', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
-      
-      if (response.ok) {
-        const data = await response.json();
-        setAvailableTokens(data.data);
-      } else {
-        const errorData = await response.json().catch(() => ({ message: 'Failed to parse error response' }));
-        console.error('Failed to fetch available tokens:', errorData);
-      }
     } catch (error) {
       console.error('Error fetching available tokens:', error);
     }
