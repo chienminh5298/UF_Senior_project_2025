@@ -38,7 +38,7 @@ services:
             ufdatabase:
                 condition: service_healthy
         ports:
-            - '3001:3001'
+            - '1234:1234'
             - '7777:7777'
         env_file: ./webServer/.env
         environment:
@@ -63,7 +63,7 @@ services:
             - ./frontendUser:/app
             - /app/node_modules # avoid overwriting node_modules
         environment:
-            - BACKEND_URL=http://backend:3001
+            - BACKEND_URL=http://backend:1234
     frontend-admin:
         build:
             context: ./frontendAdmin
@@ -74,7 +74,7 @@ services:
             - ./frontendAdmin:/app
             - /app/node_modules # avoid overwriting node_modules
         environment:
-            - BACKEND_URL=http://backend:3001
+            - BACKEND_URL=http://backend:1234
 volumes:
     db-volume:
     log-volume:

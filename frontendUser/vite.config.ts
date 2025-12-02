@@ -6,7 +6,7 @@ const getBackendUrl = () => {
     // In Docker: use service name 'backend' (set via BACKEND_URL env var)
     // For local: use 'localhost'
     // Note: VITE_ prefixed vars are for client-side, use regular env vars for config
-    return "http://moneymachine.work:1234";
+    return "http://backend:1234";
 };
 
 export default defineConfig({
@@ -21,6 +21,8 @@ export default defineConfig({
         host: true,
         open: false,
         allowedHosts: [
+            "localhost:3000",
+            "localhost",
             "moneymachine.work",
             ".moneymachine.work", // allow subdomains like admin.moneymachine.work
         ],

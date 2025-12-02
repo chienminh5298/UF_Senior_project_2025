@@ -13,85 +13,32 @@ cd UF_Senior_project_2025
 ```
 
 ### 2. Start Docker Containers
+**Notice**:Please don't start botTrade container because it's running a live trading on our project now !!! I comment out botTrade container by default
+
 ```bash
 docker-compose -f docker-compose.dev.yml up -d
 ```
 
 ### 3. Database Setup
+#### Make sure you have db.sql in folder backupDB
 
-#### First Time Setup (Fresh Database)
-Run these commands in order:
-
+### 4. Add .env file in webServer folder
 ```bash
-# Create initial migration from Prisma schema
-docker-compose -f docker-compose.dev.yml exec backend npx prisma migrate dev --name init --create-only
-
-# Apply the migration to create all tables
-docker-compose -f docker-compose.dev.yml exec backend npx prisma migrate deploy
-
-# Generate Prisma Client
-docker-compose -f docker-compose.dev.yml exec backend npx prisma generate
-
-# Seed the database with test data
-docker-compose -f docker-compose.dev.yml exec backend npm run db:seed
-
-# Restart backend to ensure Prisma client is up-to-date
-docker-compose -f docker-compose.dev.yml restart backend
+GOOGLE_APP_SCRIPT = ""
+JWT_SECRET="your_jwt_secret_key_here"
+ADMIN_USERNAME=ADMIN_USERNAME
+ADMIN_PASSWORD=5hfj2bfoof7e23f
 ```
-
-#### Database Reset (If Schema Changes or Issues)
-If you need to reset the database:
-
-```bash
-# Reset database (WARNING: This will delete all data)
-docker-compose -f docker-compose.dev.yml exec backend npx prisma migrate reset --force --skip-seed
-
-# Create and apply migrations
-docker-compose -f docker-compose.dev.yml exec backend npx prisma migrate dev --name init --create-only
-docker-compose -f docker-compose.dev.yml exec backend npx prisma migrate deploy
-
-# Generate Prisma Client
-docker-compose -f docker-compose.dev.yml exec backend npx prisma generate
-
-# Seed the database
-docker-compose -f docker-compose.dev.yml exec backend npm run db:seed
-
-# Restart backend
-docker-compose -f docker-compose.dev.yml restart backend
-```
-
-#### Quick Reseed (Preserve Schema, Replace Data)
-If you just want to reset the data without changing the schema:
-
-```bash
-docker-compose -f docker-compose.dev.yml exec backend npm run db:seed
-```
-
-## Verify Setup
-
-After setup, verify everything is working:
-
-1. **Check Docker containers are running:**
-   ```bash
-   docker-compose -f docker-compose.dev.yml ps
-   ```
-
-2. **Check backend logs:**
-   ```bash
-   docker-compose -f docker-compose.dev.yml logs backend
-   ```
 
 3. **Access the application:**
-   - Frontend: http://localhost:3000
-   - Backend API: http://localhost:3000/api
+   - Frontend User: http://localhost:3000 (username: chienminh5298@gmail.com - password: test123)
+   - Frontend Admin: http://localhost:3002
+**Notice**: We can't share Goole Sheet, Goole App Script, AWS Lambda,... link but we can share code but you don't need these things to start application
 
 ## Common Issues
 
 ### Issue: "The table does not exist in the current database"
-**Solution**: Run the database setup commands again, starting with `prisma migrate deploy`
-
-### Issue: "adminNote column does not exist"
-**Solution**: Your database schema is out of sync. Run the database reset commands.
+**Solution**: Make sure you have db.sql in folder backupDB
 
 ### Issue: API returns 500 errors after migration
 **Solution**: Restart the backend service:
@@ -125,20 +72,6 @@ docker-compose -f docker-compose.dev.yml up -d --build
 docker-compose -f docker-compose.dev.yml exec database mysql -u root -p moneymachine
 # Default password is usually defined in docker-compose.dev.yml
 ```
-
-## Seeded Data Overview
-
-The database seed creates:
-- **6 tokens**: SOL, ETH, BTC, and others (with USDT pairs)
-- **5 users**: Test users with various configurations
-- **3 strategies**: Main strategy with trigger strategies
-- **7 targets**: Target/stoploss configurations for strategies
-- **13 orders**: Sample trading orders
-- **5 claims**: Withdrawal claims
-- **6 bills**: Billing records
-- **5 vouchers**: Promotional vouchers
-
-Default test credentials and API keys will be created during seeding.
 
 ## Project Structure
 - `/webServer` - Backend API (Node.js/Express/Prisma)
